@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --background: #F9FAFB;
+  --foreground: #0D0D0D;
+  --card: #ffffff;
+  --card-foreground: #0D0D0D;
+  --popover: #ffffff;
+  --popover-foreground: #0D0D0D;
+  --primary: #3B82F6;
+  --primary-foreground: #ffffff;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #0D0D0D;
+  --muted: #F3F4F6;
+  --muted-foreground: rgba(0, 0, 0, 0.55);
+  --accent: #EFF6FF;
+  --accent-foreground: #3B82F6;
+  --destructive: #EF4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #3B82F6;
+}
+
+.dark {
+  --background: #0c0e16;
+  --foreground: #ffffff;
+  --card: #141823;
+  --card-foreground: #f3f4f6;
+  --popover: #131722;
+  --popover-foreground: #f3f4f6;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #0f1117;
+  --secondary-foreground: #f3f4f6;
+  --muted: #0f1117;
+  --muted-foreground: #9ca3af;
+  --accent: #1a1f2e;
+  --accent-foreground: #3b82f6;
+  --destructive: #EF4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #3b82f6;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .glass {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  .dark .glass {
+    background: rgba(12, 14, 22, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  .gradient-border {
+    position: relative;
+    background: var(--card);
+    border-radius: 1rem;
+  }
+  
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 1rem;
+    padding: 1px;
+    background: linear-gradient(90deg, #3B82F6, #2563EB);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  
+  .gradient-border:hover::before {
+    opacity: 1;
+  }
+}
+
+/* Dark mode chart styling */
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.dark .recharts-text {
+  fill: #9ca3af;
+}
+
+.dark .recharts-tooltip-wrapper {
+  background-color: #141823;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .recharts-legend-wrapper {
+  color: #f3f4f6;
+}
