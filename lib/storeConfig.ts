@@ -1,0 +1,1 @@
+export const DEMO_STORE_ID = "32dc14d2-88dd-457b-936b-a7f64e7324f4";

@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getProducts, addProduct, deleteProduct } from "@/lib/api";
-import { Product } from "@/types";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -31,6 +29,15 @@ import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { isPlanLimitExceeded, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 
+type Product = {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number | null;
+  cost: number | null;
+  inventory: number | null;
+};
+
 // TODO: Replace with real Supabase data_sources table
 // Mock data source type for product feeds
 type DataSource = {
@@ -48,15 +55,15 @@ const mockProductSyncStatus = {
   source: "Feed URL",
 };
 
-function ProductTable({ products }: { products: Product[] }) {
-  const queryClient = useQueryClient();
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteProduct,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-    },
-  });
+function ProductTable({ 
+  products, 
+  loading, 
+  error 
+}: { 
+  products: Product[];
+  loading: boolean;
+  error: string | null;
+}) {
 
   return (
     <Table>
@@ -72,8 +79,25 @@ function ProductTable({ products }: { products: Product[] }) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {products.map((product) => {
+        {loading && (
+          <TableRow>
+            <TableCell colSpan={7} className="text-center text-muted-foreground">
+              Loading products…
+            </TableCell>
+          </TableRow>
+        )}
+        {error && (
+          <TableRow>
+            <TableCell colSpan={7} className="text-center text-red-400">
+              {error}
+            </TableCell>
+          </TableRow>
+        )}
+        {!loading && !error && products.map((product) => {
           const isLowInventory = (product.inventory ?? 0) < 5 && product.inventory !== null && product.inventory !== undefined;
+          const marginPercent = product.price != null && product.cost != null
+            ? ((product.price - product.cost) / product.price) * 100
+            : null;
           return (
             <TableRow 
               key={product.id}
@@ -83,21 +107,27 @@ function ProductTable({ products }: { products: Product[] }) {
               )}
             >
               <TableCell className="font-medium">{product.name}</TableCell>
-              <TableCell className="text-muted-foreground">{product.sku}</TableCell>
-              <TableCell className="font-semibold">${product.currentPrice.toFixed(2)}</TableCell>
-              <TableCell className="text-muted-foreground">${product.cost.toFixed(2)}</TableCell>
-              <TableCell>
-                <span className={cn(
-                  "font-medium",
-                  product.marginPercent < 30 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"
-                )}>
-                  {product.marginPercent.toFixed(1)}%
-                </span>
+              <TableCell className="text-muted-foreground">{product.sku ?? "—"}</TableCell>
+              <TableCell className="font-semibold">
+                {product.price != null ? `$${product.price.toFixed(2)}` : "—"}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {product.cost != null ? `$${product.cost.toFixed(2)}` : "—"}
               </TableCell>
               <TableCell>
-                {product.inventory === null || product.inventory === undefined ? (
-                  <span className="text-muted-foreground italic">-</span>
+                {marginPercent != null ? (
+                  <span className={cn(
+                    "font-medium",
+                    marginPercent < 30 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"
+                  )}>
+                    {marginPercent.toFixed(1)}%
+                  </span>
                 ) : (
+                  "—"
+                )}
+              </TableCell>
+              <TableCell>
+                {product.inventory != null ? (
                   <div className="flex items-center gap-2">
                     <Badge variant={isLowInventory ? "destructive" : "outline"}>
                       {product.inventory}
@@ -106,17 +136,24 @@ function ProductTable({ products }: { products: Product[] }) {
                       <AlertCircle className="h-3 w-3 text-orange-600 dark:text-orange-400" />
                     )}
                   </div>
+                ) : (
+                  <span className="text-muted-foreground italic">—</span>
                 )}
               </TableCell>
               <TableCell>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/app/products/${product.id}`}>View</Link>
-                  </Button>
+                  <Link href={`/app/products/${product.id}`}>
+                    <Button variant="outline" size="sm">
+                      View
+                    </Button>
+                  </Link>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => deleteMutation.mutate(product.id)}
+                    onClick={() => {
+                      // TODO: Implement delete functionality
+                      console.log("Delete product:", product.id);
+                    }}
                   >
                     Delete
                   </Button>
@@ -131,6 +168,9 @@ function ProductTable({ products }: { products: Product[] }) {
 }
 
 export default function ProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -161,33 +201,41 @@ export default function ProductsPage() {
   // Mock state for product feed URLs
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
 
-  const queryClient = useQueryClient();
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setError(null);
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["products"],
-    queryFn: getProducts,
-    staleTime: 0,
-  });
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-  const addMutation = useMutation({
-    mutationFn: addProduct,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      setShowAddDialog(false);
-      setNewProduct({ name: "", sku: "", price: "", cost: "", inventory: "" });
-    },
-  });
+      if (error) {
+        console.error(error);
+        setError("Failed to load products.");
+      } else {
+        setProducts(data ?? []);
+      }
+
+      setLoading(false);
+    }
+
+    load();
+  }, []);
 
   // Client-side filtering
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase());
+      (product.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
 
     if (!matchesSearch) return false;
 
     if (filter === "low-margin") {
-      return product.marginPercent < 30;
+      if (product.price == null || product.cost == null) return false;
+      const marginPercent = ((product.price - product.cost) / product.price) * 100;
+      return marginPercent < 30;
     }
     if (filter === "low-inventory") {
       return (product.inventory ?? 0) < 5;
@@ -224,15 +272,16 @@ export default function ProductsPage() {
       ? parseInt(newProduct.inventory)
       : undefined;
 
-    addMutation.mutate({
+    // TODO: Implement add product functionality with Supabase
+    console.log("Add product:", {
       name: newProduct.name,
       sku: newProduct.sku || `SKU-${Date.now()}`,
-      currentPrice: price,
-      currency: "USD",
+      price,
       cost,
-      marginPercent: ((price - cost) / price) * 100,
       inventory,
     });
+    setShowAddDialog(false);
+    setNewProduct({ name: "", sku: "", price: "", cost: "", inventory: "" });
   };
 
   const handleSaveFeedUrl = (e: React.FormEvent) => {
@@ -275,12 +324,23 @@ export default function ProductsPage() {
     setToasts(toasts.filter((t) => t.id !== id));
   };
 
-  if (isLoading) {
-    return (
-      <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12">
-        <div className="text-center text-muted-foreground">Loading...</div>
-      </div>
-    );
+  async function handleCsvUpload(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await fetch("/api/products/import", {
+      method: "POST",
+      body: form,
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert("Import failed: " + data.error);
+      return;
+    }
+
+    // Reload the page after success
+    window.location.reload();
   }
 
   return (
@@ -357,8 +417,14 @@ export default function ProductsPage() {
                 <DropdownMenuItem 
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors"
                   onClick={() => {
-                    // TODO: Implement CSV upload modal
-                    console.log("Upload CSV clicked");
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = ".csv";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) handleCsvUpload(file);
+                    };
+                    input.click();
                   }}
                 >
                   <Upload className="h-4 w-4 text-slate-500 dark:text-slate-400" />
@@ -411,7 +477,7 @@ export default function ProductsPage() {
       {/* Products Table */}
       <Card>
         <CardContent className="p-0">
-          <ProductTable products={filteredProducts} />
+          <ProductTable products={filteredProducts} loading={loading} error={error} />
         </CardContent>
       </Card>
 
@@ -492,7 +558,7 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button type="submit" disabled={addMutation.isPending} className="flex-1">
+                  <Button type="submit" className="flex-1">
                     Add Product
                   </Button>
                   <Button
