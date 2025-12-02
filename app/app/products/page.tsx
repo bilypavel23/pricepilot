@@ -24,10 +24,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Pencil, Trash2 } from "lucide-react";
 import { UpgradeModal } from "@/components/ui/upgrade-modal";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { isPlanLimitExceeded, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
+import { CsvImportDialog } from "@/components/products/csv-import-dialog";
 
 type Product = {
   id: string;
@@ -58,14 +67,117 @@ const mockProductSyncStatus = {
 function ProductTable({ 
   products, 
   loading, 
-  error 
+  error,
+  onRefresh
 }: { 
   products: Product[];
   loading: boolean;
   error: string | null;
+  onRefresh: () => void;
 }) {
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    sku: "",
+    price: "",
+    cost: "",
+    inventory: "",
+  });
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name,
+      sku: product.sku || "",
+      price: product.price?.toString() || "",
+      cost: product.cost?.toString() || "",
+      inventory: product.inventory?.toString() || "",
+    });
+    setEditError(null);
+  };
+
+  const handleDelete = async (productId: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) {
+      return;
+    }
+
+    setIsDeleting(productId);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (error) {
+        console.error("Delete error:", error);
+        alert("Failed to delete product: " + error.message);
+      } else {
+        onRefresh();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete product");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProduct) return;
+
+    setEditError(null);
+
+    const trimmedName = editForm.name.trim();
+    const trimmedSku = editForm.sku.trim();
+
+    if (!trimmedName || !trimmedSku || !editForm.price.trim()) {
+      setEditError("Please fill in Product Name, SKU, and Price.");
+      return;
+    }
+
+    const numericPrice = Number(editForm.price);
+    if (isNaN(numericPrice)) {
+      setEditError("Price must be a valid number.");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const updateData: any = {
+        name: trimmedName,
+        sku: trimmedSku,
+        price: numericPrice,
+        cost: editForm.cost ? Number(editForm.cost) : null,
+        inventory: editForm.inventory ? Number(editForm.inventory) : null,
+      };
+
+      const { error } = await supabase
+        .from("products")
+        .update(updateData)
+        .eq("id", editingProduct.id);
+
+      if (error) {
+        console.error("Update error:", error);
+        setEditError("Failed to update product: " + error.message);
+        setIsSaving(false);
+        return;
+      }
+
+      setEditingProduct(null);
+      onRefresh();
+    } catch (err) {
+      console.error(err);
+      setEditError("Unexpected error while updating product.");
+      setIsSaving(false);
+    }
+  };
 
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
@@ -150,11 +262,22 @@ function ProductTable({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      // TODO: Implement delete functionality
-                      console.log("Delete product:", product.id);
-                    }}
+                    onClick={() => handleEdit(product)}
                   >
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDelete(product.id)}
+                    disabled={isDeleting === product.id}
+                  >
+                    {isDeleting === product.id ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3 mr-1" />
+                    )}
                     Delete
                   </Button>
                 </div>
@@ -164,6 +287,101 @@ function ProductTable({
         })}
       </TableBody>
     </Table>
+
+    {/* Edit Product Dialog */}
+    <Dialog open={editingProduct !== null} onOpenChange={(open) => !open && setEditingProduct(null)}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Edit Product</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div>
+            <Label htmlFor="edit-name">
+              Product Name <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="edit-name"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              placeholder="e.g. Wireless Headphones"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-sku">
+              SKU <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="edit-sku"
+              value={editForm.sku}
+              onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
+              placeholder="e.g. WH-001"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-price">
+              Price <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="edit-price"
+              type="number"
+              step="0.01"
+              value={editForm.price}
+              onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+              placeholder="e.g. 79.99"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-cost">Cost (optional)</Label>
+            <Input
+              id="edit-cost"
+              type="number"
+              step="0.01"
+              value={editForm.cost}
+              onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
+              placeholder="Optional"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-inventory">Inventory (optional)</Label>
+            <Input
+              id="edit-inventory"
+              type="number"
+              value={editForm.inventory}
+              onChange={(e) => setEditForm({ ...editForm, inventory: e.target.value })}
+              placeholder="Optional"
+              className="mt-1"
+            />
+          </div>
+          {editError && (
+            <p className="text-sm text-red-400">{editError}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setEditingProduct(null)}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleSaveEdit} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -174,7 +392,9 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showCsvImportDialog, setShowCsvImportDialog] = useState(false);
   const [showFeedUrlModal, setShowFeedUrlModal] = useState(false);
+  const [showFeedMappingModal, setShowFeedMappingModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeModalData, setUpgradeModalData] = useState<{
     limitType: "products" | "stores" | "competitorsPerProduct";
@@ -189,9 +409,25 @@ export default function ProductsPage() {
     cost: "",
     inventory: "",
   });
-  const [feedUrl, setFeedUrl] = useState({
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [feedUrl, setFeedUrl] = useState("");
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [feedHeaders, setFeedHeaders] = useState<string[]>([]);
+  const [feedRows, setFeedRows] = useState<any[]>([]);
+  const [feedPreview, setFeedPreview] = useState<any[]>([]);
+  const [feedMapping, setFeedMapping] = useState<{
+    name: string;
+    sku: string;
+    price: string;
+    cost: string;
+    inventory: string;
+  }>({
     name: "",
-    url: "",
+    sku: "",
+    price: "",
+    cost: "",
+    inventory: "",
   });
 
   // TODO: Replace with real plan from Supabase user profile
@@ -201,27 +437,27 @@ export default function ProductsPage() {
   // Mock state for product feed URLs
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
+  const loadProducts = async () => {
+    setLoading(true);
+    setError(null);
 
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error(error);
-        setError("Failed to load products.");
-      } else {
-        setProducts(data ?? []);
-      }
-
-      setLoading(false);
+    if (error) {
+      console.error(error);
+      setError("Failed to load products.");
+    } else {
+      setProducts(data ?? []);
     }
 
-    load();
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadProducts();
   }, []);
 
   // Client-side filtering
@@ -244,13 +480,26 @@ export default function ProductsPage() {
     return true;
   });
 
-  const handleAddProduct = (e: React.FormEvent) => {
+  const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // TODO: Replace with real competitor stores count from Supabase
-    const competitorStores = 0; // Mock value
-    
+    setAddError(null);
+    const trimmedName = newProduct.name.trim();
+    const trimmedSku = newProduct.sku.trim();
+
+    if (!trimmedName || !trimmedSku || !newProduct.price.trim()) {
+      setAddError("Please fill in Product Name, SKU, and Price.");
+      return;
+    }
+
+    const numericPrice = Number(newProduct.price);
+    if (isNaN(numericPrice)) {
+      setAddError("Price must be a valid number.");
+      return;
+    }
+
     // Check plan limits before adding
+    const competitorStores = 0; // Mock value
     const limitCheck = isPlanLimitExceeded(currentPlan, {
       totalProducts: products.length,
       competitorStores,
@@ -266,82 +515,144 @@ export default function ProductsPage() {
       return;
     }
 
-    const price = parseFloat(newProduct.price);
-    const cost = parseFloat(newProduct.cost) || price * 0.5;
-    const inventory = newProduct.inventory
-      ? parseInt(newProduct.inventory)
-      : undefined;
+    setIsSubmitting(true);
 
-    // TODO: Implement add product functionality with Supabase
-    console.log("Add product:", {
-      name: newProduct.name,
-      sku: newProduct.sku || `SKU-${Date.now()}`,
-      price,
-      cost,
-      inventory,
-    });
-    setShowAddDialog(false);
-    setNewProduct({ name: "", sku: "", price: "", cost: "", inventory: "" });
+    try {
+      const res = await fetch("/api/products/add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          sku: trimmedSku,
+          price: numericPrice,
+          cost: newProduct.cost ? Number(newProduct.cost) : null,
+          inventory: newProduct.inventory ? Number(newProduct.inventory) : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAddError(data.error || "Failed to add product.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Close modal and reset form
+      setShowAddDialog(false);
+      setNewProduct({ name: "", sku: "", price: "", cost: "", inventory: "" });
+      
+      // Reload products list
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      setAddError("Unexpected error while adding product.");
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSaveFeedUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!feedUrl.url.trim() || !feedUrl.url.startsWith("http")) {
+  const handleFetchFeed = async () => {
+    if (!feedUrl.trim() || !feedUrl.startsWith("http")) {
+      alert("Please enter a valid URL starting with http:// or https://");
       return;
     }
 
-    // TODO: Persist feed URL to Supabase `data_sources` table and connect it to the cron-based product sync later.
-    // The cron job will:
-    // - Starter: sync 1×/day
-    // - Pro: sync 4×/day
-    // - Scale: sync 6×/day
-    // All sync jobs read product feed URLs from the `data_sources` table (type=FEED/PRODUCT_FEED).
-    
-    const newDataSource: DataSource = {
-      id: `feed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: feedUrl.name.trim() || undefined,
-      url: feedUrl.url.trim(),
-      type: "PRODUCT_FEED",
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      setLoadingFeed(true);
 
-    setDataSources([...dataSources, newDataSource]);
-    setShowFeedUrlModal(false);
-    setFeedUrl({ name: "", url: "" });
-    
-    setToasts([
-      ...toasts,
-      {
-        id: Date.now().toString(),
-        message: "Feed URL saved. Products will sync automatically based on your plan (mock).",
-        type: "success",
-      },
-    ]);
+      const res = await fetch("/api/products/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: feedUrl }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Failed to fetch feed");
+        return;
+      }
+
+      setFeedHeaders(data.headers);
+      setFeedRows(data.rows);
+      setFeedPreview(data.preview);
+
+      // auto-guess mapování
+      const lower = (s: string) => s.toLowerCase();
+      const guess = (target: string) =>
+        data.headers.find((h: string) => lower(h).includes(target)) ?? "";
+
+      setFeedMapping({
+        name: guess("name") || guess("title"),
+        sku: guess("sku") || guess("code"),
+        price: guess("price"),
+        cost: guess("cost"),
+        inventory: guess("stock") || guess("qty") || guess("quantity"),
+      });
+
+      setShowFeedUrlModal(false);
+      setShowFeedMappingModal(true);
+    } finally {
+      setLoadingFeed(false);
+    }
+  };
+
+  const handleImportMapped = async () => {
+    // převedeme řádky podle mapování
+    const payload = feedRows.map((row) => ({
+      name: feedMapping.name ? row[feedMapping.name] : null,
+      sku: feedMapping.sku ? row[feedMapping.sku] : null,
+      price: feedMapping.price ? Number(row[feedMapping.price]) || 0 : 0,
+      cost: feedMapping.cost ? Number(row[feedMapping.cost]) || null : null,
+      inventory: feedMapping.inventory
+        ? Number(row[feedMapping.inventory]) || null
+        : null,
+      store_id: "32dc14d2-88dd-457b-936b-a7f64e7324f4",
+      source: "feed_url",
+    })).filter((p) => p.name && p.sku && p.price !== null);
+
+    if (payload.length === 0) {
+      alert("No valid products to import");
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("products").insert(payload);
+
+      if (error) {
+        console.error(error);
+        alert("Failed to import products: " + error.message);
+        return;
+      }
+
+      setShowFeedUrlModal(false);
+      setFeedUrl("");
+      setFeedHeaders([]);
+      setFeedRows([]);
+      setFeedPreview([]);
+      setFeedMapping({
+        name: "",
+        sku: "",
+        price: "",
+        cost: "",
+        inventory: "",
+      });
+      loadProducts();
+    } catch (e) {
+      console.error(e);
+      alert("Unexpected error");
+    }
   };
 
   const removeToast = (id: string) => {
     setToasts(toasts.filter((t) => t.id !== id));
   };
 
-  async function handleCsvUpload(file: File) {
-    const form = new FormData();
-    form.append("file", file);
-
-    const res = await fetch("/api/products/import", {
-      method: "POST",
-      body: form,
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      alert("Import failed: " + data.error);
-      return;
-    }
-
-    // Reload the page after success
+  const handleCsvImportSuccess = () => {
+    // Reload products after successful import
     window.location.reload();
-  }
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
@@ -416,16 +727,7 @@ export default function ProductsPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors"
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".csv";
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) handleCsvUpload(file);
-                    };
-                    input.click();
-                  }}
+                  onClick={() => setShowCsvImportDialog(true)}
                 >
                   <Upload className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                   <span>Upload CSV File</span>
@@ -477,7 +779,12 @@ export default function ProductsPage() {
       {/* Products Table */}
       <Card>
         <CardContent className="p-0">
-          <ProductTable products={filteredProducts} loading={loading} error={error} />
+          <ProductTable 
+            products={filteredProducts} 
+            loading={loading} 
+            error={error}
+            onRefresh={loadProducts}
+          />
         </CardContent>
       </Card>
 
@@ -491,7 +798,9 @@ export default function ProductsPage() {
             <CardContent className="p-0">
               <form onSubmit={handleAddProduct} className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Product Name</Label>
+                  <Label htmlFor="name">
+                    Product Name <span className="text-red-400">*</span>
+                  </Label>
                   <Input
                     id="name"
                     name="name"
@@ -499,12 +808,14 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, name: e.target.value })
                     }
-                    required
+                    placeholder="e.g. Wireless Headphones"
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="sku">SKU</Label>
+                  <Label htmlFor="sku">
+                    SKU <span className="text-red-400">*</span>
+                  </Label>
                   <Input
                     id="sku"
                     name="sku"
@@ -512,11 +823,14 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, sku: e.target.value })
                     }
+                    placeholder="e.g. WH-001"
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="price">Price</Label>
+                  <Label htmlFor="price">
+                    Price <span className="text-red-400">*</span>
+                  </Label>
                   <Input
                     id="price"
                     name="price"
@@ -526,7 +840,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, price: e.target.value })
                     }
-                    required
+                    placeholder="e.g. 79.99"
                     className="mt-1"
                   />
                 </div>
@@ -541,6 +855,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, cost: e.target.value })
                     }
+                    placeholder="Optional"
                     className="mt-1"
                   />
                 </div>
@@ -554,12 +869,18 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setNewProduct({ ...newProduct, inventory: e.target.value })
                     }
+                    placeholder="Optional"
                     className="mt-1"
                   />
                 </div>
+                {addError && (
+                  <p className="mt-2 text-sm text-red-400">
+                    {addError}
+                  </p>
+                )}
                 <div className="flex gap-2 pt-2">
-                  <Button type="submit" className="flex-1">
-                    Add Product
+                  <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                    {isSubmitting ? "Adding..." : "Add Product"}
                   </Button>
                   <Button
                     type="button"
@@ -576,65 +897,111 @@ export default function ProductsPage() {
       )}
 
       {/* Add Feed URL Modal */}
-      {showFeedUrlModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg rounded-2xl bg-white shadow-xl p-6 space-y-4">
-            <CardHeader className="p-0">
-              <CardTitle>Add product feed URL</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground mt-1">
-                Connect a product feed or store URL. We'll automatically sync products from this source based on your plan's schedule (mock).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <form onSubmit={handleSaveFeedUrl} className="space-y-4">
-                <div>
-                  <Label htmlFor="feed-name">Name</Label>
-                  <Input
-                    id="feed-name"
-                    name="feed-name"
-                    value={feedUrl.name}
+      <Dialog open={showFeedUrlModal} onOpenChange={setShowFeedUrlModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Feed URL</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Paste the URL to your product feed (CSV or JSON).
+            </p>
+          </DialogHeader>
+          <Input
+            placeholder="https://example.com/products.csv"
+            value={feedUrl}
+            onChange={(e) => setFeedUrl(e.target.value)}
+          />
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowFeedUrlModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleFetchFeed} disabled={loadingFeed}>
+              {loadingFeed ? "Loading..." : "Fetch feed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Feed Mapping Modal */}
+      <Dialog open={showFeedMappingModal} onOpenChange={setShowFeedMappingModal}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Map feed fields</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Match columns from the feed to your product fields.
+            </p>
+          </DialogHeader>
+
+          {/* map selector */}
+          <div className="space-y-3">
+            {(["name", "sku", "price", "cost", "inventory"] as const).map(
+              (field) => (
+                <div
+                  key={field}
+                  className="flex items-center justify-between gap-4"
+                >
+                  <span className="text-sm font-medium w-24 capitalize">
+                    {field} {field === "name" || field === "sku" || field === "price" ? (
+                      <span className="text-red-400">*</span>
+                    ) : null}
+                  </span>
+                  <Select
+                    value={feedMapping[field]}
                     onChange={(e) =>
-                      setFeedUrl({ ...feedUrl, name: e.target.value })
+                      setFeedMapping((prev) => ({
+                        ...prev,
+                        [field]: e.target.value,
+                      }))
                     }
-                    placeholder="My main store"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="feed-url">Feed URL</Label>
-                  <Input
-                    id="feed-url"
-                    name="feed-url"
-                    type="url"
-                    value={feedUrl.url}
-                    onChange={(e) =>
-                      setFeedUrl({ ...feedUrl, url: e.target.value })
-                    }
-                    placeholder="https://mystore.com/products or https://mystore.com/feed.xml"
-                    required
-                    className="mt-1"
-                  />
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <Button type="submit" className="flex-1" disabled={!feedUrl.url.trim() || !feedUrl.url.startsWith("http")}>
-                    Save feed URL
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowFeedUrlModal(false);
-                      setFeedUrl({ name: "", url: "" });
-                    }}
                   >
-                    Cancel
-                  </Button>
+                    <option value="">Ignore</option>
+                    {feedHeaders.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              )
+            )}
+          </div>
+
+          {/* preview */}
+          {feedPreview.length > 0 && (
+            <div className="mt-4 border rounded p-2 max-h-48 overflow-auto text-xs">
+              <div className="font-semibold mb-2">Preview (first rows)</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr>
+                    {feedHeaders.map((h) => (
+                      <th key={h} className="text-left pr-2">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedPreview.map((row, idx) => (
+                    <tr key={idx}>
+                      {feedHeaders.map((h) => (
+                        <td key={h} className="pr-2">
+                          {String(row[h] ?? "")}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowFeedMappingModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleImportMapped}>Import products</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Upgrade Modal */}
       {upgradeModalData && (
@@ -649,6 +1016,13 @@ export default function ProductsPage() {
       )}
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* CSV Import Dialog */}
+      <CsvImportDialog
+        open={showCsvImportDialog}
+        onClose={() => setShowCsvImportDialog(false)}
+        onSuccess={handleCsvImportSuccess}
+      />
     </div>
   );
 }

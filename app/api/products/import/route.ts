@@ -3,76 +3,61 @@ import { supabase } from "@/lib/supabaseClient";
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const body = await req.json();
+    const products = body.products;
 
-    if (!file) {
+    if (!products || !Array.isArray(products) || products.length === 0) {
       return NextResponse.json(
-        { error: "No file provided" },
+        { error: "No products provided" },
         { status: 400 }
       );
     }
 
-    const text = await file.text();
-    const lines = text.split("\n").filter((l) => l.trim() !== "");
-
-    if (lines.length <= 1) {
-      return NextResponse.json(
-        { error: "CSV file is empty" },
-        { status: 400 }
-      );
-    }
-
-    // Extract headers
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-
-    // Parse each row
-    const products = lines.slice(1).map((line) => {
-      const cols = line.split(",").map((c) => c.trim());
-      const obj: any = {};
-
-      headers.forEach((h, i) => {
-        obj[h] = cols[i] ?? null;
-      });
-
-      // Normalize name variants
-      const name =
-        obj.name ||
-        obj.product_name ||
-        obj.title ||
-        null;
-
-      return {
-        name,
-        sku: obj.sku || null,
-        price: obj.price ? Number(obj.price) : null,
-        cost: obj.cost ? Number(obj.cost) : null,
-        inventory: obj.inventory ? Number(obj.inventory) : null,
-        store_id: "6503e4bb-4d4d-4cdb-a241-ba032712f91a", 
+    // Validate required fields and prepare for insert
+    const productsToInsert = products
+      .map((p: any) => ({
+        name: p.name?.trim() || null,
+        sku: p.sku?.trim() || null,
+        price: p.price != null && !isNaN(Number(p.price)) ? Number(p.price) : null,
+        cost: p.cost != null && !isNaN(Number(p.cost)) ? Number(p.cost) : null,
+        inventory: p.inventory != null && !isNaN(Number(p.inventory)) ? Number(p.inventory) : null,
+        store_id: "32dc14d2-88dd-457b-936b-a7f64e7324f4",
         source: "csv",
-      };
-    });
+      }))
+      .filter((p: any) => p.name && p.sku && p.price !== null);
+
+    if (productsToInsert.length === 0) {
+      return NextResponse.json(
+        { error: "No valid products to import (missing required fields)" },
+        { status: 400 }
+      );
+    }
 
     // Insert into Supabase
     const { error } = await supabase
       .from("products")
-      .insert(products);
+      .insert(productsToInsert);
 
     if (error) {
       console.error(error);
       return NextResponse.json(
-        { error: "Database insert failed", details: error },
+        { error: "Database insert failed", details: error.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true, 
+      imported: productsToInsert.length 
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json(
-      { error: "Import failed", details: err },
+      { error: "Import failed", details: String(err) },
       { status: 500 }
     );
   }
 }
+
+
 
