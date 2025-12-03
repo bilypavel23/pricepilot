@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { usePlan } from "@/components/providers/plan-provider";
 
 // Mock risk scores
 const getRiskScore = (changePercent: number): "low" | "med" | "high" => {
@@ -45,14 +46,20 @@ const getCompetitorAvg = (productId: string): number => {
 };
 
 export default function RecommendationsPage() {
+  const currentPlan = usePlan();
+  const isDemo = currentPlan === "free_demo";
   const [typeFilter, setTypeFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Only use mock recommendations in demo mode
+  // TODO: Replace with real recommendations from Supabase when not in demo
+  const recommendations = isDemo ? mockRecommendations : [];
+
   const filteredRecommendations = useMemo(() => {
-    let filtered = mockRecommendations.filter((rec) => {
+    let filtered = recommendations.filter((rec) => {
       if (typeFilter === "increases" && rec.direction !== "UP") return false;
       if (typeFilter === "decreases" && rec.direction !== "DOWN") return false;
       if (typeFilter === "safe-only" && Math.abs(rec.changePercent) > 5) return false;
@@ -82,10 +89,10 @@ export default function RecommendationsPage() {
     });
 
     return filtered;
-  }, [typeFilter, riskFilter, sortBy]);
+  }, [typeFilter, riskFilter, sortBy, recommendations]);
 
   const handleApply = (recId: string) => {
-    const rec = mockRecommendations.find((r) => r.id === recId);
+    const rec = recommendations.find((r) => r.id === recId);
     if (rec) {
       rec.status = "APPLIED";
       setSelectedIds(selectedIds.filter(id => id !== recId));
@@ -94,7 +101,7 @@ export default function RecommendationsPage() {
   };
 
   const handleApplyAllSafe = () => {
-    const safeRecs = mockRecommendations.filter(
+    const safeRecs = recommendations.filter(
       (rec) => Math.abs(rec.changePercent) <= 5 && rec.status === "PENDING"
     );
     safeRecs.forEach((rec) => {
@@ -106,7 +113,7 @@ export default function RecommendationsPage() {
 
   const handleApplySelected = () => {
     selectedIds.forEach(id => {
-      const rec = mockRecommendations.find((r) => r.id === id);
+      const rec = recommendations.find((r) => r.id === id);
       if (rec) {
         rec.status = "APPLIED";
       }
@@ -135,13 +142,13 @@ export default function RecommendationsPage() {
     setToasts(toasts.filter((t) => t.id !== id));
   };
 
-  const safeCount = mockRecommendations.filter(
+  const safeCount = recommendations.filter(
     (rec) => Math.abs(rec.changePercent) <= 5 && rec.status === "PENDING"
   ).length;
 
-  const increaseCount = mockRecommendations.filter(r => r.direction === "UP" && r.status === "PENDING").length;
-  const decreaseCount = mockRecommendations.filter(r => r.direction === "DOWN" && r.status === "PENDING").length;
-  const neutralCount = mockRecommendations.filter(r => r.direction === "SAME" && r.status === "PENDING").length;
+  const increaseCount = recommendations.filter(r => r.direction === "UP" && r.status === "PENDING").length;
+  const decreaseCount = recommendations.filter(r => r.direction === "DOWN" && r.status === "PENDING").length;
+  const neutralCount = recommendations.filter(r => r.direction === "SAME" && r.status === "PENDING").length;
 
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10 pb-24">
@@ -157,7 +164,7 @@ export default function RecommendationsPage() {
           AI Pricing Summary
         </h3>
         <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
-          AI found <span className="font-semibold">{mockRecommendations.filter(r => r.status === "PENDING").length}</span> price opportunities today.
+          AI found <span className="font-semibold">{recommendations.filter(r => r.status === "PENDING").length}</span> price opportunities today.
         </p>
         <ul className="mt-2 text-xs text-blue-900 dark:text-blue-200">
           <li>• {increaseCount} increases</li>
@@ -251,7 +258,17 @@ export default function RecommendationsPage() {
 
       {/* Recommendations List */}
       <div className="space-y-4">
-        {filteredRecommendations.map((rec) => {
+        {filteredRecommendations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-6 py-10 text-center">
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+              No price recommendations yet.
+            </p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+              We'll generate recommendations once you have products and competitors linked.
+            </p>
+          </div>
+        ) : (
+          filteredRecommendations.map((rec) => {
           const risk = getRiskScore(rec.changePercent);
           const competitorAvg = getCompetitorAvg(rec.productId);
           const isSelected = selectedIds.includes(rec.id);
@@ -399,7 +416,7 @@ export default function RecommendationsPage() {
               </CardContent>
             </Card>
           );
-        })}
+        }))}
       </div>
 
       {/* Bulk Action Bar (Sticky Bottom) */}

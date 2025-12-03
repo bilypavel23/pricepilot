@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 import {
   DropdownMenu,
@@ -14,16 +15,37 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { User, LogOut, CreditCard, Settings } from "lucide-react";
-import { PLAN_BADGES } from "@/lib/planLimits";
+import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { MessagesDropdown } from "@/components/messages-dropdown";
 import { cn } from "@/lib/utils";
 
-// TODO: Replace with real plan and store name from Supabase user profile
-const currentPlan: "STARTER" | "PRO" | "SCALE" = "STARTER";
-
-export function Topbar() {
+export function Topbar({ plan }: { plan: Plan | null | undefined }) {
   const router = useRouter();
   const [displayStoreName, setDisplayStoreName] = useState("My Store");
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return document.cookie.split("; ").map((cookie) => {
+            const [name, ...rest] = cookie.split("=");
+            return { name, value: rest.join("=") };
+          });
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            document.cookie = `${name}=${value}; path=${options?.path || "/"}; ${
+              options?.maxAge ? `max-age=${options.maxAge};` : ""
+            } ${options?.domain ? `domain=${options.domain};` : ""} ${
+              options?.sameSite ? `samesite=${options.sameSite};` : ""
+            } ${options?.secure ? "secure;" : ""}`;
+          });
+        },
+      },
+    }
+  );
 
   useEffect(() => {
     const storedName = localStorage.getItem("storeName");
@@ -32,13 +54,13 @@ export function Topbar() {
     }
   }, []);
 
-  const handleLogout = () => {
-    // TODO: Replace with real logout logic (clear session, tokens, etc.)
-    // For now, just redirect to login page
-    router.push("/login");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // Use full page reload to clear cookies
+    window.location.href = "/login";
   };
 
-  const badge = PLAN_BADGES[currentPlan];
+  const badge = plan && PLAN_BADGES[plan] ? PLAN_BADGES[plan] : PLAN_BADGES.free_demo;
 
   return (
     <div className="flex h-16 items-center justify-between glass border-b border-border px-6 shadow-sm bg-white/80 backdrop-blur dark:bg-[#0c0e16] dark:border-white/5">

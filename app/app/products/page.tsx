@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { isPlanLimitExceeded, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 import { CsvImportDialog } from "@/components/products/csv-import-dialog";
+import { usePlan } from "@/components/providers/plan-provider";
 
 type Product = {
   id: string;
@@ -68,12 +69,14 @@ function ProductTable({
   products, 
   loading, 
   error,
-  onRefresh
+  onRefresh,
+  isDemo
 }: { 
   products: Product[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  isDemo: boolean;
 }) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({
@@ -175,6 +178,22 @@ function ProductTable({
       setIsSaving(false);
     }
   };
+
+  // Empty state
+  if (!loading && !error && (!products || products.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-6 py-10 text-center">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+          No data yet
+        </p>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          {isDemo
+            ? "In demo mode, sample products should appear here. If you don't see any, your demo data is not loaded yet."
+            : "You haven't added any products yet. Connect your store or add your first product to see insights here."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -430,35 +449,55 @@ export default function ProductsPage() {
     inventory: "",
   });
 
-  // TODO: Replace with real plan from Supabase user profile
-  const currentPlan: Plan = "STARTER";
+  const currentPlan = usePlan();
+  const isDemo = currentPlan === "free_demo";
 
   // TODO: Replace with real Supabase data_sources table queries
   // Mock state for product feed URLs
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      setError("No products yet");
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
+    let query = supabase
       .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select("*");
+
+    if (isDemo) {
+      // Load demo products only
+      query = query.eq("is_demo", true);
+    } else {
+      // Load user's real products only (explicitly exclude demo products)
+      query = query.eq("is_demo", false).eq("user_id", user.id);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
+      console.error("Load products error:", error);
       setError("Failed to load products.");
     } else {
+      console.log("Loaded products:", { count: data?.length, isDemo, userId: user.id, plan: currentPlan });
       setProducts(data ?? []);
     }
 
     setLoading(false);
-  };
+  }, [isDemo, currentPlan]);
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [loadProducts]);
 
   // Client-side filtering
   const filteredProducts = products.filter((product) => {
@@ -484,6 +523,19 @@ export default function ProductsPage() {
     e.preventDefault();
     
     setAddError(null);
+    // Check if in demo mode
+    if (isDemo) {
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: "Demo mode: You can't add products. Upgrade to STARTER to connect your store.",
+          type: "error",
+        },
+      ]);
+      return;
+    }
+
     const trimmedName = newProduct.name.trim();
     const trimmedSku = newProduct.sku.trim();
 
@@ -553,6 +605,18 @@ export default function ProductsPage() {
   };
 
   const handleFetchFeed = async () => {
+    if (isDemo) {
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: "Demo mode: You can't add feed URLs. Upgrade to STARTER to connect your store.",
+          type: "error",
+        },
+      ]);
+      return;
+    }
+
     if (!feedUrl.trim() || !feedUrl.startsWith("http")) {
       alert("Please enter a valid URL starting with http:// or https://");
       return;
@@ -599,6 +663,19 @@ export default function ProductsPage() {
   };
 
   const handleImportMapped = async () => {
+    // Check if in demo mode
+    if (isDemo) {
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: "Demo mode: You can't import products. Upgrade to STARTER to connect your store.",
+          type: "error",
+        },
+      ]);
+      return;
+    }
+
     // převedeme řádky podle mapování
     const payload = feedRows.map((row) => ({
       name: feedMapping.name ? row[feedMapping.name] : null,
@@ -608,7 +685,7 @@ export default function ProductsPage() {
       inventory: feedMapping.inventory
         ? Number(row[feedMapping.inventory]) || null
         : null,
-      store_id: "32dc14d2-88dd-457b-936b-a7f64e7324f4",
+      is_demo: false,
       source: "feed_url",
     })).filter((p) => p.name && p.sku && p.price !== null);
 
@@ -618,7 +695,20 @@ export default function ProductsPage() {
     }
 
     try {
-      const { error } = await supabase.from("products").insert(payload);
+      // Get current user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("You must be logged in to import products");
+        return;
+      }
+
+      // Add user_id to each product
+      const payloadWithUserId = payload.map((p) => ({
+        ...p,
+        user_id: user.id,
+      }));
+
+      const { error } = await supabase.from("products").insert(payloadWithUserId);
 
       if (error) {
         console.error(error);
@@ -784,6 +874,7 @@ export default function ProductsPage() {
             loading={loading} 
             error={error}
             onRefresh={loadProducts}
+            isDemo={currentPlan === "free_demo"}
           />
         </CardContent>
       </Card>

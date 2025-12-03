@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { usePlan } from "@/components/providers/plan-provider";
 
 type Message = {
   id: string;
@@ -55,6 +56,8 @@ const MOCK_MESSAGES: Message[] = [
 ];
 
 export function MessagesDropdown() {
+  const currentPlan = usePlan();
+  const isDemo = currentPlan === "free_demo";
   const [openDialog, setOpenDialog] = React.useState(false);
   const [openSupport, setOpenSupport] = React.useState(false);
   const [openDropdown, setOpenDropdown] = React.useState(false);
@@ -62,7 +65,11 @@ export function MessagesDropdown() {
   const [supportSubject, setSupportSubject] = React.useState("");
   const [supportMessage, setSupportMessage] = React.useState("");
 
-  const unreadCount = MOCK_MESSAGES.filter(m => m.unread).length;
+  // Only show mock messages in demo mode
+  // TODO: Replace with real messages from Supabase when not in demo
+  const messages = isDemo ? MOCK_MESSAGES : [];
+
+  const unreadCount = messages.filter(m => m.unread).length;
 
   const handleOpenMessage = (message: Message) => {
     setSelected(message);
@@ -83,8 +90,8 @@ export function MessagesDropdown() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
-            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+            size="sm"
+            className="relative h-10 w-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="Open messages"
           >
             <Mail className="h-5 w-5" />
@@ -103,13 +110,21 @@ export function MessagesDropdown() {
         >
           <DropdownMenuLabel className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
             <span>Messages</span>
-            <span className="text-[10px] uppercase tracking-wide">
-              {unreadCount} unread
-            </span>
+            {unreadCount > 0 && (
+              <span className="text-[10px] uppercase tracking-wide">
+                {unreadCount} unread
+              </span>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
-          {MOCK_MESSAGES.map((message) => (
+          {messages.length === 0 && !isDemo && (
+            <div className="px-2 py-4 text-center text-xs text-slate-400 dark:text-slate-500">
+              No messages yet.
+            </div>
+          )}
+
+          {messages.map((message) => (
             <DropdownMenuItem
               key={message.id}
               className="flex flex-col items-start gap-0.5 rounded-lg px-2 py-2.5 text-sm focus:bg-slate-50 dark:focus:bg-slate-800"
@@ -131,12 +146,6 @@ export function MessagesDropdown() {
               </span>
             </DropdownMenuItem>
           ))}
-
-          {MOCK_MESSAGES.length === 0 && (
-            <div className="px-2 py-4 text-center text-xs text-slate-400 dark:text-slate-500">
-              No messages yet.
-            </div>
-          )}
 
           <div
             onClick={() => {

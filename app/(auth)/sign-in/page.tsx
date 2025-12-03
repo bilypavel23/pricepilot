@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
+export default function SignInPage() {
   const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,7 +34,7 @@ export default function LoginPage() {
       },
     }
   );
-
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,9 +45,18 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
+    console.log("Sign in attempt with email:", email);
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
+    });
+
+    console.log("Sign in response:", {
+      hasError: !!error,
+      hasSession: !!data?.session,
+      userId: data?.user?.id,
+      errorMessage: error?.message,
     });
 
     setLoading(false);
@@ -132,7 +141,7 @@ export default function LoginPage() {
           </form>
           <div className="mt-6 text-center text-sm text-slate-400">
             Don't have an account?{" "}
-            <Link href="/register" className="text-blue-400 hover:text-blue-300">
+            <Link href="/sign-up" className="text-blue-400 hover:text-blue-300">
               Sign up
             </Link>
           </div>

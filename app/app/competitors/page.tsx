@@ -19,6 +19,7 @@ import {
 } from "@/data/mockCompetitorStores";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { canAddCompetitorStore, isPlanLimitExceeded, type Plan } from "@/lib/planLimits";
+import { usePlan } from "@/components/providers/plan-provider";
 import { UpgradeModal } from "@/components/ui/upgrade-modal";
 import { AutoMatchSheet } from "@/components/competitors/auto-match-sheet";
 import Link from "next/link";
@@ -41,8 +42,8 @@ export default function CompetitorsPage() {
   } | null>(null);
   const [autoMatchStore, setAutoMatchStore] = useState<{ id: string; name: string } | null>(null);
   
-  // TODO: Replace with real plan from Supabase user profile
-  const currentPlan: Plan = "STARTER";
+  const currentPlan = usePlan();
+  const isDemo = currentPlan === "free_demo";
   
   // Mock state for sync times
   const [lastGlobalSync, setLastGlobalSync] = useState<string>("Today, 12:34 (mock)");
@@ -83,6 +84,19 @@ export default function CompetitorsPage() {
 
   const handleAddStore = () => {
     if (!storeName.trim() || !storeUrl.trim()) return;
+
+    // Check if in demo mode
+    if (isDemo) {
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: "Demo mode: You can't add competitors. Upgrade to STARTER to connect your store.",
+          type: "error",
+        },
+      ]);
+      return;
+    }
 
     // Check plan limits before adding
     const limitCheck = isPlanLimitExceeded(currentPlan, {
@@ -219,7 +233,24 @@ export default function CompetitorsPage() {
               </Badge>
             </div>
           </div>
-          <Button onClick={() => setShowAddModal(true)} className="shadow-md">
+          <Button
+            onClick={() => {
+              if (isDemo) {
+                setToasts([
+                  ...toasts,
+                  {
+                    id: Date.now().toString(),
+                    message: "Demo mode: You can't add competitors. Upgrade to STARTER to connect your store.",
+                    type: "error",
+                  },
+                ]);
+                return;
+              }
+              setShowAddModal(true);
+            }}
+            disabled={isDemo}
+            className={cn("shadow-md", isDemo && "opacity-50 cursor-not-allowed")}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add competitor
           </Button>
@@ -279,8 +310,15 @@ export default function CompetitorsPage() {
         </CardHeader>
         <CardContent>
           {stores.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No competitor stores added yet. Click "Add competitor" to get started.</p>
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-6 py-10 text-center">
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                No competitor data yet.
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                {isDemo
+                  ? "Demo competitors data is not loaded yet."
+                  : "No competitor data yet. Add competitors or let PricePilot scrape them for your products."}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -316,12 +354,12 @@ export default function CompetitorsPage() {
 
                     {/* Right: Actions */}
                     <div className="flex flex-col gap-2 flex-shrink-0">
-                      <Button variant="outline" size="sm" asChild className="text-xs">
-                        <Link href={`/app/competitors/${store.id}/matching`}>
+                      <Link href={`/app/competitors/${store.id}/matching`}>
+                        <Button variant="outline" size="sm" className="text-xs">
                           <ExternalLink className="mr-2 h-3 w-3" />
                           Matches
-                        </Link>
-                      </Button>
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"

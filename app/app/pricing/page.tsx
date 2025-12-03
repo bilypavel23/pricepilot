@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PLAN_LIMITS, PLAN_BADGES } from "@/lib/planLimits";
+import { PLAN_LIMITS, PLAN_BADGES, type Plan } from "@/lib/planLimits";
+import { usePlan } from "@/components/providers/plan-provider";
 import { cn } from "@/lib/utils";
 
 const plans = [
@@ -31,9 +32,8 @@ const plans = [
   },
 ];
 
-const currentPlan = "STARTER"; // TODO: Replace with real user's current plan
-
 export default function PricingPage() {
+  const currentPlan = usePlan();
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
 
   const getPrice = (monthlyPrice: number) => {

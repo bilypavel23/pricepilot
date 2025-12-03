@@ -1,8 +1,46 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
   try {
+    // Check authentication and demo mode
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookies().get(name)?.value;
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user profile to check plan
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .single();
+
+    const isDemo = profile?.plan === "free_demo";
+
+    if (isDemo) {
+      return NextResponse.json(
+        { error: "Demo mode: You can't add products. Upgrade to STARTER to connect your store." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const name = (body.name ?? "").trim();
     const sku = (body.sku ?? "").trim();
@@ -24,16 +62,14 @@ export async function POST(req: Request) {
         ? Number(body.inventory)
         : null;
 
-    // TODO: replace with real workspace/store id later
-    const storeId = "32dc14d2-88dd-457b-936b-a7f64e7324f4";
-
     const { error } = await supabase.from("products").insert({
       name,
       sku,
       price: Number(price),
       cost,
       inventory,
-      store_id: storeId,
+      user_id: user.id,
+      is_demo: false,
       source: "manual",
     });
 
@@ -54,4 +90,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
-  const router = useRouter();
+export default function ForgotPasswordPage() {
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,18 +34,19 @@ export default function LoginPage() {
   );
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/reset-password`,
     });
 
     setLoading(false);
@@ -57,29 +56,43 @@ export default function LoginPage() {
       return;
     }
 
-    if (!data?.session) {
-      setError("No session received. Please try again.");
-      return;
-    }
-
-    // Wait a moment for cookies to be set
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Use full page reload to ensure cookies are available for middleware
-    window.location.href = "/app/dashboard";
+    setSuccess(true);
   };
+
+  if (success) {
+    return (
+      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center px-4 py-12">
+        <Card className="w-full max-w-md border-slate-800 bg-slate-900/50">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-white">Check your email</CardTitle>
+            <CardDescription className="text-slate-400">
+              We've sent you a password reset link
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-300 mb-4">
+              If an account with <strong>{email}</strong> exists, you'll receive an email with instructions to reset your password.
+            </p>
+            <Button asChild className="w-full bg-blue-500 hover:bg-blue-600 text-white">
+              <Link href="/sign-in">Back to sign in</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-200px)] items-center justify-center px-4 py-12">
       <Card className="w-full max-w-md border-slate-800 bg-slate-900/50">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-white">Welcome back</CardTitle>
+          <CardTitle className="text-2xl font-bold text-white">Forgot password</CardTitle>
           <CardDescription className="text-slate-400">
-            Sign in to your PricePilot account
+            Enter your email and we'll send you a reset link
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSignIn} className="space-y-4">
+          <form onSubmit={handleResetPassword} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-300">
                 Email
@@ -94,27 +107,6 @@ export default function LoginPage() {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-slate-300">
-                  Password
-                </Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs text-blue-400 hover:text-blue-300"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="bg-slate-800 border-slate-700 text-white"
-              />
-            </div>
             
             {error && (
               <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded p-2">
@@ -127,13 +119,13 @@ export default function LoginPage() {
               className="w-full bg-blue-500 hover:bg-blue-600 text-white"
               disabled={loading}
             >
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? "Sending..." : "Send reset link"}
             </Button>
           </form>
           <div className="mt-6 text-center text-sm text-slate-400">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-blue-400 hover:text-blue-300">
-              Sign up
+            Remember your password?{" "}
+            <Link href="/sign-in" className="text-blue-400 hover:text-blue-300">
+              Sign in
             </Link>
           </div>
         </CardContent>
@@ -141,3 +133,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

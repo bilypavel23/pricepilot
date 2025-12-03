@@ -1,105 +1,157 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function RegisterPage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
+
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // PRO JISTOTU: při otevření /register se odhlaš z jakékoliv staré session
+  useEffect(() => {
+    const logout = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        await supabase.auth.signOut();
+        console.log("Signed out old session on /register");
+      }
+    };
+    logout();
+  }, []);
+
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setError(null);
+    setMessage(null);
 
-    // TODO: Replace with real authentication
-    // Mock registration - simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (password !== passwordConfirm) {
+      setError("Passwords do not match.");
+      return;
+    }
 
-    // Redirect to app dashboard
-    router.push("/app/dashboard");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${origin}/auth/callback`,
+          data: {
+            full_name: fullName,
+            plan: "free_demo",
+          },
+        },
+      });
+
+      console.log("SIGNUP RESULT", { data, error });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      setMessage(
+        "Account created. Please check your email and click the verification link to activate your account."
+      );
+    } catch (err: any) {
+      console.error("SIGNUP EXCEPTION", err);
+      setError(err.message ?? "Unexpected error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-200px)] items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900/50">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-white">Create an account</CardTitle>
-          <CardDescription className="text-slate-400">
-            Get started with pricingeg today
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-slate-300">
-                Full name
-              </Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-slate-300">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-300">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                className="bg-slate-800 border-slate-700 text-white"
-              />
-              <p className="text-xs text-slate-500">
-                Must be at least 8 characters
-              </p>
-            </div>
-            <Button
-              type="submit"
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white"
-              disabled={isLoading}
-            >
-              {isLoading ? "Creating account..." : "Create account"}
-            </Button>
-          </form>
-          <div className="mt-6 text-center text-sm text-slate-400">
-            Already have an account?{" "}
-            <Link href="/login" className="text-blue-400 hover:text-blue-300">
-              Sign in
-            </Link>
+    <div className="flex min-h-screen items-center justify-center bg-slate-950">
+      <form
+        onSubmit={handleSignUp}
+        className="w-full max-w-md rounded-2xl bg-slate-900/80 p-8 shadow-xl"
+      >
+        <h1 className="text-2xl font-semibold mb-1">Create an account</h1>
+        <p className="text-sm text-muted-foreground mb-6">
+          Get started with PricePilot today.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm mb-1 block">Full name</label>
+            <Input
+              placeholder="John Doe"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+            />
           </div>
-        </CardContent>
-      </Card>
+
+          <div>
+            <label className="text-sm mb-1 block">Email</label>
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm mb-1 block">Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Must be at least 8 characters
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm mb-1 block">Confirm password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={passwordConfirm}
+              onChange={(e) => setPasswordConfirm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <p className="mt-4 text-sm text-red-400">
+            {error}
+          </p>
+        )}
+        {message && (
+          <p className="mt-4 text-sm text-emerald-400">
+            {message}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          className="mt-6 w-full"
+          disabled={loading}
+        >
+          {loading ? "Creating account..." : "Create account"}
+        </Button>
+      </form>
     </div>
   );
 }

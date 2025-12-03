@@ -11,7 +11,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Edit2, Save, X } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { PLAN_BADGES } from "@/lib/planLimits";
+import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
+import { usePlan } from "@/components/providers/plan-provider";
+import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
@@ -25,18 +27,28 @@ export default function SettingsPage() {
     weeklyReport: false,
   });
 
-  // TODO: Replace with real user settings from Supabase
-  const mockEmail = "user@example.com";
+  const [userEmail, setUserEmail] = useState<string>("");
   const [storeName, setStoreName] = useState("My Store");
   const [isEditingStoreName, setIsEditingStoreName] = useState(false);
   const [tempStoreName, setTempStoreName] = useState(storeName);
-  const mockPlan: "STARTER" | "PRO" | "SCALE" = "STARTER";
+  const currentPlan = usePlan();
 
-  const badge = PLAN_BADGES[mockPlan];
+  const badge = PLAN_BADGES[currentPlan];
 
   // Prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Load user email from Supabase session
+  useEffect(() => {
+    const loadUserEmail = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        setUserEmail(user.email);
+      }
+    };
+    loadUserEmail();
   }, []);
 
   // Load store name from localStorage on mount
@@ -84,7 +96,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-6">
           <div className="space-y-1">
             <Label className="text-sm font-medium">Email</Label>
-            <p className="text-sm text-muted-foreground">{mockEmail}</p>
+            <p className="text-sm text-muted-foreground">{userEmail || "Loading..."}</p>
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Store name</Label>
