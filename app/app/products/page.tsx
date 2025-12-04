@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,14 +69,12 @@ function ProductTable({
   products, 
   loading, 
   error,
-  onRefresh,
-  isDemo
+  onRefresh
 }: { 
   products: Product[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
-  isDemo: boolean;
 }) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({
@@ -178,22 +176,6 @@ function ProductTable({
       setIsSaving(false);
     }
   };
-
-  // Empty state
-  if (!loading && !error && (!products || products.length === 0)) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-6 py-10 text-center">
-        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-          No data yet
-        </p>
-        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-          {isDemo
-            ? "In demo mode, sample products should appear here. If you don't see any, your demo data is not loaded yet."
-            : "You haven't added any products yet. Connect your store or add your first product to see insights here."}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -456,48 +438,40 @@ export default function ProductsPage() {
   // Mock state for product feed URLs
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = async () => {
     setLoading(true);
     setError(null);
 
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     
-    if (!user) {
-      setError("No products yet");
-      setProducts([]);
-      setLoading(false);
-      return;
-    }
-
     let query = supabase
       .from("products")
       .select("*");
 
     if (isDemo) {
-      // Load demo products only
+      // Load demo products
       query = query.eq("is_demo", true);
-    } else {
-      // Load user's real products only (explicitly exclude demo products)
+    } else if (user) {
+      // Load user's real products
       query = query.eq("is_demo", false).eq("user_id", user.id);
     }
 
     const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Load products error:", error);
+      console.error(error);
       setError("Failed to load products.");
     } else {
-      console.log("Loaded products:", { count: data?.length, isDemo, userId: user.id, plan: currentPlan });
       setProducts(data ?? []);
     }
 
     setLoading(false);
-  }, [isDemo, currentPlan]);
+  };
 
   useEffect(() => {
     loadProducts();
-  }, [loadProducts]);
+  }, []);
 
   // Client-side filtering
   const filteredProducts = products.filter((product) => {
@@ -874,7 +848,6 @@ export default function ProductsPage() {
             loading={loading} 
             error={error}
             onRefresh={loadProducts}
-            isDemo={currentPlan === "free_demo"}
           />
         </CardContent>
       </Card>

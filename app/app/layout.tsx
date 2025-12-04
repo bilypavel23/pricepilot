@@ -9,7 +9,6 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const { profile } = await getProfile();
-  // Normalize plan from DB (handles 'pro' -> 'PRO', 'ultra' -> 'SCALE', etc.)
   const plan: Plan = normalizePlan(profile?.plan);
 
   return (

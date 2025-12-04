@@ -10,7 +10,7 @@ export function AppShell({
   plan 
 }: { 
   children: React.ReactNode;
-  plan: Plan | null | undefined;
+  plan: Plan;
 }) {
   const showAiChat = hasAiChatAccess(plan);
 

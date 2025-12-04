@@ -11,8 +11,7 @@ export default async function DashboardPage() {
     redirect("/sign-in");
   }
 
-  const plan = profile?.plan ?? "free_demo";
-  const isDemo = plan === "free_demo";
+  const isDemo = profile?.plan === "free_demo";
 
   // Create Supabase client for server-side queries
   const supabase = createClient(

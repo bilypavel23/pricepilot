@@ -310,15 +310,8 @@ export default function CompetitorsPage() {
         </CardHeader>
         <CardContent>
           {stores.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-6 py-10 text-center">
-              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                No competitor data yet.
-              </p>
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                {isDemo
-                  ? "Demo competitors data is not loaded yet."
-                  : "No competitor data yet. Add competitors or let PricePilot scrape them for your products."}
-              </p>
+            <div className="text-center py-12 text-muted-foreground">
+              <p>No competitor stores added yet. Click "Add competitor" to get started.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -354,12 +347,12 @@ export default function CompetitorsPage() {
 
                     {/* Right: Actions */}
                     <div className="flex flex-col gap-2 flex-shrink-0">
-                      <Link href={`/app/competitors/${store.id}/matching`}>
-                        <Button variant="outline" size="sm" className="text-xs">
+                      <Button variant="outline" size="sm" asChild className="text-xs">
+                        <Link href={`/app/competitors/${store.id}/matching`}>
                           <ExternalLink className="mr-2 h-3 w-3" />
                           Matches
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

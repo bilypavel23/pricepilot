@@ -28,7 +28,6 @@ export async function getProfile() {
             cookieStore.set({
               name,
               value: "",
-              maxAge: 0,
               ...options,
             });
           } catch (err) {
@@ -43,12 +42,6 @@ export async function getProfile() {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  console.log("getProfile - user check:", { 
-    hasUser: !!user, 
-    userId: user?.id,
-    error: userError?.message 
-  });
 
   if (userError || !user) {
     return { user: null, profile: null };
@@ -67,3 +60,4 @@ export async function getProfile() {
 
   return { user, profile };
 }
+

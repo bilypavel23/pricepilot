@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -10,72 +9,53 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SignInPage() {
-  const router = useRouter();
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return document.cookie.split("; ").map((cookie) => {
-            const [name, ...rest] = cookie.split("=");
-            return { name, value: rest.join("=") };
-          });
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            document.cookie = `${name}=${value}; path=${options?.path || "/"}; ${
-              options?.maxAge ? `max-age=${options.maxAge};` : ""
-            } ${options?.domain ? `domain=${options.domain};` : ""} ${
-              options?.sameSite ? `samesite=${options.sameSite};` : ""
-            } ${options?.secure ? "secure;" : ""}`;
-          });
-        },
-      },
-    }
-  );
-  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    console.log("Sign in attempt with email:", email);
+    try {
+      if (!email || !password) {
+        setError("Please enter both email and password");
+        setLoading(false);
+        return;
+      }
+      
+      // Create Supabase client with cookie support
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
 
-    console.log("Sign in response:", {
-      hasError: !!error,
-      hasSession: !!data?.session,
-      userId: data?.user?.id,
-      errorMessage: error?.message,
-    });
+      if (!data.session) {
+        setError("No session received. Please try again.");
+        setLoading(false);
+        return;
+      }
 
-    setLoading(false);
-
-    if (error) {
-      setError(error.message);
-      return;
+      // Force a full page reload to ensure cookies are available server-side
+      window.location.href = "/app/dashboard";
+    } catch (err: any) {
+      console.error("Sign in exception:", err);
+      setError(err.message || "An unexpected error occurred");
+      setLoading(false);
     }
-
-    if (!data?.session) {
-      setError("No session received. Please try again.");
-      return;
-    }
-
-    // Wait a moment for cookies to be set
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Use full page reload to ensure cookies are available for middleware
-    window.location.href = "/app/dashboard";
   };
 
   return (
@@ -88,7 +68,14 @@ export default function SignInPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSignIn} className="space-y-4">
+          <form 
+            onSubmit={(e) => {
+              console.log("=== FORM SUBMIT EVENT ===");
+              e.preventDefault();
+              handleSubmit(e);
+            }} 
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-300">
                 Email
@@ -109,7 +96,7 @@ export default function SignInPage() {
                   Password
                 </Label>
                 <Link
-                  href="/forgot-password"
+                  href="#"
                   className="text-xs text-blue-400 hover:text-blue-300"
                 >
                   Forgot password?
@@ -135,6 +122,10 @@ export default function SignInPage() {
               type="submit"
               className="w-full bg-blue-500 hover:bg-blue-600 text-white"
               disabled={loading}
+              onClick={(e) => {
+                console.log("Button clicked!");
+                console.log("Form valid:", e.currentTarget.form?.checkValidity());
+              }}
             >
               {loading ? "Signing in..." : "Sign in"}
             </Button>
@@ -150,3 +141,4 @@ export default function SignInPage() {
     </div>
   );
 }
+

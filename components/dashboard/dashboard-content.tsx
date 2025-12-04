@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bot, DollarSign, TrendingUp, Package, Activity, Upload, Link as LinkIcon, Lightbulb, ArrowUpDown, Bell, RefreshCw, Inbox } from "lucide-react";
+import { Bot, DollarSign, TrendingUp, Package, Activity, Upload, Link as LinkIcon, Lightbulb, ArrowUpDown, Bell, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import {
   LineChart,
@@ -139,43 +139,6 @@ export function DashboardContent({
   products?: any[];
   competitors?: any[];
 }) {
-  const hasNoData = !isDemo && products.length === 0 && competitors.length === 0;
-
-  // Empty state for users with no data
-  if (hasNoData) {
-    return (
-      <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
-          <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-6">
-            <Inbox className="h-12 w-12 text-slate-400 dark:text-slate-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-              No data yet
-            </h2>
-            <p className="text-slate-600 dark:text-slate-400 max-w-md">
-              Get started by adding your products and competitors to start tracking pricing and margins.
-            </p>
-          </div>
-          <div className="flex gap-3 pt-4">
-            <Link href="/app/products">
-              <Button className="bg-blue-500 hover:bg-blue-600 text-white">
-                <Upload className="h-4 w-4 mr-2" />
-                Add Products
-              </Button>
-            </Link>
-            <Link href="/app/competitors">
-              <Button variant="outline">
-                <LinkIcon className="h-4 w-4 mr-2" />
-                Add Competitors
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
       {/* Demo Banner */}
@@ -191,9 +154,9 @@ export function DashboardContent({
                   The products and competitors you see are demo data. To connect your own store and start tracking real competitors, upgrade your plan.
                 </p>
               </div>
-              <Link href="/app/pricing">
-                <Button className="bg-amber-600 hover:bg-amber-700 text-white">Upgrade</Button>
-              </Link>
+              <Button asChild className="bg-amber-600 hover:bg-amber-700 text-white">
+                <Link href="/app/pricing">Upgrade</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -245,14 +208,14 @@ export function DashboardContent({
         />
         <KPICard
           title="Products synced"
-          value={products.length.toString()}
+          value="127"
           trend={{ value: 8, label: "vs last 7 days" }}
           icon={<Package />}
           sparklineData={mockSparklineData.products}
         />
         <KPICard
           title="Competitor activity"
-          value={competitors.length.toString()}
+          value="23"
           trend={{ value: -2, label: "vs last 7 days" }}
           icon={<Activity />}
           sparklineData={mockSparklineData.competitors}
@@ -270,11 +233,11 @@ export function DashboardContent({
             <Upload className="h-5 w-5" /> Add Products
           </Button>
         ) : (
-          <Link href="/app/products">
-            <Button className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full">
+          <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
+            <Link href="/app/products">
               <Upload className="h-5 w-5" /> Add Products
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         )}
         {isDemo ? (
           <Button 
@@ -285,17 +248,17 @@ export function DashboardContent({
             <LinkIcon className="h-5 w-5" /> Add Competitor
           </Button>
         ) : (
-          <Link href="/app/competitors">
-            <Button className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full">
+          <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
+            <Link href="/app/competitors">
               <LinkIcon className="h-5 w-5" /> Add Competitor
-            </Button>
-          </Link>
-        )}
-        <Link href="/app/recommendations">
-          <Button className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full">
-            <Lightbulb className="h-5 w-5" /> Review Recommendations
+            </Link>
           </Button>
-        </Link>
+        )}
+        <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
+          <Link href="/app/recommendations">
+            <Lightbulb className="h-5 w-5" /> Review Recommendations
+          </Link>
+        </Button>
       </div>
 
       {/* Chart Section */}

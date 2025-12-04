@@ -1,17 +1,30 @@
-export type Plan = "free_demo" | "STARTER" | "PRO" | "SCALE" | "pro" | "ultra";
+export type Plan = "free_demo" | "STARTER" | "PRO" | "SCALE";
 
-// Map database plan values to normalized Plan type
+/**
+ * Normalizes a plan value from the database to a valid Plan type.
+ * Handles variations like "pro" -> "PRO", "ultra" -> "SCALE", etc.
+ */
 export function normalizePlan(plan: string | null | undefined): Plan {
   if (!plan) return "free_demo";
-  const normalized = plan.toLowerCase();
-  if (normalized === "pro") return "PRO";
-  if (normalized === "ultra") return "SCALE";
-  if (["free_demo", "starter", "pro", "scale"].includes(normalized)) {
-    return normalized.toUpperCase() === "STARTER" ? "STARTER" : 
-           normalized.toUpperCase() === "PRO" ? "PRO" :
-           normalized.toUpperCase() === "SCALE" ? "SCALE" : "free_demo";
-  }
+  
+  const normalized = plan.toUpperCase();
+  
+  // Handle exact matches and common variations
+  if (normalized === "PRO" || normalized === "PROFESSIONAL") return "PRO";
+  if (normalized === "SCALE" || normalized === "ULTRA" || normalized === "ENTERPRISE") return "SCALE";
+  if (normalized === "STARTER" || normalized === "BASIC") return "STARTER";
+  if (normalized === "FREE_DEMO" || normalized === "DEMO" || normalized === "FREE") return "free_demo";
+  
+  // Default to free_demo for unknown plans
   return "free_demo";
+}
+
+/**
+ * Validates if a plan is a valid Plan type
+ */
+export function isValidPlan(plan: string | null | undefined): plan is Plan {
+  if (!plan) return false;
+  return plan === "free_demo" || plan === "STARTER" || plan === "PRO" || plan === "SCALE";
 }
 
 export const PLAN_LIMITS = {
@@ -51,25 +64,6 @@ export const PLAN_LIMITS = {
     alerts: "Fast / Premium",
     support: "Dedicated",
   },
-  // Aliases for lowercase variants from DB
-  pro: {
-    products: 500,
-    competitorsPerProduct: 3,
-    stores: 5,
-    syncsPerDay: 4,
-    aiChat: true,
-    alerts: "Priority",
-    support: "Priority",
-  },
-  ultra: {
-    products: 1000,
-    competitorsPerProduct: 5,
-    stores: 10,
-    syncsPerDay: 6,
-    aiChat: true,
-    alerts: "Fast / Premium",
-    support: "Dedicated",
-  },
 };
 
 export const PLAN_BADGES = {
@@ -97,19 +91,6 @@ export const PLAN_BADGES = {
     variant: "default" as const,
     color: "text-emerald-600 dark:text-emerald-400",
   },
-  // Aliases for lowercase variants
-  pro: {
-    emoji: "⭐",
-    label: "PRO",
-    variant: "default" as const,
-    color: "text-blue-600 dark:text-blue-400",
-  },
-  ultra: {
-    emoji: "🚀",
-    label: "SCALE",
-    variant: "default" as const,
-    color: "text-emerald-600 dark:text-emerald-400",
-  },
 };
 
 export interface PlanStats {
@@ -127,10 +108,8 @@ export function isPlanLimitExceeded(
   current: number;
   limit: number;
 } {
-  if (!plan || !PLAN_LIMITS[plan]) {
-    return { exceeded: true, current: 0, limit: 0 };
-  }
-  const limits = PLAN_LIMITS[plan];
+  const normalizedPlan = plan && isValidPlan(plan) ? plan : "free_demo";
+  const limits = PLAN_LIMITS[normalizedPlan];
 
   // Check products limit
   if (stats.totalProducts >= limits.products) {
@@ -169,31 +148,23 @@ export function isPlanLimitExceeded(
 }
 
 export function canAddProduct(currentCount: number, plan: Plan | null | undefined): boolean {
-  if (!plan || !PLAN_LIMITS[plan]) {
-    return false;
-  }
-  return currentCount < PLAN_LIMITS[plan].products;
+  const normalizedPlan = plan && isValidPlan(plan) ? plan : "free_demo";
+  return currentCount < PLAN_LIMITS[normalizedPlan].products;
 }
 
 export function canAddCompetitorStore(currentCount: number, plan: Plan | null | undefined): boolean {
-  if (!plan || !PLAN_LIMITS[plan]) {
-    return false;
-  }
-  return currentCount < PLAN_LIMITS[plan].stores;
+  const normalizedPlan = plan && isValidPlan(plan) ? plan : "free_demo";
+  return currentCount < PLAN_LIMITS[normalizedPlan].stores;
 }
 
 export function hasAiChatAccess(plan: Plan | null | undefined): boolean {
-  if (!plan || !PLAN_LIMITS[plan]) {
-    return false;
-  }
-  return PLAN_LIMITS[plan].aiChat;
+  const normalizedPlan = plan && isValidPlan(plan) ? plan : "free_demo";
+  return PLAN_LIMITS[normalizedPlan].aiChat;
 }
 
 export function canSync(plan: Plan | null | undefined, lastSyncTime?: Date): boolean {
-  if (!plan || !PLAN_LIMITS[plan]) {
-    return false;
-  }
-  const limits = PLAN_LIMITS[plan];
+  const normalizedPlan = plan && isValidPlan(plan) ? plan : "free_demo";
+  const limits = PLAN_LIMITS[normalizedPlan];
   if (!lastSyncTime) return true;
   
   const hoursSinceLastSync = (Date.now() - lastSyncTime.getTime()) / (1000 * 60 * 60);
@@ -230,17 +201,5 @@ export const planLimits: Record<
     competitorTracking: true,
     reports: true,
     support: PLAN_LIMITS.SCALE.support,
-  },
-  pro: {
-    maxProducts: PLAN_LIMITS.pro.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.pro.support,
-  },
-  ultra: {
-    maxProducts: PLAN_LIMITS.ultra.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.ultra.support,
   },
 };

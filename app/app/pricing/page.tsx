@@ -133,43 +133,138 @@ export default function PricingPage() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm mb-6">
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>Up to {limits.products} products</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>{limits.competitorsPerProduct} competitors per product</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>{limits.stores} competitor stores</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>Sync frequency: {limits.syncsPerDay}× per day</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      {limits.aiChat ? (
-                        <>
+                    {plan.name === "STARTER" && (
+                      <>
+                        <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>AI Chat: Unlimited</span>
-                        </>
-                      ) : (
-                        <>
+                          <span>Shopify & CSV import</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Up to 100 products</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>2 competitors per product</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>1 store</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Sync frequency: 1× per day</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Alerts: Basic (price changes only)</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Manual price updates</span>
+                        </li>
+                        <li className="flex items-center gap-2">
                           <X className="h-4 w-4 text-slate-400" />
-                          <span className="text-muted-foreground">AI Chat: None</span>
-                        </>
-                      )}
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>Alerts: {limits.alerts}</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-blue-500" />
-                      <span>Support: {limits.support}</span>
-                    </li>
+                          <span className="text-muted-foreground">No bulk updates</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <X className="h-4 w-4 text-slate-400" />
+                          <span className="text-muted-foreground">No automation</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Support: Email</span>
+                        </li>
+                      </>
+                    )}
+                    {plan.name === "PRO" && (
+                      <>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Shopify & CSV import</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Up to 1,000 products</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>5 competitors per product</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Up to 3 stores</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Sync frequency: 4× per day</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Alerts: Priority (price + stock changes)</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Bulk Apply (update many products at once)</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Automatic pricing rules</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Competitor out-of-stock alerts</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Support: Priority</span>
+                        </li>
+                      </>
+                    )}
+                    {plan.name === "SCALE" && (
+                      <>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Shopify & CSV import</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Up to 5,000+ products</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Unlimited competitors per product</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Up to 10 stores</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Sync frequency: 6× per day / near real-time</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Alerts: Fast / Premium</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Advanced automation priority</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Team access & API access</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Dedicated onboarding</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-blue-500" />
+                          <span>Support: Dedicated</span>
+                        </li>
+                      </>
+                    )}
                   </ul>
                   <Button
                     className="w-full shadow-lg"
@@ -204,51 +299,150 @@ export default function PricingPage() {
             <TableBody>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
                 <TableCell className="font-medium">Products limit</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.products}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.products}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.products}</TableCell>
+                <TableCell className="text-center">100</TableCell>
+                <TableCell className="text-center">1,000</TableCell>
+                <TableCell className="text-center">5,000+</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
                 <TableCell className="font-medium">Competitor stores</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.stores}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.stores}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.stores}</TableCell>
+                <TableCell className="text-center">1</TableCell>
+                <TableCell className="text-center">3</TableCell>
+                <TableCell className="text-center">10</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
                 <TableCell className="font-medium">Competitors per product</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.competitorsPerProduct}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.competitorsPerProduct}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.competitorsPerProduct}</TableCell>
+                <TableCell className="text-center">2</TableCell>
+                <TableCell className="text-center">5</TableCell>
+                <TableCell className="text-center">Unlimited</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
                 <TableCell className="font-medium">Sync frequency</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.syncsPerDay}×/day</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.syncsPerDay}×/day</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.syncsPerDay}×/day</TableCell>
-              </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
-                <TableCell className="font-medium">AI chat</TableCell>
+                <TableCell className="text-center">1×/day</TableCell>
+                <TableCell className="text-center">4×/day</TableCell>
                 <TableCell className="text-center">
-                  <span className="text-slate-400">❌ None</span>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="text-blue-600 dark:text-blue-400">🔥 Unlimited</span>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="text-blue-600 dark:text-blue-400">🔥 Unlimited</span>
+                  <span className="whitespace-nowrap">6×/day / near real-time</span>
                 </TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
-                <TableCell className="font-medium">Alerts</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.alerts}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.alerts}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.alerts}</TableCell>
+                <TableCell className="font-medium">Shopify & CSV import</TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Manual price updates</TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Bulk Apply</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Automatic pricing rules</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <Check className="h-4 w-4 text-blue-500" />
+                    <span className="text-blue-600 dark:text-blue-400">Advanced</span>
+                  </div>
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Competitor price alerts</TableCell>
+                <TableCell className="text-center">Basic</TableCell>
+                <TableCell className="text-center">Priority</TableCell>
+                <TableCell className="text-center">Fast / Premium</TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Competitor out-of-stock alerts</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Min/Max margin protection</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Automation priority</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">Standard</TableCell>
+                <TableCell className="text-center">
+                  <span className="whitespace-nowrap">Priority queue</span>
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">Team access</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
+              </TableRow>
+              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+                <TableCell className="font-medium">API access</TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <X className="h-4 w-4 text-slate-400 mx-auto" />
+                </TableCell>
+                <TableCell className="text-center">
+                  <Check className="h-4 w-4 text-blue-500 mx-auto" />
+                </TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
                 <TableCell className="font-medium">Support</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.STARTER.support}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.PRO.support}</TableCell>
-                <TableCell className="text-center">{PLAN_LIMITS.SCALE.support}</TableCell>
+                <TableCell className="text-center">Email</TableCell>
+                <TableCell className="text-center">Priority</TableCell>
+                <TableCell className="text-center">Dedicated</TableCell>
               </TableRow>
             </TableBody>
           </Table>

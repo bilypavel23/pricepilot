@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 import {
@@ -19,33 +18,8 @@ import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { MessagesDropdown } from "@/components/messages-dropdown";
 import { cn } from "@/lib/utils";
 
-export function Topbar({ plan }: { plan: Plan | null | undefined }) {
-  const router = useRouter();
+export function Topbar({ plan }: { plan: Plan }) {
   const [displayStoreName, setDisplayStoreName] = useState("My Store");
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return document.cookie.split("; ").map((cookie) => {
-            const [name, ...rest] = cookie.split("=");
-            return { name, value: rest.join("=") };
-          });
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            document.cookie = `${name}=${value}; path=${options?.path || "/"}; ${
-              options?.maxAge ? `max-age=${options.maxAge};` : ""
-            } ${options?.domain ? `domain=${options.domain};` : ""} ${
-              options?.sameSite ? `samesite=${options.sameSite};` : ""
-            } ${options?.secure ? "secure;" : ""}`;
-          });
-        },
-      },
-    }
-  );
 
   useEffect(() => {
     const storedName = localStorage.getItem("storeName");
@@ -55,12 +29,15 @@ export function Topbar({ plan }: { plan: Plan | null | undefined }) {
   }, []);
 
   const handleLogout = async () => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     await supabase.auth.signOut();
-    // Use full page reload to clear cookies
     window.location.href = "/login";
   };
 
-  const badge = plan && PLAN_BADGES[plan] ? PLAN_BADGES[plan] : PLAN_BADGES.free_demo;
+  const badge = PLAN_BADGES[plan];
 
   return (
     <div className="flex h-16 items-center justify-between glass border-b border-border px-6 shadow-sm bg-white/80 backdrop-blur dark:bg-[#0c0e16] dark:border-white/5">

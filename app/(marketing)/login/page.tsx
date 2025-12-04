@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -10,63 +9,53 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return document.cookie.split("; ").map((cookie) => {
-            const [name, ...rest] = cookie.split("=");
-            return { name, value: rest.join("=") };
-          });
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            document.cookie = `${name}=${value}; path=${options?.path || "/"}; ${
-              options?.maxAge ? `max-age=${options.maxAge};` : ""
-            } ${options?.domain ? `domain=${options.domain};` : ""} ${
-              options?.sameSite ? `samesite=${options.sameSite};` : ""
-            } ${options?.secure ? "secure;" : ""}`;
-          });
-        },
-      },
-    }
-  );
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setIsLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      if (!email || !password) {
+        setError("Please enter both email and password");
+        setIsLoading(false);
+        return;
+      }
+      
+      // Create Supabase client with cookie support
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    setLoading(false);
+      if (signInError) {
+        setError(signInError.message);
+        setIsLoading(false);
+        return;
+      }
 
-    if (error) {
-      setError(error.message);
-      return;
+      if (!data.session) {
+        setError("No session received. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Force a full page reload to ensure cookies are available server-side
+      window.location.href = "/app/dashboard";
+    } catch (err: any) {
+      console.error("Sign in error:", err);
+      setError(err.message || "An unexpected error occurred");
+      setIsLoading(false);
     }
-
-    if (!data?.session) {
-      setError("No session received. Please try again.");
-      return;
-    }
-
-    // Wait a moment for cookies to be set
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Use full page reload to ensure cookies are available for middleware
-    window.location.href = "/app/dashboard";
   };
 
   return (
@@ -75,11 +64,11 @@ export default function LoginPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-white">Welcome back</CardTitle>
           <CardDescription className="text-slate-400">
-            Sign in to your PricePilot account
+            Sign in to your pricingeg account
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSignIn} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-300">
                 Email
@@ -100,7 +89,7 @@ export default function LoginPage() {
                   Password
                 </Label>
                 <Link
-                  href="/forgot-password"
+                  href="#"
                   className="text-xs text-blue-400 hover:text-blue-300"
                 >
                   Forgot password?
@@ -125,9 +114,9 @@ export default function LoginPage() {
             <Button
               type="submit"
               className="w-full bg-blue-500 hover:bg-blue-600 text-white"
-              disabled={loading}
+              disabled={isLoading}
             >
-              {loading ? "Signing in..." : "Sign in"}
+              {isLoading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
           <div className="mt-6 text-center text-sm text-slate-400">
@@ -141,3 +130,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
