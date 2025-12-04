@@ -297,25 +297,25 @@ export default function PricingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Products limit</TableCell>
                 <TableCell className="text-center">100</TableCell>
                 <TableCell className="text-center">1,000</TableCell>
                 <TableCell className="text-center">5,000+</TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
-                <TableCell className="font-medium">Competitor stores</TableCell>
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
+                <TableCell className="font-medium">Stores</TableCell>
                 <TableCell className="text-center">1</TableCell>
                 <TableCell className="text-center">3</TableCell>
                 <TableCell className="text-center">10</TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitors per product</TableCell>
                 <TableCell className="text-center">2</TableCell>
                 <TableCell className="text-center">5</TableCell>
                 <TableCell className="text-center">Unlimited</TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Sync frequency</TableCell>
                 <TableCell className="text-center">1×/day</TableCell>
                 <TableCell className="text-center">4×/day</TableCell>
@@ -323,7 +323,7 @@ export default function PricingPage() {
                   <span className="whitespace-nowrap">6×/day / near real-time</span>
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Shopify & CSV import</TableCell>
                 <TableCell className="text-center">
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
@@ -335,7 +335,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Manual price updates</TableCell>
                 <TableCell className="text-center">
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
@@ -347,7 +347,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Bulk Apply</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -359,7 +359,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Automatic pricing rules</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -374,13 +374,13 @@ export default function PricingPage() {
                   </div>
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitor price alerts</TableCell>
                 <TableCell className="text-center">Basic</TableCell>
                 <TableCell className="text-center">Priority</TableCell>
                 <TableCell className="text-center">Fast / Premium</TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitor out-of-stock alerts</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -392,7 +392,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Min/Max margin protection</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -404,7 +404,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Automation priority</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -414,7 +414,7 @@ export default function PricingPage() {
                   <span className="whitespace-nowrap">Priority queue</span>
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Team access</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -426,7 +426,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">API access</TableCell>
                 <TableCell className="text-center">
                   <X className="h-4 w-4 text-slate-400 mx-auto" />
@@ -438,7 +438,7 @@ export default function PricingPage() {
                   <Check className="h-4 w-4 text-blue-500 mx-auto" />
                 </TableCell>
               </TableRow>
-              <TableRow className="hover:bg-slate-50/90 dark:hover:bg-accent/50">
+              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Support</TableCell>
                 <TableCell className="text-center">Email</TableCell>
                 <TableCell className="text-center">Priority</TableCell>
