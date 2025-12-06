@@ -144,7 +144,6 @@ export default function MatchingPage({
             <Badge variant="outline" className="text-sm">
               {store.name}
             </Badge>
-            <p className="text-xs text-muted-foreground">{store.url}</p>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getPlanConfig, PlanId } from "./plan";
 
 export async function getProfile() {
   const cookieStore = cookies();
@@ -44,7 +45,7 @@ export async function getProfile() {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return { user: null, profile: null };
+    return { user: null, profile: null, planConfig: getPlanConfig(null) };
   }
 
   const { data: profile, error: profileError } = await supabase
@@ -55,9 +56,11 @@ export async function getProfile() {
 
   if (profileError) {
     console.error("Error fetching profile:", profileError);
-    return { user, profile: null };
+    return { user, profile: null, planConfig: getPlanConfig(null) };
   }
 
-  return { user, profile };
+  const planConfig = getPlanConfig((profile?.plan as PlanId) || null);
+
+  return { user, profile, planConfig };
 }
 

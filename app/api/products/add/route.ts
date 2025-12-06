@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getOrCreateStore } from "@/lib/store";
 
 export async function POST(req: Request) {
   try {
     // Check authentication and demo mode
-    const supabase = createClient(
+    const cookieStore = cookies();
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            return cookies().get(name)?.value;
+            return cookieStore.get(name)?.value;
           },
+          set() {},
+          remove() {},
         },
       }
     );
@@ -41,6 +45,9 @@ export async function POST(req: Request) {
       );
     }
 
+    // Get or create store for the user
+    const store = await getOrCreateStore();
+
     const body = await req.json();
     const name = (body.name ?? "").trim();
     const sku = (body.sku ?? "").trim();
@@ -62,21 +69,30 @@ export async function POST(req: Request) {
         ? Number(body.inventory)
         : null;
 
-    const { error } = await supabase.from("products").insert({
-      name,
-      sku,
-      price: Number(price),
-      cost,
-      inventory,
-      user_id: user.id,
-      is_demo: false,
-      source: "manual",
-    });
+    const { error } = await supabase
+      .from("products")
+      .insert({
+        store_id: store.id,  // DŮLEŽITÉ
+        name,
+        sku,
+        price: Number(price),
+        cost,
+        inventory,
+        currency: "USD",
+        is_demo: false,
+      });
 
     if (error) {
       console.error("Supabase insert error:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+      console.error("Insert data:", JSON.stringify(insertData, null, 2));
       return NextResponse.json(
-        { error: "Failed to add product.", details: error.message },
+        { 
+          error: "Failed to add product.", 
+          details: error.message,
+          code: error.code,
+          hint: error.hint 
+        },
         { status: 500 }
       );
     }

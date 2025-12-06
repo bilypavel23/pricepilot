@@ -78,10 +78,11 @@ function KPICard({
   icon: React.ReactNode;
   sparklineData: number[];
 }) {
+  const hasData = value !== "No data yet" && sparklineData.length > 0;
   const isPositive = trend && trend.value > 0;
   const isNegative = trend && trend.value < 0;
-  const maxValue = Math.max(...sparklineData);
-  const minValue = Math.min(...sparklineData);
+  const maxValue = sparklineData.length > 0 ? Math.max(...sparklineData) : 0;
+  const minValue = sparklineData.length > 0 ? Math.min(...sparklineData) : 0;
   const range = maxValue - minValue || 1;
 
   return (
@@ -95,8 +96,13 @@ function KPICard({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{value}</div>
-        {trend && (
+        <div className={cn(
+          "text-2xl font-semibold tracking-tight",
+          hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400 dark:text-slate-500"
+        )}>
+          {value}
+        </div>
+        {trend && hasData && (
           <p className="text-xs mt-1 flex items-center gap-1">
             {isPositive && <span className="text-emerald-500">↑</span>}
             {isNegative && <span className="text-rose-500">↓</span>}
@@ -113,32 +119,72 @@ function KPICard({
           </p>
         )}
         {/* Mini sparkline */}
-        <div className="mt-3 h-8 w-full flex items-end gap-0.5">
-          {sparklineData.map((val, idx) => {
-            const height = ((val - minValue) / range) * 100;
-            return (
-              <div
-                key={idx}
-                className="flex-1 bg-blue-500 dark:bg-blue-600 rounded-t"
-                style={{ height: `${Math.max(height, 10)}%` }}
-              />
-            );
-          })}
-        </div>
+        {hasData && sparklineData.length > 0 ? (
+          <div className="mt-3 h-8 w-full flex items-end gap-0.5">
+            {sparklineData.map((val, idx) => {
+              const height = ((val - minValue) / range) * 100;
+              return (
+                <div
+                  key={idx}
+                  className="flex-1 bg-blue-500 dark:bg-blue-600 rounded-t"
+                  style={{ height: `${Math.max(height, 10)}%` }}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 h-8 w-full flex items-center justify-center">
+            <p className="text-xs text-slate-400 dark:text-slate-500">No data yet</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
+interface DashboardMetrics {
+  productsCount: number;
+  competitorsCount: number;
+  matchesCount: number;
+  recommendationsCount: number;
+  pendingRecommendationsCount: number;
+  revenueEstimate: number;
+  averageMargin: number;
+  expectedRevenueNextWeek: {
+    min: number;
+    max: number;
+  };
+}
+
 export function DashboardContent({ 
   isDemo, 
   products = [], 
-  competitors = [] 
+  competitors = [],
+  metrics
 }: { 
   isDemo: boolean;
   products?: any[];
   competitors?: any[];
+  metrics?: DashboardMetrics;
 }) {
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  // Use real metrics if available, otherwise use mock data for demo
+  const revenue = metrics?.revenueEstimate || 12450;
+  const margin = metrics?.averageMargin || 54.2;
+  const productsCount = metrics?.productsCount || 127;
+  const competitorsCount = metrics?.competitorsCount || 23;
+  const competitorActivity = metrics?.matchesCount || 23;
+  const pendingRecommendations = metrics?.pendingRecommendationsCount || 12;
+  const expectedRevenue = metrics?.expectedRevenueNextWeek || { min: 3200, max: 3600 };
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
       {/* Demo Banner */}
@@ -182,9 +228,17 @@ export function DashboardContent({
               Your store is performing better than 62% of similar shops in the last 7 days.
             </p>
             <ul className="mt-3 grid gap-1 text-xs text-blue-900 dark:text-blue-100">
-              <li>• Revenue this week <span className="font-semibold">↑ 4.2%</span></li>
-              <li>• Competitor prices rising on several categories</li>
-              <li>• <span className="font-semibold">12</span> recommendations waiting</li>
+              {productsCount > 0 ? (
+                <>
+                  <li>• Revenue estimate: <span className="font-semibold">{formatCurrency(revenue)}</span></li>
+                  {competitorsCount > 0 && <li>• {competitorsCount} competitor{competitorsCount !== 1 ? 's' : ''} tracked</li>}
+                  {pendingRecommendations > 0 && (
+                    <li>• <span className="font-semibold">{pendingRecommendations}</span> recommendation{pendingRecommendations !== 1 ? 's' : ''} waiting</li>
+                  )}
+                </>
+              ) : (
+                <li>• No data yet. Add products to see insights.</li>
+              )}
             </ul>
           </div>
         </div>
@@ -194,31 +248,31 @@ export function DashboardContent({
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Revenue"
-          value="$12,450"
-          trend={{ value: 12, label: "vs last 7 days" }}
+          value={productsCount > 0 ? formatCurrency(revenue) : "No data yet"}
+          trend={productsCount > 0 ? undefined : undefined}
           icon={<DollarSign />}
-          sparklineData={mockSparklineData.revenue}
+          sparklineData={productsCount > 0 ? mockSparklineData.revenue : []}
         />
         <KPICard
           title="Margin"
-          value="54.2%"
-          trend={{ value: 4, label: "vs last 7 days" }}
+          value={margin > 0 ? `${margin.toFixed(1)}%` : "No data yet"}
+          trend={margin > 0 ? undefined : undefined}
           icon={<TrendingUp />}
-          sparklineData={mockSparklineData.margin}
+          sparklineData={margin > 0 ? mockSparklineData.margin : []}
         />
         <KPICard
           title="Products synced"
-          value="127"
-          trend={{ value: 8, label: "vs last 7 days" }}
+          value={productsCount > 0 ? productsCount.toString() : "No data yet"}
+          trend={productsCount > 0 ? undefined : undefined}
           icon={<Package />}
-          sparklineData={mockSparklineData.products}
+          sparklineData={productsCount > 0 ? mockSparklineData.products : []}
         />
         <KPICard
           title="Competitor activity"
-          value="23"
-          trend={{ value: -2, label: "vs last 7 days" }}
+          value={competitorActivity > 0 ? competitorActivity.toString() : "No data yet"}
+          trend={competitorActivity > 0 ? undefined : undefined}
           icon={<Activity />}
-          sparklineData={mockSparklineData.competitors}
+          sparklineData={competitorActivity > 0 ? mockSparklineData.competitors : []}
         />
       </div>
 
@@ -267,48 +321,53 @@ export function DashboardContent({
           <CardTitle className="text-base font-semibold mb-2">Price & Margin Trends (last 14 days)</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {/* TODO: Replace with real analytics data from Supabase/API */}
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={mockTrendData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis
-                dataKey="date"
-                stroke="var(--muted-foreground)"
-                style={{ fontSize: '12px' }}
-              />
-              <YAxis
-                stroke="var(--muted-foreground)"
-                style={{ fontSize: '12px' }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '0.75rem',
-                  padding: '0.5rem'
-                }}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="price"
-                stroke="#3B82F6"
-                strokeWidth={2}
-                dot={{ fill: '#3B82F6', r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Average Product Price ($)"
-              />
-              <Line
-                type="monotone"
-                dataKey="margin"
-                stroke="#10B981"
-                strokeWidth={2}
-                dot={{ fill: '#10B981', r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Average Margin %"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {productsCount > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={mockTrendData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis
+                  dataKey="date"
+                  stroke="var(--muted-foreground)"
+                  style={{ fontSize: '12px' }}
+                />
+                <YAxis
+                  stroke="var(--muted-foreground)"
+                  style={{ fontSize: '12px' }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.75rem',
+                    padding: '0.5rem'
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="price"
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  dot={{ fill: '#3B82F6', r: 4 }}
+                  activeDot={{ r: 6 }}
+                  name="Average Product Price ($)"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="margin"
+                  stroke="#10B981"
+                  strokeWidth={2}
+                  dot={{ fill: '#10B981', r: 4 }}
+                  activeDot={{ r: 6 }}
+                  name="Average Margin %"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[300px] text-slate-400 dark:text-slate-500">
+              <p className="text-sm">No data yet. Add products to see trends.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -340,9 +399,17 @@ export function DashboardContent({
       {/* Weekly Forecast */}
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
         <CardContent className="p-4">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Expected revenue next week: <span className="font-semibold text-slate-900 dark:text-slate-100">$3,200 – $3,600</span>
-          </p>
+          {productsCount > 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Expected revenue next week: <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {formatCurrency(expectedRevenue.min)} – {formatCurrency(expectedRevenue.max)}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              No data yet. Add products to see revenue estimates.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
