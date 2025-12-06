@@ -1,96 +1,51 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Trash2, Loader2 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
-interface DeleteCompetitorButtonProps {
-  competitorId: string;
-  competitorName: string;
-}
-
-export function DeleteCompetitorButton({ competitorId, competitorName }: DeleteCompetitorButtonProps) {
+export function DeleteCompetitorButton({ competitorId }: { competitorId: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleDelete = async () => {
-    setLoading(true);
+    if (!confirm("Do you really want to delete this competitor store?")) return;
 
     try {
-      const response = await fetch(`/api/competitors/${competitorId}`, {
+      setIsLoading(true);
+
+      const res = await fetch(`/api/competitors/${competitorId}`, {
         method: "DELETE",
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete competitor");
+      if (!res.ok) {
+        let message = `Failed to delete competitor (status ${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) message = data.error;
+        } catch {
+          // ignore JSON parse errors
+        }
+        alert(message);
+        return;
       }
 
-      setOpen(false);
       router.refresh();
-    } catch (error: any) {
-      alert(error.message || "Failed to delete competitor");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
-          disabled={loading}
-        >
-          <Trash2 className="mr-2 h-3 w-3" />
-          Delete
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete competitor store?</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to delete "{competitorName}"? This action cannot be undone. All associated competitor products and matches will also be deleted.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDelete}
-            disabled={loading}
-            className="bg-red-600 hover:bg-red-700"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              "Delete"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+      onClick={handleDelete}
+      disabled={isLoading}
+    >
+      {isLoading ? "Deleting…" : "Delete"}
+    </Button>
   );
 }
 

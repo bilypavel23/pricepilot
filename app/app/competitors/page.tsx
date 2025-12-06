@@ -67,8 +67,23 @@ export default async function CompetitorsPage() {
     .eq("store_id", store.id)
     .order("created_at", { ascending: true });
 
+  console.log("Competitors page - store.id:", store.id);
+  console.log("Competitors page - competitors count:", competitors?.length || 0);
+  console.log("Competitors page - competitors:", competitors);
   if (competitorsError) {
     console.error("Error loading competitors:", competitorsError);
+  }
+  
+  // Also try loading all competitors for debugging
+  const { data: allCompetitors, error: allError } = await supabase
+    .from("competitors")
+    .select("id, name, url, store_id, created_at")
+    .order("created_at", { ascending: true });
+  
+  console.log("Competitors page - all competitors count:", allCompetitors?.length || 0);
+  console.log("Competitors page - all competitors:", allCompetitors);
+  if (allError) {
+    console.error("Error loading all competitors:", allError);
   }
 
   // Get match counts for each competitor

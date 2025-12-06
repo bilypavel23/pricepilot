@@ -18,7 +18,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     productLimit: 50,
     competitorsPerProduct: 1,
     storesLimit: 1,
-    syncsPerDay: 1,
+    syncsPerDay: 0,
     autoPricing: false,
     bulkApply: false,
   },
@@ -56,6 +56,23 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
 
 export function getPlanConfig(plan: PlanId | null | undefined): PlanConfig {
   if (!plan) return PLAN_CONFIG.free_demo;
+  
+  // Handle case-insensitive matching for common variations
+  const normalized = plan.toLowerCase();
+  if (normalized === 'pro' || normalized === 'professional') {
+    return PLAN_CONFIG.pro;
+  }
+  if (normalized === 'ultra' || normalized === 'scale' || normalized === 'enterprise') {
+    return PLAN_CONFIG.ultra;
+  }
+  if (normalized === 'starter' || normalized === 'basic') {
+    return PLAN_CONFIG.STARTER;
+  }
+  if (normalized === 'free_demo' || normalized === 'demo' || normalized === 'free') {
+    return PLAN_CONFIG.free_demo;
+  }
+  
+  // Try direct lookup
   return PLAN_CONFIG[plan] ?? PLAN_CONFIG.free_demo;
 }
 
