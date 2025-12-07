@@ -107,7 +107,7 @@ export async function POST() {
     const { error: upsertError } = await supabase
       .from("products")
       .upsert(productsToUpsert, {
-        onConflict: "external_id",
+        onConflict: "store_id,external_id",
       });
 
     if (upsertError) {
