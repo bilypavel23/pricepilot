@@ -49,7 +49,7 @@ export function Topbar({ plan }: { plan: Plan }) {
         </div>
         
         {/* Messages Dropdown */}
-        <MessagesDropdown />
+        <MessagesDropdown plan={plan} />
         
         {/* Profile Dropdown */}
         <DropdownMenu>

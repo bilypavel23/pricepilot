@@ -120,3 +120,33 @@ body {
 .dark .recharts-legend-wrapper {
   color: #f3f4f6;
 }
+
+/* Hide chart tooltips when message preview is open */
+body:has([data-preview-open="true"]) .recharts-tooltip-wrapper,
+body:has([data-preview-open="true"]) .recharts-tooltip {
+  display: none !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+/* Disable all pointer events on main content when preview is open */
+body:has([data-preview-open="true"]) main {
+  pointer-events: none !important;
+}
+
+/* Disable hover effects on interactive elements in main content when preview is open */
+body:has([data-preview-open="true"]) main button,
+body:has([data-preview-open="true"]) main [class*="hover:"],
+body:has([data-preview-open="true"]) main a,
+body:has([data-preview-open="true"]) main [role="button"] {
+  pointer-events: none !important;
+}
+
+/* Ensure preview card and all its children have pointer events enabled */
+body:has([data-preview-open="true"]) [data-preview-open="true"] {
+  pointer-events: auto !important;
+}
+
+body:has([data-preview-open="true"]) [data-preview-open="true"] * {
+  pointer-events: auto !important;
+}
