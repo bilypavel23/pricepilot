@@ -1,0 +1,18 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "6e9310cc3b5d365c6e313c64e2209121"
+name = "PricePilot"
+application_url = "http://localhost:3000/api/integrations/shopify/callback"
+embedded = true
+
+[webhooks]
+api_version = "2025-10"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,write_products,read_inventory,write_inventory"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ ]

@@ -1,10 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bot, DollarSign, TrendingUp, Package, Activity, Upload, Link as LinkIcon, Lightbulb, ArrowUpDown, Bell, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
 import {
   LineChart,
   Line,
@@ -158,15 +161,42 @@ interface DashboardMetrics {
 
 export function DashboardContent({ 
   isDemo, 
+  store,
   products = [], 
   competitors = [],
   metrics
 }: { 
   isDemo: boolean;
+  store?: any;
   products?: any[];
   competitors?: any[];
   metrics?: DashboardMetrics;
 }) {
+  const router = useRouter();
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImportProducts = async () => {
+    setIsImporting(true);
+    try {
+      const res = await fetch("/api/shopify/products/import", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to import products");
+      } else {
+        alert(`Successfully imported ${data.count || 0} products`);
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Import error:", error);
+      alert("Failed to import products");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -275,6 +305,52 @@ export function DashboardContent({
           sparklineData={competitorActivity > 0 ? mockSparklineData.competitors : []}
         />
       </div>
+
+      {/* Store Connection Card */}
+      <Card className="mt-6 rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+        <CardHeader>
+          <CardTitle>Store Connection</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {store?.platform ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Connected platform:</p>
+                <p className="font-semibold capitalize">{store.platform}</p>
+              </div>
+              {store.shop_domain && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Domain:</p>
+                  <p className="font-semibold">{store.shop_domain}</p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button onClick={() => setConnectModalOpen(true)} variant="outline">
+                  Reconnect Store
+                </Button>
+                {store.platform === "shopify" && (
+                  <Button 
+                    onClick={handleImportProducts} 
+                    disabled={isImporting}
+                    variant="default"
+                  >
+                    {isImporting ? "Importing..." : "Import products now"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Connect your store to automatically sync products and inventory.
+              </p>
+              <Button onClick={() => setConnectModalOpen(true)}>
+                Connect Store
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -412,6 +488,8 @@ export function DashboardContent({
           )}
         </CardContent>
       </Card>
+
+      <ConnectStoreModal open={connectModalOpen} onOpenChange={setConnectModalOpen} />
     </div>
   );
 }

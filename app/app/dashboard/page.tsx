@@ -124,6 +124,7 @@ export default async function DashboardPage() {
   return (
     <DashboardContent 
       isDemo={isDemo} 
+      store={store}
       products={products}
       competitors={competitors}
       metrics={{

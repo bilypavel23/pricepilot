@@ -13,9 +13,11 @@ import { useTheme } from "next-themes";
 import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
+import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
 
 interface SettingsClientProps {
   userEmail: string;
+  store?: any;
   storeName: string;
   currentPlan: Plan;
   planLabel: string;
@@ -26,6 +28,7 @@ interface SettingsClientProps {
 
 export function SettingsClient({
   userEmail,
+  store,
   storeName: initialStoreName,
   currentPlan,
   planLabel,
@@ -33,6 +36,7 @@ export function SettingsClient({
   initialTimezone,
   initialTimes,
 }: SettingsClientProps) {
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -146,6 +150,44 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
+      {/* Store Connection Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Store Connection</CardTitle>
+          <CardDescription>
+            Connect your store to automatically sync products and inventory.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {store?.platform ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Connected platform:</p>
+                <p className="font-semibold capitalize">{store.platform}</p>
+              </div>
+              {store.shop_domain && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Domain:</p>
+                  <p className="font-semibold">{store.shop_domain}</p>
+                </div>
+              )}
+              <Button onClick={() => setConnectModalOpen(true)} variant="outline">
+                Reconnect Store
+              </Button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Connect your store to automatically sync products and inventory.
+              </p>
+              <Button onClick={() => setConnectModalOpen(true)}>
+                Connect Store
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Notifications Section */}
       <Card>
         <CardHeader>
@@ -242,6 +284,8 @@ export function SettingsClient({
           )}
         </CardContent>
       </Card>
+
+      <ConnectStoreModal open={connectModalOpen} onOpenChange={setConnectModalOpen} />
     </div>
   );
 }

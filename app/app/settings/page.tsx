@@ -24,6 +24,7 @@ export default async function SettingsPage() {
   return (
     <SettingsClient
       userEmail={user.email || ""}
+      store={store}
       storeName={store.name || "My Store"}
       currentPlan={normalizedPlan}
       planLabel={planConfig.label}
