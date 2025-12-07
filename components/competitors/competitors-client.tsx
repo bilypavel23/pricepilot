@@ -43,3 +43,4 @@ export function CompetitorsClient({ isDemo, storeId }: { isDemo: boolean; storeI
   );
 }
 
+

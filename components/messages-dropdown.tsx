@@ -83,8 +83,8 @@ export function MessagesDropdown() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
-            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+            size="sm"
+            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 h-9 w-9 p-0"
             aria-label="Open messages"
           >
             <Mail className="h-5 w-5" />

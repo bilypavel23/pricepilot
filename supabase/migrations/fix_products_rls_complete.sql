@@ -102,3 +102,4 @@ EXCEPTION
         RAISE NOTICE 'Could not set up stores policies: %', SQLERRM;
 END $$;
 
+
