@@ -57,5 +57,5 @@ export default async function ProductsPage() {
     products = userProducts ?? [];
   }
 
-  return <ProductsClient initialProducts={products} isDemo={isDemo} />;
+  return <ProductsClient initialProducts={products} isDemo={isDemo} store={store} />;
 }

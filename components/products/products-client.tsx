@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { CsvImportDialog } from "@/components/products/csv-import-dialog";
 import { usePlan } from "@/components/providers/plan-provider";
 import { ProductTable } from "@/components/products/product-table";
+import { StoreConnectionCard } from "@/components/store/store-connection-card";
 
 type Product = {
   id: string;
@@ -69,9 +70,13 @@ const mockProductSyncStatus = {
 interface ProductsClientProps {
   initialProducts: Product[];
   isDemo: boolean;
+  store?: {
+    platform?: string;
+    shop_domain?: string;
+  };
 }
 
-export function ProductsClient({ initialProducts, isDemo }: ProductsClientProps) {
+export function ProductsClient({ initialProducts, isDemo, store }: ProductsClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -504,6 +509,9 @@ export function ProductsClient({ initialProducts, isDemo }: ProductsClientProps)
           </div>
         </div>
       </div>
+
+      {/* Store Connection Card */}
+      <StoreConnectionCard store={store} />
 
       {/* Search and Filter */}
       {/* TODO: Replace client-side filtering with server-side Supabase queries for better performance */}
