@@ -1,8 +1,7 @@
 import { getProfile } from "@/lib/getProfile";
 import { getMatchCountForCompetitor } from "@/lib/competitors";
 import { getOrCreateStore } from "@/lib/store";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +10,13 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CompetitorsClient } from "@/components/competitors/competitors-client";
 import { DeleteCompetitorButton } from "@/components/competitors/delete-competitor-button";
+import { getCompetitorLimit } from "@/lib/planLimits";
+import {
+  getOrCreateStoreSyncSettings,
+  computeNextSyncDate,
+  formatNextSyncDistance,
+  formatTimeHM,
+} from "@/lib/competitors/syncSettings";
 
 function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
@@ -45,20 +51,11 @@ export default async function CompetitorsPage() {
   const store = await getOrCreateStore();
 
   // Create Supabase client for server-side queries
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  const supabase = createClient();
+
+  // Get plan and competitor limit
+  const plan = (profile?.plan as string) ?? "STARTER";
+  const limit = getCompetitorLimit(plan);
 
   // Load competitors for the store
   const { data: competitors = [], error: competitorsError } = await supabase
@@ -66,6 +63,8 @@ export default async function CompetitorsPage() {
     .select("id, name, url, created_at")
     .eq("store_id", store.id)
     .order("created_at", { ascending: true });
+
+  const used = competitors?.length ?? 0;
 
   console.log("Competitors page - store.id:", store.id);
   console.log("Competitors page - competitors count:", competitors?.length || 0);
@@ -97,8 +96,55 @@ export default async function CompetitorsPage() {
     })
   );
 
-  // Get last sync time - TODO: get from sync logs
-  const lastGlobalSync = "Today, 12:34";
+  // LAST SYNC – max(last_sync_at) from competitors for this store
+  const { data: lastSyncRow } = await supabase
+    .from("competitors")
+    .select("last_sync_at")
+    .eq("store_id", store.id)
+    .order("last_sync_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lastSyncAt = lastSyncRow?.last_sync_at
+    ? new Date(lastSyncRow.last_sync_at as string)
+    : null;
+
+  // SYNC SETTINGS + NEXT SYNC
+  let settings;
+  let nextSyncDate: Date | null = null;
+  let nextSyncText = "not scheduled";
+  let nextSyncTimeLabel: string | null = null;
+  
+  try {
+    settings = await getOrCreateStoreSyncSettings(store.id, user.id);
+    const now = new Date();
+    nextSyncDate = computeNextSyncDate(settings, now);
+    nextSyncText = formatNextSyncDistance(nextSyncDate, now);
+    nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
+  } catch (error) {
+    console.warn("Failed to load sync settings, using defaults:", error);
+    // Use defaults if sync settings fail to load
+    settings = {
+      store_id: store.id,
+      timezone: "Europe/Prague",
+      daily_sync_times: ["06:00"],
+    };
+    const now = new Date();
+    nextSyncDate = computeNextSyncDate(settings, now);
+    nextSyncText = formatNextSyncDistance(nextSyncDate, now);
+    nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
+  }
+
+  // Format "Today, 12:34" for Last sync
+  let lastSyncLabel = "Never";
+  if (lastSyncAt) {
+    const isToday = lastSyncAt.toDateString() === now.toDateString();
+    const hh = String(lastSyncAt.getHours()).padStart(2, "0");
+    const mm = String(lastSyncAt.getMinutes()).padStart(2, "0");
+    lastSyncLabel = isToday
+      ? `Today, ${hh}:${mm}`
+      : `${lastSyncAt.toLocaleDateString()} ${hh}:${mm}`;
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
@@ -108,51 +154,59 @@ export default async function CompetitorsPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Competitors</h1>
             <p className="text-sm text-muted-foreground mt-1">Track competitor prices and market positioning</p>
-            {/* Last sync status */}
-            <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-              <span>Last sync: {lastGlobalSync}</span>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[10px] px-2 py-0.5",
-                  "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800"
-                )}
-              >
-                <CheckCircle2 className="h-3 w-3 mr-1 inline" />
-                Synced
-              </Badge>
-            </div>
           </div>
-          <CompetitorsClient isDemo={isDemo} storeId={store.id} />
+          <CompetitorsClient isDemo={isDemo} storeId={store.id} used={used} limit={limit} />
         </div>
+      </div>
+
+      {/* Amazon Warning */}
+      <div className="p-4 border border-yellow-400 bg-yellow-50 text-yellow-800 rounded-md text-sm mb-4 dark:bg-yellow-950/20 dark:border-yellow-600 dark:text-yellow-300">
+        <strong>Note:</strong> Amazon URLs are not supported due to strict anti-scraping protections on Amazon&apos;s platform.
+        Please add other competitor stores (Shopify, WooCommerce, Shoptet, Magento, custom shops, etc.).
       </div>
 
       {/* Global Sync Box */}
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold">Sync competitor prices</h3>
-              <p className="text-sm text-muted-foreground">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-medium">Sync competitor prices</h3>
+              <p className="text-xs text-muted-foreground">
                 Sync runs automatically based on your plan.
               </p>
-              <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Tracked stores: </span>
-                  <span className="font-medium">{competitorsWithMatches.length}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Last global sync: </span>
-                  <span className="font-medium">{lastGlobalSync}</span>
+              <Link
+                href="/app/settings"
+                className="inline-flex items-center text-xs text-primary hover:underline mt-1"
+              >
+                Set up your sync
+              </Link>
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Tracked stores: {competitorsWithMatches.length}
+                </p>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>Last sync: {lastSyncLabel}</span>
+                  {nextSyncDate && (
+                    <span>
+                      Next sync: {nextSyncText}
+                      {nextSyncTimeLabel && ` (at ${nextSyncTimeLabel})`}
+                    </span>
+                  )}
+                  {lastSyncAt && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] px-2 py-0.5",
+                        "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800"
+                      )}
+                    >
+                      <CheckCircle2 className="h-3 w-3 mr-1 inline" />
+                      Synced
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
-            <button
-              disabled
-              className="px-4 py-2 text-sm text-muted-foreground bg-muted rounded-md cursor-not-allowed whitespace-nowrap"
-            >
-              Sync runs automatically based on your plan
-            </button>
           </div>
         </CardContent>
       </Card>

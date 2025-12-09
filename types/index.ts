@@ -9,6 +9,15 @@ export type Product = {
   inventory?: number | null;
 };
 
+export type CompetitorPrice = {
+  label: string; // e.g. "Competitor 1"
+  name?: string | null; // product name
+  url?: string | null; // link to competitor product
+  oldPrice?: number | null; // previous competitor price
+  newPrice?: number | null; // current competitor price
+  changePercent?: number | null; // positive/negative/zero
+};
+
 export type PriceRecommendation = {
   id: string;
   productId: string;
@@ -19,6 +28,7 @@ export type PriceRecommendation = {
   direction: "UP" | "DOWN" | "SAME";
   reason: string;
   status?: "PENDING" | "APPLIED" | "DISMISSED";
+  competitors?: CompetitorPrice[];
 };
 
 export type CompetitorStore = {

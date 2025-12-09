@@ -4,6 +4,7 @@ import { getPlanConfig } from "@/lib/plan";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "@/components/settings/settings-client";
 import { normalizePlan } from "@/lib/planLimits";
+import { getOrCreateStoreSyncSettings } from "@/lib/competitors/syncSettings";
 
 export default async function SettingsPage() {
   const { user, profile } = await getProfile();
@@ -21,6 +22,9 @@ export default async function SettingsPage() {
   // Get store with sync settings
   const store = await getOrCreateStore();
 
+  // Load sync settings using new helper (creates defaults if not exists)
+  const syncSettings = await getOrCreateStoreSyncSettings(store.id, user.id);
+
   return (
     <SettingsClient
       userEmail={user.email || ""}
@@ -29,8 +33,8 @@ export default async function SettingsPage() {
       currentPlan={normalizedPlan}
       planLabel={planConfig.label}
       syncsPerDay={planConfig.syncsPerDay}
-      initialTimezone={store.competitor_sync_timezone || store.timezone || "Europe/Prague"}
-      initialTimes={store.competitor_sync_times as string[] | null}
+      initialTimezone={syncSettings.timezone}
+      initialTimes={syncSettings.daily_sync_times}
     />
   );
 }

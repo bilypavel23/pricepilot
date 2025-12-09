@@ -14,6 +14,7 @@ type Props = {
   syncsPerDay: number;
   initialTimezone: string | null;
   initialTimes: string[] | null;
+  storeId?: string;
 };
 
 const COMMON_TIMEZONES = [
@@ -30,6 +31,7 @@ export function CompetitorSyncCard({
   syncsPerDay,
   initialTimezone,
   initialTimes,
+  storeId,
 }: Props) {
   const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone || "Europe/Prague");
@@ -67,12 +69,17 @@ export function CompetitorSyncCard({
         .filter((t) => t.length > 0)
         .slice(0, maxSlots);
 
-      const res = await fetch("/api/settings/competitor-sync", {
-        method: "POST",
+      if (!storeId) {
+        alert("Store ID is missing. Please refresh the page.");
+        return;
+      }
+
+      const res = await fetch(`/api/stores/${storeId}/sync-settings`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           timezone,
-          times: trimmedTimes,
+          daily_sync_times: trimmedTimes,
         }),
       });
 
@@ -182,6 +189,7 @@ export function CompetitorSyncCard({
     </Card>
   );
 }
+
 
 
 

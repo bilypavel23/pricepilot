@@ -19,7 +19,7 @@ export function AppShell({
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar plan={plan} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">{children}</main>
       </div>
       {showAiChat && <AiHelpButton />}
     </div>

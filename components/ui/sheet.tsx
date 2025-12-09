@@ -9,6 +9,7 @@ interface SheetProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
 }
 
 const SheetContext = React.createContext<{
@@ -19,7 +20,7 @@ const SheetContext = React.createContext<{
   setOpen: () => {},
 });
 
-export function Sheet({ open: controlledOpen, onOpenChange, children }: SheetProps) {
+export function Sheet({ open: controlledOpen, onOpenChange, children, side = "right" }: SheetProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? (controlledOpen ?? false) : internalOpen;
@@ -55,7 +56,15 @@ export function Sheet({ open: controlledOpen, onOpenChange, children }: SheetPro
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50">
+          <div
+            className={cn(
+              "fixed z-50",
+              side === "bottom" && "bottom-0 left-0 right-0 top-auto",
+              side === "top" && "top-0 left-0 right-0 bottom-auto",
+              side === "right" && "inset-y-0 right-0",
+              side === "left" && "inset-y-0 left-0"
+            )}
+          >
             {content}
           </div>
         </>

@@ -7,22 +7,33 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AddCompetitorModal } from "./add-competitor-modal";
 
-export function CompetitorsClient({ isDemo, storeId }: { isDemo: boolean; storeId: string }) {
+export function CompetitorsClient({ 
+  isDemo, 
+  storeId, 
+  used, 
+  limit 
+}: { 
+  isDemo: boolean; 
+  storeId: string;
+  used: number;
+  limit: number;
+}) {
   const [showAddModal, setShowAddModal] = useState(false);
   const router = useRouter();
+  const isFull = used >= limit;
 
   return (
     <>
       <Button
         onClick={() => {
-          if (isDemo) {
+          if (isDemo || isFull) {
             // TODO: Show toast
             return;
           }
           setShowAddModal(true);
         }}
-        disabled={isDemo}
-        className={cn("shadow-md", isDemo && "opacity-50 cursor-not-allowed")}
+        disabled={isDemo || isFull}
+        className={cn("shadow-md", (isDemo || isFull) && "opacity-50 cursor-not-allowed")}
       >
         <Plus className="mr-2 h-4 w-4" />
         Add competitor
@@ -42,6 +53,7 @@ export function CompetitorsClient({ isDemo, storeId }: { isDemo: boolean; storeI
     </>
   );
 }
+
 
 
 

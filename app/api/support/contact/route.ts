@@ -66,7 +66,7 @@ export async function POST(req: Request) {
         user_id: user.id,
         status: "open",
         last_message_from: "user",
-        subject: subject.trim(),
+        subject: "Support Conversation",
       })
       .select("id")
       .single();

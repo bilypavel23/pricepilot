@@ -1,4 +1,4 @@
-import { Product, PriceRecommendation } from "@/types";
+import { Product, PriceRecommendation, CompetitorPrice } from "@/types";
 
 export const mockProducts: Product[] = [
   {
@@ -64,6 +64,48 @@ export const mockRecommendations: PriceRecommendation[] = [
     direction: "UP",
     reason: "Competitor prices increased by 8%",
     status: "PENDING",
+    competitors: [
+      {
+        label: "Competitor 1",
+        name: "Premium Wireless Headphones",
+        url: "https://techstore.com/products/wireless-headphones",
+        oldPrice: 74.99,
+        newPrice: 82.99,
+        changePercent: 10.7,
+      },
+      {
+        label: "Competitor 2",
+        name: "Wireless Headphones Pro",
+        url: "https://electrohub.com/products/wireless-headphones",
+        oldPrice: 78.50,
+        newPrice: 85.00,
+        changePercent: 8.3,
+      },
+      {
+        label: "Competitor 3",
+        name: "Bluetooth Headphones",
+        url: "https://example.com/products/bt-headphones",
+        oldPrice: 81.00,
+        newPrice: 81.00,
+        changePercent: 0,
+      },
+      {
+        label: "Competitor 4",
+        name: "Wireless Audio Headset",
+        url: null,
+        oldPrice: 76.99,
+        newPrice: 83.50,
+        changePercent: 8.5,
+      },
+      {
+        label: "Competitor 5",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+    ],
   },
   {
     id: "rec-2",
@@ -75,6 +117,48 @@ export const mockRecommendations: PriceRecommendation[] = [
     direction: "DOWN",
     reason: "Market average is 5% lower",
     status: "PENDING",
+    competitors: [
+      {
+        label: "Competitor 1",
+        name: "Smart Watch Series X",
+        url: "https://techstore.com/products/smart-watch",
+        oldPrice: 194.99,
+        newPrice: 185.00,
+        changePercent: -5.1,
+      },
+      {
+        label: "Competitor 2",
+        name: "Digital Smart Watch",
+        url: "https://electrohub.com/products/smart-watch",
+        oldPrice: 205.00,
+        newPrice: 192.50,
+        changePercent: -6.1,
+      },
+      {
+        label: "Competitor 3",
+        name: "Smart Watch Pro",
+        url: null,
+        oldPrice: 198.00,
+        newPrice: 190.00,
+        changePercent: -4.0,
+      },
+      {
+        label: "Competitor 4",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+      {
+        label: "Competitor 5",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+    ],
   },
   {
     id: "rec-3",
@@ -86,6 +170,48 @@ export const mockRecommendations: PriceRecommendation[] = [
     direction: "SAME",
     reason: "Price is optimal",
     status: "PENDING",
+    competitors: [
+      {
+        label: "Competitor 1",
+        name: "USB-C Charging Cable",
+        url: "https://techstore.com/products/usb-c-cable",
+        oldPrice: 11.99,
+        newPrice: 12.50,
+        changePercent: 4.3,
+      },
+      {
+        label: "Competitor 2",
+        name: "USB-C Data Cable",
+        url: null,
+        oldPrice: 13.00,
+        newPrice: 13.00,
+        changePercent: 0,
+      },
+      {
+        label: "Competitor 3",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+      {
+        label: "Competitor 4",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+      {
+        label: "Competitor 5",
+        name: null,
+        url: null,
+        oldPrice: null,
+        newPrice: null,
+        changePercent: null,
+      },
+    ],
   },
 ];
 

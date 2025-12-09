@@ -87,7 +87,7 @@ export function SettingsClient({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8">
+    <div className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8 min-h-0">
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
@@ -245,6 +245,7 @@ export function SettingsClient({
         syncsPerDay={syncsPerDay}
         initialTimezone={initialTimezone}
         initialTimes={initialTimes}
+        storeId={store?.id}
       />
 
       {/* Appearance Section */}

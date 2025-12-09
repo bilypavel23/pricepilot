@@ -48,9 +48,7 @@ export default async function SupportDashboard() {
           >
             <div className="flex items-center justify-between">
               <div className="font-medium text-sm">
-                {conv.subject && conv.subject.trim().length > 0
-                  ? conv.subject
-                  : `Conversation #${conv.id.slice(0, 8)}`}
+                Support Conversation
               </div>
               <span className="text-[11px] uppercase tracking-wide text-xs text-blue-400">
                 Last from: {conv.last_message_from}

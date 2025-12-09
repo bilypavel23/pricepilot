@@ -259,11 +259,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
 
             {!loading &&
               conversations.map((conv) => {
-                const title =
-                  conv.subject && conv.subject.trim().length > 0
-                    ? conv.subject
-                    : `Conversation #${conv.id.slice(0, 8)}`;
-
+                const title = "Support Conversation";
                 const isUnread = conv.last_message_from === "support";
 
                 return (
@@ -449,12 +445,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div>
                 <div className="text-sm font-semibold">
-                  {previewConversation?.subject &&
-                  previewConversation.subject.trim().length > 0
-                    ? previewConversation.subject
-                    : activeConversation
-                    ? `Conversation #${activeConversation.id.slice(0, 8)}`
-                    : "Support message"}
+                  Support Conversation
                 </div>
                 {activeConversation?.last_message_at && (
                   <div className="text-xs text-muted-foreground">

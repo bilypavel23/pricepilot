@@ -88,9 +88,7 @@ export default async function SupportConversationPage({ params }: PageProps) {
 
           <div className="text-right">
             <div className="text-sm font-semibold">
-              {conversation?.subject && conversation.subject.trim().length > 0
-                ? conversation.subject
-                : `Conversation #${conversationId.slice(0, 8)}`}
+              Support Conversation
             </div>
             <div className="text-xs text-muted-foreground">
               Support view
@@ -124,12 +122,6 @@ export default async function SupportConversationPage({ params }: PageProps) {
                 <div className="mb-1 text-[11px] uppercase tracking-wide opacity-70">
                   {senderLabel}
                 </div>
-
-                {conversation?.subject && conversation.subject.trim().length > 0 && (
-                  <div className="mb-1 text-[11px] opacity-70 italic">
-                    Subject: {conversation.subject}
-                  </div>
-                )}
 
                 <div>{m.body}</div>
 
