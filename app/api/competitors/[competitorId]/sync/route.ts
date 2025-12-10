@@ -5,13 +5,13 @@ import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
 import { isAmazonUrl } from "@/lib/competitors/validation";
 
 interface Params {
-  params: Promise<{ id: string }>; // competitor_id
+  params: Promise<{ competitorId: string }>;
 }
 
 export async function POST(_req: Request, { params }: Params) {
   try {
     const supabase = createClient();
-    const { id: competitorId } = await params;
+    const { competitorId } = await params;
 
     // 1) Auth
     const {

@@ -12,9 +12,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { CheckCircle2, Package } from "lucide-react";
+import { Package } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PriceRecommendation, CompetitorPrice } from "@/types";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { ProductRecommendation, CompetitorSlot } from "@/lib/recommendations/types";
 
 type StoreInfo = {
   platform: string | null;
@@ -22,26 +23,39 @@ type StoreInfo = {
 };
 
 type Props = {
-  recommendation: PriceRecommendation;
-  competitorAvg: number;
+  recommendation: ProductRecommendation & { isPlaceholder?: boolean };
   store: StoreInfo;
   onPriceUpdated?: (productId: string, newPrice: number) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 };
 
-export function RecommendationCard({ recommendation, competitorAvg, store, onPriceUpdated }: Props) {
+export function RecommendationCard({ recommendation, store, onPriceUpdated, isSelected = false, onToggleSelect }: Props) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [newPrice, setNewPrice] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [localCurrentPrice, setLocalCurrentPrice] = useState(recommendation.currentPrice);
+  const [localCurrentPrice, setLocalCurrentPrice] = useState(recommendation.productPrice ?? 0);
 
   const isShopify = store.platform === "shopify" && !!store.shopify_access_token;
-  const canApply = isShopify && recommendation.suggestedPrice !== localCurrentPrice;
-  const isIncrease = recommendation.direction === "UP";
-  const isDecrease = recommendation.direction === "DOWN";
+  const canApplyPlatform = isShopify;
+  const hasBasePrice =
+    recommendation.productPrice != null ||
+    recommendation.recommendedPrice != null;
+  const canApply = 
+    canApplyPlatform && 
+    hasBasePrice &&
+    !recommendation.isPlaceholder;
+
+  const isIncrease = recommendation.changePercent > 0;
+  const isDecrease = recommendation.changePercent < 0;
 
   const handleOpenSheet = () => {
-    setNewPrice(recommendation.suggestedPrice.toFixed(2));
+    const base =
+      recommendation.recommendedPrice ??
+      recommendation.productPrice ??
+      0;
+    setNewPrice(base.toFixed(2));
     setError(null);
     setIsSheetOpen(true);
   };
@@ -82,26 +96,35 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
     }
   };
 
-  // Calculate new change percent if price was updated
-  const effectiveRecommendedPrice = recommendation.suggestedPrice;
-  const effectiveChangePercent =
-    ((effectiveRecommendedPrice - localCurrentPrice) / localCurrentPrice) * 100;
+  // Calculate display values
+  const current = recommendation.productPrice ?? 0;
+  const recommended = recommendation.recommendedPrice ?? current;
+  const effectiveChangePercent = current > 0 
+    ? ((recommended - current) / current) * 100 
+    : 0;
 
   // Prepare competitor slots (always 5 items)
-  const competitors = recommendation.competitors ?? [];
-  const competitorSlots: (CompetitorPrice | null)[] = [
-    competitors[0] ?? null,
-    competitors[1] ?? null,
-    competitors[2] ?? null,
-    competitors[3] ?? null,
-    competitors[4] ?? null,
+  const competitorSlots: CompetitorSlot[] = [
+    recommendation.competitors[0] ?? { label: "Competitor 1" },
+    recommendation.competitors[1] ?? { label: "Competitor 2" },
+    recommendation.competitors[2] ?? { label: "Competitor 3" },
+    recommendation.competitors[3] ?? { label: "Competitor 4" },
+    recommendation.competitors[4] ?? { label: "Competitor 5" },
   ];
 
   return (
     <>
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-md">
         <CardContent className="p-5 md:p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-stretch">
+          <div className="flex items-start gap-3">
+            {onToggleSelect && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelect(recommendation.productId)}
+                className="mt-1"
+              />
+            )}
+            <div className="flex-1 flex flex-col gap-4 md:flex-row md:items-stretch">
             {/* Left Column */}
             <div className="w-full md:w-1/2 space-y-3">
               <div className="flex gap-4">
@@ -120,7 +143,7 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                   {/* Price Change */}
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                      ${localCurrentPrice.toFixed(2)} → ${effectiveRecommendedPrice.toFixed(2)}
+                      ${current.toFixed(2)} → ${recommended.toFixed(2)}
                     </span>
                     <span
                       className={cn(
@@ -138,24 +161,35 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
 
                   {/* Competitor Info */}
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Competitor avg: <span className="font-semibold">${competitorAvg.toFixed(2)}</span>
+                    Competitor avg: <span className="font-semibold">${recommendation.competitorAvg.toFixed(2)}</span>
                   </p>
 
                   {/* AI Reason */}
-                  <p className="text-sm text-slate-700 dark:text-slate-300">{recommendation.reason}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300">{recommendation.explanation}</p>
 
                   {/* Apply Button or Message */}
                   <div className="pt-2">
                     {canApply ? (
-                      <Button size="sm" onClick={handleOpenSheet} className="gap-2">
-                        Apply in my store
-                      </Button>
+                      <div>
+                        <Button size="sm" onClick={handleOpenSheet} className="gap-2">
+                          Change price
+                        </Button>
+                        {recommendation.competitorCount === 0 && (
+                          <p className="mt-2 text-xs text-yellow-400">
+                            Add at least 1 competitor to see competitor-based recommendations.
+                          </p>
+                        )}
+                      </div>
                     ) : !isShopify ? (
                       <p className="text-xs text-muted-foreground">
                         Automatic price updates are available only for Shopify stores.
                       </p>
-                    ) : effectiveRecommendedPrice === localCurrentPrice ? (
-                      <p className="text-xs text-muted-foreground">No price change needed.</p>
+                    ) : recommendation.isPlaceholder ? (
+                      <p className="text-xs text-muted-foreground">
+                        Add your products first to unlock recommendations.
+                      </p>
+                    ) : !hasBasePrice ? (
+                      <p className="text-xs text-muted-foreground">No price available for this product.</p>
                     ) : null}
                   </div>
                 </div>
@@ -177,11 +211,11 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                       key={index}
                       className="flex items-center justify-between rounded-lg bg-muted/40 dark:bg-slate-700/40 px-3 py-2 text-xs"
                     >
-                      {c && c.name ? (
+                      {c.name ? (
                         <>
                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                             <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                              Competitor {index + 1}
+                              {c.label}
                             </span>
 
                             {c.url ? (
@@ -227,7 +261,7 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                       ) : (
                         <div className="flex w-full items-center justify-between text-muted-foreground/70">
                           <span className="text-[11px] font-semibold">
-                            Competitor {index + 1}
+                            {c.label}
                           </span>
                           <span className="text-xs">-</span>
                         </div>
@@ -236,6 +270,7 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                   ))}
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </CardContent>
@@ -259,7 +294,7 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Recommended</span>
                   <span>
-                    ${recommendation.suggestedPrice.toFixed(2)}{" "}
+                    ${recommended.toFixed(2)}{" "}
                     <span className="text-xs text-muted-foreground">
                       ({recommendation.changePercent > 0 ? "+" : ""}
                       {recommendation.changePercent.toFixed(1)}%)
@@ -268,7 +303,7 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Competitor avg</span>
-                  <span className="font-medium">${competitorAvg.toFixed(2)}</span>
+                  <span className="font-medium">${recommendation.competitorAvg.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -306,4 +341,3 @@ export function RecommendationCard({ recommendation, competitorAvg, store, onPri
     </>
   );
 }
-

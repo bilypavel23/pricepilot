@@ -15,3 +15,4 @@ export function detectPlatformFromUrl(url: string): CompetitorPlatform {
   }
 }
 
+
