@@ -27,7 +27,7 @@ export async function getOrCreateStoreSyncSettings(
   storeId: string,
   userId: string
 ): Promise<StoreSyncSettings> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // get user plan
   const { data: profile } = await supabase

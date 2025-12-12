@@ -1,26 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Get the active store for a user (or first store if no active one)
  * If no store exists, automatically creates a default store
  */
 export async function getActiveStore(userId: string) {
-  const cookieStore = cookies();
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  const supabase = await createClient();
 
   // Get the first store for this user (or create one if none exists)
   const { data: existingStores, error: storeError } = await supabase
@@ -58,21 +43,7 @@ export async function getActiveStore(userId: string) {
  * Get match count for a competitor
  */
 export async function getMatchCountForCompetitor(competitorId: string): Promise<number> {
-  const cookieStore = cookies();
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  const supabase = await createClient();
 
   // Try to count matches directly if product_matches has competitor_id
   const { count: directCount, error: directError } = await supabase

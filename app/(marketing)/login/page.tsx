@@ -26,29 +26,26 @@ export default function LoginPage() {
         return;
       }
       
-      // Create Supabase client with cookie support
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Use API route to sign in, which properly handles cookies server-side
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (signInError) {
-        setError(signInError.message);
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || "Failed to sign in");
         setIsLoading(false);
         return;
       }
 
-      if (!data.session) {
-        setError("No session received. Please try again.");
-        setIsLoading(false);
-        return;
-      }
-
+      // Wait a bit for cookies to be set, then redirect
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // Force a full page reload to ensure cookies are available server-side
       window.location.href = "/app/dashboard";
     } catch (err: any) {

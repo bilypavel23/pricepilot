@@ -10,7 +10,7 @@ export default async function SettingsPage() {
   const { user, profile } = await getProfile();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/login");
   }
 
   // Get plan config - getPlanConfig now handles case-insensitive matching

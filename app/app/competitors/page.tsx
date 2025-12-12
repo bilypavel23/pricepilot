@@ -42,7 +42,7 @@ export default async function CompetitorsPage() {
   const { user, profile } = await getProfile();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/login");
   }
 
   const isDemo = profile?.plan === "free_demo";
@@ -51,7 +51,7 @@ export default async function CompetitorsPage() {
   const store = await getOrCreateStore();
 
   // Create Supabase client for server-side queries
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Get plan and competitor limit
   const plan = (profile?.plan as string) ?? "STARTER";

@@ -1,37 +1,27 @@
 import { getProfile } from "@/lib/getProfile";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateStore } from "@/lib/store";
 
+// Force dynamic rendering because we use cookies()
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
-  const { user, profile } = await getProfile();
-  
-  if (!user) {
-    redirect("/sign-in");
-  }
-
-  const isDemo = profile?.plan === "free_demo";
-
-  // Get or create store (automatically creates one if none exists)
-  const store = await getOrCreateStore();
-
-  // Create Supabase client for server-side queries
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
+  try {
+    const { user, profile } = await getProfile();
+    
+    if (!user) {
+      redirect("/login");
     }
-  );
+
+    const isDemo = profile?.plan === "free_demo";
+
+    // Get or create store (automatically creates one if none exists)
+    const store = await getOrCreateStore();
+
+    // Create Supabase client for server-side queries
+    const supabase = await createClient();
 
   // Load products and competitors based on demo mode
   let products: any[] = [];
@@ -121,22 +111,27 @@ export default async function DashboardPage() {
     max: Math.round(revenueEstimate * 1.15),
   };
 
-  return (
-    <DashboardContent 
-      isDemo={isDemo} 
-      store={store}
-      products={products}
-      competitors={competitors}
-      metrics={{
-        productsCount,
-        competitorsCount,
-        matchesCount,
-        recommendationsCount,
-        pendingRecommendationsCount,
-        revenueEstimate,
-        averageMargin,
-        expectedRevenueNextWeek,
-      }}
-    />
-  );
+    return (
+      <DashboardContent 
+        isDemo={isDemo} 
+        store={store}
+        products={products}
+        competitors={competitors}
+        metrics={{
+          productsCount,
+          competitorsCount,
+          matchesCount,
+          recommendationsCount,
+          pendingRecommendationsCount,
+          revenueEstimate,
+          averageMargin,
+          expectedRevenueNextWeek,
+        }}
+      />
+    );
+  } catch (error) {
+    console.error("Error loading dashboard:", error);
+    // If there's an error, redirect to login as a fallback
+    redirect("/login");
+  }
 }

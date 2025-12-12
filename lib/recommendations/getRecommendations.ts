@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ProductRecommendation, CompetitorSlot } from "./types";
 
 export async function getRecommendationsForStore(storeId: string): Promise<ProductRecommendation[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // 1) load products for this store
   const { data: products, error: productsError } = await supabase

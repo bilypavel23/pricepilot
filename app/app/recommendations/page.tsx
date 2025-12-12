@@ -5,13 +5,13 @@ import { RecommendationsClient } from "@/components/recommendations/recommendati
 import { getRecommendationsForStore } from "@/lib/recommendations/getRecommendations";
 
 export default async function RecommendationsPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/login");
   }
 
   const store = await getOrCreateStore();

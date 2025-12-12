@@ -8,7 +8,7 @@ interface PageProps {
 }
 
 export default async function SupportConversationPage({ params }: PageProps) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

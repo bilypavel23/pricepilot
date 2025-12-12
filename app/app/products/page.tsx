@@ -1,15 +1,17 @@
 import { getProfile } from "@/lib/getProfile";
 import { getOrCreateStore } from "@/lib/store";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ProductsClient } from "@/components/products/products-client";
+
+// Force dynamic rendering because we use cookies()
+export const dynamic = 'force-dynamic';
 
 export default async function ProductsPage() {
   const { user, profile } = await getProfile();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/login");
   }
 
   const isDemo = profile?.plan === "free_demo";
@@ -18,20 +20,7 @@ export default async function ProductsPage() {
   const store = await getOrCreateStore();
 
   // Create Supabase client for server-side queries
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  const supabase = await createClient();
 
   // Load products for the store
   let products: any[] = [];
