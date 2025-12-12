@@ -272,7 +272,6 @@ export default function LandingPage() {
                 "Shopify & CSV import",
                 "Up to 100 products",
                 "2 competitors per product",
-                "1 store",
                 "Sync frequency: 1× per day",
                 "Alerts: Basic (price changes only)",
                 "Manual price updates",
@@ -288,9 +287,8 @@ export default function LandingPage() {
               description: "For growing businesses",
               features: [
                 "Shopify & CSV import",
-                "Up to 1,000 products",
+                "Up to 250 products",
                 "5 competitors per product",
-                "Up to 3 stores",
                 "Sync frequency: 4× per day",
                 "Alerts: Priority (price + stock changes)",
                 "Bulk Apply (update many products at once)",
@@ -307,9 +305,8 @@ export default function LandingPage() {
               description: "For large operations",
               features: [
                 "Shopify & CSV import",
-                "Up to 5,000+ products",
-                "Unlimited competitors per product",
-                "Up to 10 stores",
+                "Up to 500 products",
+                "10 competitors per product",
                 "Sync frequency: 6× per day / near real-time",
                 "Alerts: Fast / Premium",
                 "Advanced automation priority",
@@ -317,6 +314,7 @@ export default function LandingPage() {
                 "Dedicated onboarding",
                 "Support: Dedicated",
               ],
+              comingSoon: true,
             },
           ].map((plan, idx) => (
             <Card
@@ -327,13 +325,18 @@ export default function LandingPage() {
               )}
             >
               <CardContent className="p-6">
-                {plan.popular && (
-                  <div className="mb-4 text-center">
+                <div className="mb-4 text-center space-y-2">
+                  {plan.popular && (
                     <span className="inline-block rounded-full bg-blue-500 px-3 py-1 text-xs font-medium text-white">
                       Most Popular
                     </span>
-                  </div>
-                )}
+                  )}
+                  {(plan as any).comingSoon && (
+                    <span className="inline-block rounded-full bg-slate-700 px-3 py-1 text-xs font-medium text-slate-300">
+                      Coming Soon
+                    </span>
+                  )}
+                </div>
                 <h3 className="text-2xl font-bold text-white mb-1">{plan.name}</h3>
                 <p className="text-sm text-slate-400 mb-6">{plan.description}</p>
                 <div className="mb-6">
@@ -350,21 +353,26 @@ export default function LandingPage() {
                 </ul>
                 <Button
                   asChild
+                  disabled={(plan as any).comingSoon}
                   className={cn(
                     "w-full rounded-full px-6 py-3 font-medium transition",
-                    plan.popular
+                    (plan as any).comingSoon
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed opacity-60"
+                      : plan.popular
                       ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                       : "bg-slate-800 hover:bg-slate-700 text-white"
                   )}
                 >
-                  <Link href="/register">Get started</Link>
+                  <Link href={(plan as any).comingSoon ? "#" : "/register"}>
+                    {(plan as any).comingSoon ? "Coming Soon" : "Get started"}
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
           ))}
         </div>
         <p className="text-center text-sm text-slate-500 mt-8">
-          Need more than 1,000 products?{" "}
+          Need more than 500 products?{" "}
           <Link href="#" className="text-blue-400 hover:text-blue-300">
             Contact us for a custom plan.
           </Link>
