@@ -207,30 +207,40 @@ export function ProductDetailClient({
         body: JSON.stringify({ url: competitorUrl.trim() }),
       });
 
-      // Always parse JSON response
+      // Read response as text first, then attempt JSON.parse
+      const responseText = await res.text();
       let data: any = {};
-      try {
-        const text = await res.text();
-        if (text) {
-          data = JSON.parse(text);
+      let isJson = false;
+
+      // Try to parse as JSON
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+          isJson = true;
+        } catch (jsonError) {
+          // Response is not JSON
+          console.error("Failed to parse JSON response:", jsonError);
+          console.error("Raw response:", responseText);
+          console.error("Response status:", res.status);
+          
+          // Show raw response as error message
+          const errorMessage = responseText || `Server error (${res.status}). Please try again.`;
+          setCompetitorError(errorMessage);
+          setToasts([
+            ...toasts,
+            {
+              id: Date.now().toString(),
+              message: errorMessage,
+              type: "error",
+            },
+          ]);
+          return;
         }
-      } catch (jsonError) {
-        console.error("Failed to parse JSON response:", jsonError, "Response status:", res.status);
-        const errorMessage = `Server error (${res.status}). Please try again.`;
-        setCompetitorError(errorMessage);
-        setToasts([
-          ...toasts,
-          {
-            id: Date.now().toString(),
-            message: errorMessage,
-            type: "error",
-          },
-        ]);
-        return;
       }
 
       if (!res.ok) {
         console.error("API error:", res.status, "Response data:", data);
+        // Extract error message from JSON response
         const errorMessage = data?.error || data?.message || `Server error (${res.status}). Please try again.`;
         setCompetitorError(errorMessage);
         

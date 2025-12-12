@@ -19,6 +19,7 @@ export async function POST(
 ) {
   console.log("[API] Add competitor by URL - Request received");
   
+  // Wrap entire handler in try/catch to ensure we always return JSON
   try {
     let productId: string;
     try {
@@ -28,29 +29,49 @@ export async function POST(
       
       if (!productId) {
         console.error("[API] Missing productId in route params");
-        const response = jsonResponse({ error: "Product ID is required" }, 400);
-        console.log("[API] Returning error response:", response.status);
-        return response;
+        return jsonResponse({ error: "Product ID is required" }, 400);
       }
     } catch (paramsError: any) {
       console.error("[API] Error parsing route params:", paramsError);
-      const response = jsonResponse({ error: "Invalid route parameters" }, 400);
-      console.log("[API] Returning error response:", response.status);
-      return response;
+      return jsonResponse({ 
+        error: paramsError?.message || "Invalid route parameters" 
+      }, 400);
     }
     
     console.log("[API] Add competitor by URL - Starting, productId:", productId);
     
-    const supabase = await createClient();
+    let supabase;
+    try {
+      supabase = await createClient();
+    } catch (supabaseError: any) {
+      console.error("[API] Error creating Supabase client:", supabaseError);
+      return jsonResponse({ 
+        error: supabaseError?.message || "Failed to initialize database connection" 
+      }, 500);
+    }
 
     // Auth check
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    let user, userError;
+    try {
+      const authResult = await supabase.auth.getUser();
+      user = authResult.data.user;
+      userError = authResult.error;
+    } catch (authErr: any) {
+      console.error("[API] Exception during auth check:", authErr);
+      return jsonResponse({ 
+        error: authErr?.message || "Authentication failed" 
+      }, 401);
+    }
 
-    if (userError || !user) {
-      console.error("Auth error:", userError);
+    if (userError) {
+      console.error("[API] Supabase auth error:", userError);
+      return jsonResponse({ 
+        error: userError.message || "Unauthorized" 
+      }, 401);
+    }
+
+    if (!user) {
+      console.error("[API] No user found in session");
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
@@ -101,15 +122,26 @@ export async function POST(
     console.log("Add competitor by URL - storeId:", store.id, "productId:", productId);
 
     // Load product and verify it belongs to user's store
-    const { data: product, error: productError } = await supabase
-      .from("products")
-      .select("id, store_id")
-      .eq("id", productId)
-      .eq("store_id", store.id)
-      .single();
+    let product, productError;
+    try {
+      const productResult = await supabase
+        .from("products")
+        .select("id, store_id")
+        .eq("id", productId)
+        .eq("store_id", store.id)
+        .single();
+      
+      product = productResult.data;
+      productError = productResult.error;
+    } catch (productErr: any) {
+      console.error("[API] Exception loading product:", productErr);
+      return jsonResponse({ 
+        error: productErr?.message || "Failed to load product" 
+      }, 400);
+    }
 
     if (productError) {
-      console.error("Supabase error loading product:", productError);
+      console.error("[API] Supabase error loading product:", productError);
       return jsonResponse(
         { error: productError.message || "Product not found" },
         400
@@ -117,6 +149,7 @@ export async function POST(
     }
 
     if (!product) {
+      console.error("[API] Product not found for productId:", productId, "storeId:", store.id);
       return jsonResponse({ error: "Product not found" }, 404);
     }
 
@@ -129,16 +162,27 @@ export async function POST(
 
     // Try to find existing competitor by URL pattern
     // Check if URL contains the hostname or matches the base URL
-    const { data: existingCompetitors, error: findCompetitorError } = await supabase
-      .from("competitors")
-      .select("id")
-      .eq("store_id", store.id)
-      .ilike("url", `%${hostname}%`)
-      .limit(1)
-      .maybeSingle();
+    let existingCompetitors, findCompetitorError;
+    try {
+      const findResult = await supabase
+        .from("competitors")
+        .select("id")
+        .eq("store_id", store.id)
+        .ilike("url", `%${hostname}%`)
+        .limit(1)
+        .maybeSingle();
+      
+      existingCompetitors = findResult.data;
+      findCompetitorError = findResult.error;
+    } catch (findErr: any) {
+      console.error("[API] Exception finding competitor:", findErr);
+      return jsonResponse({ 
+        error: findErr?.message || "Failed to check for existing competitor" 
+      }, 400);
+    }
 
     if (findCompetitorError) {
-      console.error("Supabase error finding competitor:", findCompetitorError);
+      console.error("[API] Supabase error finding competitor:", findCompetitorError);
       return jsonResponse(
         { error: findCompetitorError.message || "Failed to check for existing competitor" },
         400
@@ -155,19 +199,29 @@ export async function POST(
         .join(".")
         .replace(/^www\./, "") || hostname;
 
-      const { data: newCompetitor, error: competitorError } = await supabase
-        .from("competitors")
-        .insert({
-          store_id: store.id,
-          name: competitorName,
-          url: competitorBaseUrl,
-          last_sync_at: null,
-        })
-        .select("id")
-        .single();
+      let newCompetitor, competitorError;
+      try {
+        const insertResult = await supabase
+          .from("competitors")
+          .insert({
+            store_id: store.id,
+            name: competitorName,
+            url: competitorBaseUrl,
+          })
+          .select("id")
+          .single();
+        
+        newCompetitor = insertResult.data;
+        competitorError = insertResult.error;
+      } catch (insertErr: any) {
+        console.error("[API] Exception creating competitor:", insertErr);
+        return jsonResponse({ 
+          error: insertErr?.message || "Failed to create competitor store" 
+        }, 400);
+      }
 
       if (competitorError) {
-        console.error("Supabase error creating competitor:", competitorError);
+        console.error("[API] Supabase error creating competitor:", competitorError);
         return jsonResponse(
           { error: competitorError.message || "Failed to create competitor store" },
           400
@@ -175,6 +229,7 @@ export async function POST(
       }
 
       if (!newCompetitor) {
+        console.error("[API] Competitor insert returned no data");
         return jsonResponse({ error: "Failed to create competitor store" }, 500);
       }
 
@@ -207,21 +262,32 @@ export async function POST(
     }
 
     // Insert competitor product
-    const { data: competitorProduct, error: cpError } = await supabase
-      .from("competitor_products")
-      .insert({
-        competitor_id: competitorId,
-        name: scrapedData.name,
-        price: scrapedData.price,
-        currency: scrapedData.currency || "USD",
-        url: url,
-        raw: { sourceUrl: url },
-      })
-      .select("id")
-      .single();
+    let competitorProduct, cpError;
+    try {
+      const cpResult = await supabase
+        .from("competitor_products")
+        .insert({
+          competitor_id: competitorId,
+          name: scrapedData.name,
+          price: scrapedData.price,
+          currency: scrapedData.currency || "USD",
+          url: url,
+          raw: { sourceUrl: url },
+        })
+        .select("id")
+        .single();
+      
+      competitorProduct = cpResult.data;
+      cpError = cpResult.error;
+    } catch (cpErr: any) {
+      console.error("[API] Exception creating competitor product:", cpErr);
+      return jsonResponse({ 
+        error: cpErr?.message || "Failed to create competitor product" 
+      }, 400);
+    }
 
     if (cpError) {
-      console.error("Supabase error creating competitor product:", cpError);
+      console.error("[API] Supabase error creating competitor product:", cpError);
       return jsonResponse(
         { error: cpError.message || "Failed to create competitor product" },
         400
@@ -229,20 +295,27 @@ export async function POST(
     }
 
     if (!competitorProduct) {
+      console.error("[API] Competitor product insert returned no data");
       return jsonResponse({ error: "Failed to create competitor product" }, 500);
     }
 
     // Create product match
-    const { error: matchError } = await supabase.from("product_matches").insert({
-      store_id: store.id,
-      product_id: productId,
-      competitor_product_id: competitorProduct.id,
-      similarity: 100, // User explicitly added it
-      status: "confirmed",
-    });
+    try {
+      const { error: matchError } = await supabase.from("product_matches").insert({
+        store_id: store.id,
+        product_id: productId,
+        competitor_product_id: competitorProduct.id,
+        similarity: 100, // User explicitly added it
+        status: "confirmed",
+      });
 
-    if (matchError) {
-      console.error("Supabase error creating product match:", matchError);
+      if (matchError) {
+        console.error("[API] Supabase error creating product match:", matchError);
+        // Don't fail the request if match creation fails - product was added
+        // But log it for debugging
+      }
+    } catch (matchErr: any) {
+      console.error("[API] Exception creating product match:", matchErr);
       // Don't fail the request if match creation fails - product was added
       // But log it for debugging
     }
