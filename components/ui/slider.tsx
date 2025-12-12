@@ -25,7 +25,8 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
       }
     };
 
-    const percentage = ((currentValue - min) / (max - min)) * 100;
+    const range = max - min;
+    const percentage = ((currentValue - min) / range) * 100;
 
     return (
       <div className="relative w-full">

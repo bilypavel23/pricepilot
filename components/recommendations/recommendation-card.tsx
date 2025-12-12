@@ -12,10 +12,19 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Package } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Package, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { ProductRecommendation, CompetitorSlot } from "@/lib/recommendations/types";
+import { useRouter } from "next/navigation";
 
 type StoreInfo = {
   platform: string | null;
@@ -31,11 +40,18 @@ type Props = {
 };
 
 export function RecommendationCard({ recommendation, store, onPriceUpdated, isSelected = false, onToggleSelect }: Props) {
+  const router = useRouter();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isAddCompetitorDialogOpen, setIsAddCompetitorDialogOpen] = useState(false);
+  const [competitorUrl, setCompetitorUrl] = useState<string>("");
+  const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
+  const [competitorError, setCompetitorError] = useState<string | null>(null);
   const [newPrice, setNewPrice] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localCurrentPrice, setLocalCurrentPrice] = useState(recommendation.productPrice ?? 0);
+
+  const hasNoCompetitors = recommendation.competitorCount === 0;
 
   const isShopify = store.platform === "shopify" && !!store.shopify_access_token;
   const canApplyPlatform = isShopify;
@@ -96,6 +112,88 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
     }
   };
 
+  const handleAddCompetitor = async () => {
+    setCompetitorError(null);
+
+    if (!competitorUrl.trim()) {
+      setCompetitorError("Please enter a URL");
+      return;
+    }
+
+    // Validate URL
+    try {
+      const url = new URL(competitorUrl.trim());
+      if (!url.protocol.startsWith("http")) {
+        setCompetitorError("URL must start with http:// or https://");
+        return;
+      }
+
+      // Check for Amazon
+      if (url.hostname.toLowerCase().includes("amazon.")) {
+        setCompetitorError("Amazon URLs are not supported.");
+        return;
+      }
+    } catch {
+      setCompetitorError("Invalid URL format");
+      return;
+    }
+
+    setIsAddingCompetitor(true);
+
+    try {
+      const res = await fetch(`/api/products/${recommendation.productId}/competitors/add-by-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: competitorUrl.trim() }),
+      });
+
+      // Read response as text first, then attempt JSON.parse
+      const responseText = await res.text();
+      let data: any = {};
+      let isJson = false;
+
+      // Try to parse as JSON
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+          isJson = true;
+        } catch (jsonError) {
+          // Response is not JSON
+          console.error("Failed to parse JSON response:", jsonError);
+          console.error("Raw response:", responseText);
+          console.error("Response status:", res.status);
+          
+          // Show raw response as error message
+          const errorMessage = responseText || `Server error (${res.status}). Please try again.`;
+          setCompetitorError(errorMessage);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        console.error("API error:", res.status, "Response data:", data);
+        // Extract error message from JSON response
+        const errorMessage = data?.error || data?.message || `Server error (${res.status}). Please try again.`;
+        setCompetitorError(errorMessage);
+        return;
+      }
+
+      // Success
+      setIsAddCompetitorDialogOpen(false);
+      setCompetitorUrl("");
+      setCompetitorError(null);
+      
+      // Refresh the page data
+      router.refresh();
+    } catch (err: any) {
+      console.error("Error adding competitor:", err);
+      const errorMessage = err.message || "An unexpected error occurred";
+      setCompetitorError(errorMessage);
+    } finally {
+      setIsAddingCompetitor(false);
+    }
+  };
+
   // Calculate display values
   const current = recommendation.productPrice ?? 0;
   const recommended = recommendation.recommendedPrice ?? current;
@@ -118,11 +216,12 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
         <CardContent className="p-5 md:p-6">
           <div className="flex items-start gap-3">
             {onToggleSelect && (
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => onToggleSelect(recommendation.productId)}
-                className="mt-1"
-              />
+              <div className="mt-1 p-1 -m-1" onClick={() => onToggleSelect(recommendation.productId)}>
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onToggleSelect(recommendation.productId)}
+                />
+              </div>
             )}
             <div className="flex-1 flex flex-col gap-4 md:flex-row md:items-stretch">
             {/* Left Column */}
@@ -136,50 +235,79 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
                 {/* Main Content */}
                 <div className="flex-1 space-y-3">
                   {/* Product Name */}
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate" title={recommendation.productName}>
                     {recommendation.productName}
                   </h3>
 
                   {/* Price Change */}
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                      ${current.toFixed(2)} → ${recommended.toFixed(2)}
+                      ${current.toFixed(2)}
+                      {!hasNoCompetitors && ` → ${recommended.toFixed(2)}`}
                     </span>
-                    <span
-                      className={cn(
-                        "text-sm font-medium px-2 py-1 rounded-full",
-                        isIncrease
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                          : isDecrease
-                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                          : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-                      )}
-                    >
-                      ({isIncrease ? "+" : ""}{effectiveChangePercent.toFixed(1)}%)
-                    </span>
+                    {!hasNoCompetitors && (
+                      <span
+                        className={cn(
+                          "text-sm font-medium px-2 py-1 rounded-full",
+                          isIncrease
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : isDecrease
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        )}
+                      >
+                        ({isIncrease ? "+" : ""}{effectiveChangePercent.toFixed(1)}%)
+                      </span>
+                    )}
                   </div>
 
                   {/* Competitor Info */}
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Competitor avg: <span className="font-semibold">${recommendation.competitorAvg.toFixed(2)}</span>
-                  </p>
-
-                  {/* AI Reason */}
-                  <p className="text-sm text-slate-700 dark:text-slate-300">{recommendation.explanation}</p>
+                  {hasNoCompetitors ? (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-semibold">No competitors linked yet.</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Add at least 1 competitor to unlock competitor-based recommendations.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        Competitor avg: <span className="font-semibold">${recommendation.competitorAvg.toFixed(2)}</span>
+                      </p>
+                      {/* AI Reason */}
+                      <p className="text-sm text-slate-700 dark:text-slate-300">{recommendation.explanation}</p>
+                    </>
+                  )}
 
                   {/* Apply Button or Message */}
-                  <div className="pt-2">
-                    {canApply ? (
-                      <div>
-                        <Button size="sm" onClick={handleOpenSheet} className="gap-2">
-                          Change price
-                        </Button>
-                        {recommendation.competitorCount === 0 && (
-                          <p className="mt-2 text-xs text-yellow-400">
-                            Add at least 1 competitor to see competitor-based recommendations.
-                          </p>
+                  <div className="pt-2 space-y-2">
+                    {hasNoCompetitors ? (
+                      <>
+                        {canApply && (
+                          <>
+                            <Button size="sm" onClick={handleOpenSheet} className="gap-2" variant="outline">
+                              Change price
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              Add at least 1 competitor to unlock competitor-based recommendations.
+                            </p>
+                          </>
                         )}
-                      </div>
+                        <Button 
+                          size="sm" 
+                          onClick={() => setIsAddCompetitorDialogOpen(true)}
+                          className="gap-2 dark:bg-blue-600 dark:hover:bg-blue-700"
+                        >
+                          Add competitor
+                        </Button>
+                      </>
+                    ) : canApply ? (
+                      <Button size="sm" onClick={handleOpenSheet} className="gap-2">
+                        Change price
+                      </Button>
                     ) : !isShopify ? (
                       <p className="text-xs text-muted-foreground">
                         Automatic price updates are available only for Shopify stores.
@@ -205,70 +333,79 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
                   </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  {competitorSlots.map((c, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between rounded-lg bg-muted/40 dark:bg-slate-700/40 px-3 py-2 text-xs"
-                    >
-                      {c.name ? (
-                        <>
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                              {c.label}
-                            </span>
+                {hasNoCompetitors ? (
+                  <div className="py-6 text-center">
+                    <Lock className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                    <p className="text-xs text-muted-foreground">
+                      No competitors linked
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {competitorSlots.map((c, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-lg bg-muted/40 dark:bg-slate-700/40 px-3 py-2 text-xs"
+                      >
+                        {c.name ? (
+                          <>
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+                                {c.label}
+                              </span>
 
-                            {c.url ? (
-                              <a
-                                href={c.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="truncate text-xs font-medium text-primary hover:underline"
-                                title={c.name}
-                              >
-                                {c.name}
-                              </a>
-                            ) : (
+                              {c.url ? (
+                                <a
+                                  href={c.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="truncate text-sm font-medium text-primary hover:underline"
+                                  title={c.name}
+                                >
+                                  {c.name}
+                                </a>
+                              ) : (
+                                <span
+                                  className="truncate text-sm font-medium"
+                                  title={c.name}
+                                >
+                                  {c.name}
+                                </span>
+                              )}
+
+                              <span className="shrink-0 text-sm text-muted-foreground">
+                                ${c.oldPrice?.toFixed(2) ?? "?"} → ${c.newPrice?.toFixed(2) ?? "?"}
+                              </span>
+                            </div>
+
+                            {c.changePercent != null && (
                               <span
-                                className="truncate text-xs font-medium"
-                                title={c.name}
+                                className={cn(
+                                  "ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                                  c.changePercent > 0
+                                    ? "bg-emerald-500/10 text-emerald-400"
+                                    : c.changePercent < 0
+                                    ? "bg-red-500/10 text-red-400"
+                                    : "bg-muted text-muted-foreground"
+                                )}
                               >
-                                {c.name}
+                                {c.changePercent > 0 ? "+" : ""}
+                                {c.changePercent.toFixed(1)}%
                               </span>
                             )}
-
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              ${c.oldPrice?.toFixed(2) ?? "?"} → ${c.newPrice?.toFixed(2) ?? "?"}
+                          </>
+                        ) : (
+                          <div className="flex w-full items-center justify-between text-muted-foreground/70">
+                            <span className="text-xs font-semibold">
+                              {c.label}
                             </span>
+                            <span className="text-sm">—</span>
                           </div>
-
-                          {c.changePercent != null && (
-                            <span
-                              className={cn(
-                                "ml-2 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                                c.changePercent > 0
-                                  ? "bg-emerald-500/10 text-emerald-400"
-                                  : c.changePercent < 0
-                                  ? "bg-red-500/10 text-red-400"
-                                  : "bg-muted text-muted-foreground"
-                              )}
-                            >
-                              {c.changePercent > 0 ? "+" : ""}
-                              {c.changePercent.toFixed(1)}%
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex w-full items-center justify-between text-muted-foreground/70">
-                          <span className="text-[11px] font-semibold">
-                            {c.label}
-                          </span>
-                          <span className="text-xs">-</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             </div>
@@ -303,7 +440,9 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Competitor avg</span>
-                  <span className="font-medium">${recommendation.competitorAvg.toFixed(2)}</span>
+                  <span className="font-medium">
+                    {hasNoCompetitors ? "$0.00" : `$${recommendation.competitorAvg.toFixed(2)}`}
+                  </span>
                 </div>
               </div>
 
@@ -338,6 +477,62 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
           </SheetContent>
         </Sheet>
       )}
+
+      {/* Add Competitor Dialog */}
+      <Dialog open={isAddCompetitorDialogOpen} onOpenChange={setIsAddCompetitorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add competitor product</DialogTitle>
+            <DialogDescription>
+              Paste a direct link to the competitor's product page
+              (e.g. https://competitorshop.com/products/headphones)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="competitor-url">Competitor product URL</Label>
+              <Input
+                id="competitor-url"
+                type="url"
+                placeholder="https://competitorshop.com/products/headphones"
+                value={competitorUrl}
+                onChange={(e) => {
+                  setCompetitorUrl(e.target.value);
+                  setCompetitorError(null);
+                }}
+                disabled={isAddingCompetitor}
+                className="dark:bg-[#0f1117] dark:border-white/10"
+              />
+              <p className="text-xs text-muted-foreground">
+                We track this exact product page, not the entire store.
+              </p>
+            </div>
+            {competitorError && (
+              <p className="text-sm text-red-500 dark:text-red-400">{competitorError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddCompetitorDialogOpen(false);
+                setCompetitorUrl("");
+                setCompetitorError(null);
+              }}
+              disabled={isAddingCompetitor}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddCompetitor}
+              disabled={isAddingCompetitor || !competitorUrl.trim()}
+              className="dark:bg-blue-600 dark:hover:bg-blue-700"
+            >
+              {isAddingCompetitor ? "Adding..." : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

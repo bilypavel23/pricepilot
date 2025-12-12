@@ -245,6 +245,11 @@ export function DashboardContent({
                 <li>• No data yet. Add products to see insights.</li>
               )}
             </ul>
+            {competitorsCount === 0 && productsCount > 0 && (
+              <p className="mt-3 text-xs text-blue-700 dark:text-blue-300 italic">
+                Add at least 1 competitor to unlock AI pricing recommendations.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -327,56 +332,64 @@ export function DashboardContent({
         </CardHeader>
         <CardContent className="p-0">
           {productsCount > 0 && chartData ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart 
-                data={Array(14).fill(0).map((_, i) => ({
-                  date: `Day ${i + 1}`,
-                  price: chartData.avgPrice,
-                  margin: chartData.avgMargin ?? 0,
-                }))} 
-                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis
-                  dataKey="date"
-                  stroke="var(--muted-foreground)"
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis
-                  stroke="var(--muted-foreground)"
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '0.75rem',
-                    padding: '0.5rem'
-                  }}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="price"
-                  stroke="#3B82F6"
-                  strokeWidth={2}
-                  dot={{ fill: '#3B82F6', r: 4 }}
-                  activeDot={{ r: 6 }}
-                  name="Average Product Price ($)"
-                />
-                {chartData.hasCostData && chartData.avgMargin !== null && (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart 
+                  data={Array(14).fill(0).map((_, i) => ({
+                    date: `Day ${i + 1}`,
+                    price: chartData.avgPrice,
+                    margin: chartData.avgMargin ?? 0,
+                  }))} 
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="var(--muted-foreground)"
+                    style={{ fontSize: '12px' }}
+                  />
+                  <YAxis
+                    stroke="var(--muted-foreground)"
+                    style={{ fontSize: '12px' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '0.75rem',
+                      padding: '0.5rem'
+                    }}
+                  />
+                  <Legend />
                   <Line
                     type="monotone"
-                    dataKey="margin"
-                    stroke="#10B981"
+                    dataKey="price"
+                    stroke="#3B82F6"
                     strokeWidth={2}
-                    dot={{ fill: '#10B981', r: 4 }}
+                    dot={{ fill: '#3B82F6', r: 4 }}
                     activeDot={{ r: 6 }}
-                    name="Average Margin %"
+                    name="Average Product Price ($)"
                   />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
+                  {chartData.hasCostData && chartData.avgMargin !== null && (
+                    <Line
+                      type="monotone"
+                      dataKey="margin"
+                      stroke="#10B981"
+                      strokeWidth={2}
+                      dot={{ fill: '#10B981', r: 4 }}
+                      activeDot={{ r: 6 }}
+                      name="Average Margin %"
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+              {/* Show note if data is flat (all values are the same) */}
+              {chartData.avgPrice > 0 && (
+                <p className="text-xs text-muted-foreground text-center mt-2 px-4">
+                  Collecting data — first meaningful trend available within 24 hours.
+                </p>
+              )}
+            </>
           ) : (
             <div className="flex items-center justify-center h-[300px] text-slate-400 dark:text-slate-500">
               <p className="text-sm">No data yet. Add products to see trends.</p>

@@ -55,54 +55,25 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
     ]);
   };
 
-  // Generate placeholder recommendations if no products
+  // Check if any recommendations have competitors (for summary stats only)
+  const hasCompetitors = useMemo(() => {
+    return recommendations.some(rec => rec.competitorCount > 0);
+  }, [recommendations]);
+
+  // Separate products with and without competitors for stats
+  const productsWithCompetitors = useMemo(() => {
+    return recommendations.filter(rec => rec.competitorCount > 0);
+  }, [recommendations]);
+
+  const productsWithoutCompetitors = useMemo(() => {
+    return recommendations.filter(rec => rec.competitorCount === 0);
+  }, [recommendations]);
+
+  // Generate display recommendations
   const displayRecommendations = useMemo(() => {
     if (!hasProducts) {
-      // CASE A: No products at all - show placeholder cards
-      return [
-        {
-          productId: "placeholder-1",
-          productName: "Product name",
-          productPrice: 0,
-          recommendedPrice: 0,
-          changePercent: 0,
-          competitorAvg: 0,
-          competitorCount: 0,
-          explanation: "Add your products first to unlock recommendations.",
-          competitors: Array.from({ length: 5 }, (_, i) => ({
-            label: `Competitor ${i + 1}`,
-          })),
-          isPlaceholder: true,
-        },
-        {
-          productId: "placeholder-2",
-          productName: "Product name",
-          productPrice: 0,
-          recommendedPrice: 0,
-          changePercent: 0,
-          competitorAvg: 0,
-          competitorCount: 0,
-          explanation: "Add your products first to unlock recommendations.",
-          competitors: Array.from({ length: 5 }, (_, i) => ({
-            label: `Competitor ${i + 1}`,
-          })),
-          isPlaceholder: true,
-        },
-        {
-          productId: "placeholder-3",
-          productName: "Product name",
-          productPrice: 0,
-          recommendedPrice: 0,
-          changePercent: 0,
-          competitorAvg: 0,
-          competitorCount: 0,
-          explanation: "Add your products first to unlock recommendations.",
-          competitors: Array.from({ length: 5 }, (_, i) => ({
-            label: `Competitor ${i + 1}`,
-          })),
-          isPlaceholder: true,
-        },
-      ] as (ProductRecommendation & { isPlaceholder?: boolean })[];
+      // CASE A: No products at all - return empty, will show message
+      return [];
     }
 
     // Use real recommendations
@@ -114,8 +85,10 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
 
   const filteredRecommendations = useMemo(() => {
     let filtered = displayRecommendations.filter((rec) => {
-      // Skip filtering for placeholders
-      if ((rec as any).isPlaceholder) return true;
+      // Products without competitors should only appear in "all" filter
+      if (rec.competitorCount === 0) {
+        return typeFilter === "all";
+      }
 
       if (typeFilter === "increases" && rec.changePercent <= 0) return false;
       if (typeFilter === "decreases" && rec.changePercent >= 0) return false;
@@ -125,8 +98,6 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
 
     // Sort
     filtered = [...filtered].sort((a, b) => {
-      if ((a as any).isPlaceholder || (b as any).isPlaceholder) return 0;
-      
       switch (sortBy) {
         case "biggest-impact":
           return Math.abs(b.changePercent) - Math.abs(a.changePercent);
@@ -161,7 +132,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
     );
   };
 
-  const realFilteredRecs = filteredRecommendations.filter((r) => !(r as any).isPlaceholder);
+  const realFilteredRecs = filteredRecommendations;
   const allSelected = realFilteredRecs.length > 0 &&
     selectedIds.length === realFilteredRecs.length;
 
@@ -269,14 +240,14 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
     }
   };
 
-  // Calculate summary stats from real recommendations
-  const realRecs = recommendations.filter((r) => !(r as any).isPlaceholder);
-  const increaseCount = realRecs.filter((r) => r.changePercent > 0).length;
-  const decreaseCount = realRecs.filter((r) => r.changePercent < 0).length;
-  const neutralCount = realRecs.filter((r) => r.changePercent === 0).length;
+  // Calculate summary stats from products WITH competitors only
+  const recsWithCompetitors = productsWithCompetitors;
+  const increaseCount = recsWithCompetitors.filter((r) => r.changePercent > 0).length;
+  const decreaseCount = recsWithCompetitors.filter((r) => r.changePercent < 0).length;
+  const neutralCount = recsWithCompetitors.filter((r) => r.changePercent === 0).length;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
+    <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 pb-24 space-y-10">
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Recommendations</h1>
@@ -296,14 +267,27 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
       {hasProducts && (
         <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50/60 p-4 shadow-sm dark:border-blue-900/40 dark:bg-blue-950/40">
           <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300">AI Pricing Summary</h3>
-          <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
-            AI found <span className="font-semibold">{realRecs.length}</span> price opportunities today.
-          </p>
-          <ul className="mt-2 text-xs text-blue-900 dark:text-blue-200">
-            <li>• {increaseCount} increases</li>
-            <li>• {decreaseCount} decreases</li>
-            <li>• {neutralCount} neutral opportunities</li>
-          </ul>
+          {recsWithCompetitors.length > 0 ? (
+            <>
+              <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
+                AI found <span className="font-semibold">{recsWithCompetitors.length}</span> price opportunities today.
+              </p>
+              <ul className="mt-2 text-xs text-blue-900 dark:text-blue-200">
+                <li>• {increaseCount} increases</li>
+                <li>• {decreaseCount} decreases</li>
+                <li>• {neutralCount} neutral opportunities</li>
+              </ul>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
+              Add competitors to unlock AI pricing recommendations.
+            </p>
+          )}
+          {productsWithoutCompetitors.length > 0 && (
+            <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 italic">
+              {productsWithoutCompetitors.length} product{productsWithoutCompetitors.length !== 1 ? 's' : ''} need competitors.
+            </p>
+          )}
         </div>
       )}
 
@@ -378,7 +362,11 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
 
       {/* Recommendations List */}
       <div className="space-y-4">
-        {filteredRecommendations.length === 0 && hasProducts ? (
+        {!hasProducts ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <p>You don&apos;t have any products yet. Add products first to see pricing recommendations.</p>
+          </div>
+        ) : filteredRecommendations.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <p>No recommendations match your current filters.</p>
           </div>
@@ -398,16 +386,16 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-      {/* Bulk Update Bar */}
+      {/* Bulk Update Bar - Fixed at bottom, always visible when items selected */}
       {selectedIds.length > 0 && (
-        <div className="sticky bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border px-4 py-3 flex items-center justify-between">
+        <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-background/95 backdrop-blur border-t border-border px-4 py-3 flex items-center justify-between" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={allSelected}
                 onCheckedChange={toggleSelectAll}
               />
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground cursor-pointer" onClick={toggleSelectAll}>
                 Select all
               </span>
             </div>
@@ -419,7 +407,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
           <Button 
             size="sm" 
             onClick={() => setIsBulkMenuOpen(true)}
-            disabled={!isShopify}
+            disabled={!isShopify || selectedIds.length === 0}
           >
             Apply to selected
           </Button>
@@ -441,9 +429,9 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
             {/* Decrease section */}
             <div className="space-y-2">
               <p className="font-medium">When prices should go down</p>
-              <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                 Used when competitors are cheaper than your current price.
-                Negative values = cheaper than competitors, Average 0 = Competitor Average.
+                Negative values = cheaper than competitors. Average 0 = Competitor Average.
               </p>
 
               <div className="space-y-2">
@@ -473,9 +461,9 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
             {/* Increase section */}
             <div className="space-y-2">
               <p className="font-medium">When prices can go up</p>
-              <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                 Used when competitors are more expensive than your current price.
-                Positive values = more expensive than competitors, Average 0 = Competitor Average.
+                Positive values = more expensive than competitors. Average 0 = Competitor Average.
               </p>
 
               <div className="space-y-2">

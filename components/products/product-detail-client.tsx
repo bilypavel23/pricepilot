@@ -504,7 +504,47 @@ export function ProductDetailClient({
         </Card>
       )}
 
-      {/* 4) Actions */}
+      {/* 4) Product Activity */}
+      <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Product Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 text-sm">
+            {/* Last price update */}
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Last price update</span>
+              <span className="font-medium">
+                {(() => {
+                  const priceUpdateEvent = activityEvents.find(e => e.type === "price_updated");
+                  return priceUpdateEvent 
+                    ? formatRelativeTime(priceUpdateEvent.created_at)
+                    : "Never";
+                })()}
+              </span>
+            </div>
+            {/* Last product sync */}
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Last product sync</span>
+              <span className="font-medium">
+                {(() => {
+                  const syncEvent = activityEvents.find(e => e.type === "products_sync");
+                  return syncEvent 
+                    ? formatRelativeTime(syncEvent.created_at)
+                    : "Never";
+                })()}
+              </span>
+            </div>
+            {/* Number of competitors linked */}
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Competitors linked</span>
+              <span className="font-medium">{competitors.length}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 5) Actions */}
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Actions</CardTitle>
@@ -540,7 +580,7 @@ export function ProductDetailClient({
         </CardContent>
       </Card>
 
-      {/* 5) Recent Activity */}
+      {/* 6) Recent Activity */}
       {activityEvents.length > 0 && (
         <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
           <CardHeader>
@@ -643,7 +683,8 @@ export function ProductDetailClient({
           <DialogHeader>
             <DialogTitle>Add competitor product</DialogTitle>
             <DialogDescription>
-              Paste a direct link to the competitor's product page.
+              Paste a direct link to the competitor's product page
+              (e.g. https://competitorshop.com/products/headphones)
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
@@ -652,7 +693,7 @@ export function ProductDetailClient({
               <Input
                 id="competitor-url"
                 type="url"
-                placeholder="https://exampleshop.com/products/headphones/headphone_name"
+                placeholder="https://competitorshop.com/products/headphones"
                 value={competitorUrl}
                 onChange={(e) => {
                   setCompetitorUrl(e.target.value);
@@ -662,7 +703,7 @@ export function ProductDetailClient({
                 className="dark:bg-[#0f1117] dark:border-white/10"
               />
               <p className="text-xs text-muted-foreground">
-                e.g. https://exampleshop.com/products/headphones/headphone_name
+                We track this exact product page, not the entire store.
               </p>
             </div>
             {competitorError && (

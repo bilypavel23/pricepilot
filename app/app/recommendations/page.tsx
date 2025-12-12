@@ -1,31 +1,49 @@
 import { getOrCreateStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { getProfile } from "@/lib/getProfile";
 import { RecommendationsClient } from "@/components/recommendations/recommendations-client";
 import { getRecommendationsForStore } from "@/lib/recommendations/getRecommendations";
 
 export default async function RecommendationsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, profile } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
+  const isDemo = profile?.plan === "free_demo";
   const store = await getOrCreateStore();
+  const supabase = await createClient();
 
-  // Check if there are any products at all
-  const { count: productsCount } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", store.id)
-    .eq("status", "active");
+  // Load products using the same query as Products page
+  let products: any[] = [];
 
-  const hasProducts = (productsCount ?? 0) > 0;
+  if (isDemo) {
+    // Load demo products
+    const { data: demoProducts } = await supabase
+      .from("products")
+      .select("*")
+      .eq("is_demo", true)
+      .order("created_at", { ascending: false });
 
-  // Load recommendations
+    products = demoProducts ?? [];
+  } else {
+    // Load user's real products for their store (only active)
+    const { data: userProducts } = await supabase
+      .from("products")
+      .select("*")
+      .eq("store_id", store.id)
+      .eq("is_demo", false)
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+
+    products = userProducts ?? [];
+  }
+
+  const hasProducts = products.length > 0;
+
+  // Load recommendations (always returns all products, even without competitors)
   const recommendations = hasProducts
     ? await getRecommendationsForStore(store.id)
     : [];
