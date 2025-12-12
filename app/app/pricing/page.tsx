@@ -85,8 +85,16 @@ export default function PricingPage() {
       <div className="grid gap-6 md:grid-cols-3">
         {plans.map((plan) => {
           const priceInfo = getPrice(plan.monthlyPrice);
-          const isCurrent = plan.name === currentPlan;
+          // Map plan names to currentPlan values for comparison
+          // STARTER -> STARTER, PRO -> pro, SCALE -> ultra
+          const planMap: Record<typeof plan.name, Plan> = {
+            STARTER: "STARTER",
+            PRO: "pro",
+            SCALE: "ultra",
+          };
+          const isCurrent = planMap[plan.name] === currentPlan;
           const isPopular = plan.name === "PRO";
+          const isScale = plan.name === "SCALE";
           const badge = PLAN_BADGES[plan.name];
           const limits = PLAN_LIMITS[plan.name];
 
@@ -149,10 +157,6 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>1 store</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="h-4 w-4 text-blue-500" />
                           <span>Sync frequency: 1× per day</span>
                         </li>
                         <li className="flex items-center gap-2">
@@ -185,15 +189,11 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 1,000 products</span>
+                          <span>Up to 250 products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
                           <span>5 competitors per product</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 3 stores</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -229,15 +229,11 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 5,000+ products</span>
+                          <span>Up to 500 products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Unlimited competitors per product</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 10 stores</span>
+                          <span>10 competitors per product</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -267,11 +263,18 @@ export default function PricingPage() {
                     )}
                   </ul>
                   <Button
-                    className="w-full shadow-lg"
-                    variant={isCurrent ? "outline" : "default"}
-                    disabled={isCurrent}
+                    className={cn(
+                      "w-full shadow-lg",
+                      (isCurrent || isScale) && "opacity-60 cursor-not-allowed"
+                    )}
+                    variant="default"
+                    disabled={isCurrent || isScale}
+                    onClick={() => {
+                      if (isCurrent || isScale) return;
+                      // TODO: Handle upgrade logic
+                    }}
                   >
-                    {isCurrent ? "Current Plan" : "Upgrade"}
+                    {isCurrent ? "Current plan" : isScale ? "Coming Soon" : "Upgrade"}
                   </Button>
                 </CardContent>
               </Card>
@@ -293,27 +296,26 @@ export default function PricingPage() {
                 <TableHead className="font-semibold">Feature</TableHead>
                 <TableHead className="text-center font-semibold">STARTER</TableHead>
                 <TableHead className="text-center font-semibold">PRO</TableHead>
-                <TableHead className="text-center font-semibold">SCALE</TableHead>
+                <TableHead className="text-center font-semibold">
+                  <div className="flex items-center justify-center gap-2">
+                    SCALE
+                    <Badge variant="outline" className="text-xs">Coming soon</Badge>
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Products limit</TableCell>
                 <TableCell className="text-center">100</TableCell>
-                <TableCell className="text-center">1,000</TableCell>
-                <TableCell className="text-center">5,000+</TableCell>
-              </TableRow>
-              <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
-                <TableCell className="font-medium">Stores</TableCell>
-                <TableCell className="text-center">1</TableCell>
-                <TableCell className="text-center">3</TableCell>
-                <TableCell className="text-center">10</TableCell>
+                <TableCell className="text-center">250</TableCell>
+                <TableCell className="text-center">500</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitors per product</TableCell>
                 <TableCell className="text-center">2</TableCell>
                 <TableCell className="text-center">5</TableCell>
-                <TableCell className="text-center">Unlimited</TableCell>
+                <TableCell className="text-center">10</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Sync frequency</TableCell>

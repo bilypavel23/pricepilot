@@ -14,6 +14,8 @@ import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
 import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { PromoCodeForm } from "@/components/settings/promo-code-form";
 
 interface SettingsClientProps {
   userEmail: string;
@@ -87,7 +89,7 @@ export function SettingsClient({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8 min-h-0">
+    <div className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8">
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
@@ -105,6 +107,7 @@ export function SettingsClient({
             <Label className="text-sm font-medium">Email</Label>
             <p className="text-sm text-muted-foreground">{userEmail || "Loading..."}</p>
           </div>
+          <ChangePasswordForm />
           <div className="space-y-2">
             <Label className="text-sm font-medium">Store name</Label>
             {isEditingStoreName ? (
@@ -147,6 +150,19 @@ export function SettingsClient({
               </Badge>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Promo Code Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Promo code</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-1">
+            Enter a promo code to unlock discounts or features.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PromoCodeForm />
         </CardContent>
       </Card>
 

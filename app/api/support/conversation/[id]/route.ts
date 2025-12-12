@@ -7,7 +7,7 @@ interface Params {
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const conversationId = params.id;
 

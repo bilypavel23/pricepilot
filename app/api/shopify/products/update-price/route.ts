@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
+import { createActivityEvent } from "@/lib/activity-events/createActivityEvent";
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -46,10 +47,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get product from database to find external_id
+    // Get product from database to find external_id and name
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, external_id, store_id")
+      .select("id, external_id, store_id, name, price")
       .eq("id", productId)
       .eq("store_id", store.id)
       .single();
@@ -151,6 +152,21 @@ export async function POST(req: Request) {
     if (updateError) {
       console.error("Failed to update product price in DB:", updateError);
       // Don't fail the request if DB update fails, Shopify update succeeded
+    }
+
+    // Log activity event
+    if (product) {
+      const oldPrice = product.price;
+      await createActivityEvent(
+        store.id,
+        "price_updated",
+        `Price updated for ${product.name || "Product"}`,
+        {
+          productId: product.id,
+          oldPrice,
+          newPrice: priceToUpdate,
+        }
+      );
     }
 
     return NextResponse.json(

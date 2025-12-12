@@ -61,7 +61,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: false,
   },
   PRO: {
-    products: 1000,
+    products: 250,
     competitorsPerProduct: 5,
     stores: 3,
     syncsPerDay: 4,
@@ -69,8 +69,8 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: true,
   },
   SCALE: {
-    products: 5000,
-    competitorsPerProduct: 9999,
+    products: 500,
+    competitorsPerProduct: 10,
     stores: 10,
     syncsPerDay: 6,
     autoPricing: true,
@@ -85,7 +85,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: false,
   },
   pro: {
-    products: 1000,
+    products: 250,
     competitorsPerProduct: 5,
     stores: 3,
     syncsPerDay: 4,
@@ -93,8 +93,8 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: true,
   },
   ultra: {
-    products: 5000,
-    competitorsPerProduct: 9999,
+    products: 500,
+    competitorsPerProduct: 10,
     stores: 10,
     syncsPerDay: 6,
     autoPricing: true,
@@ -175,4 +175,69 @@ export function normalizePlan(plan?: string | null): Plan {
   
   // Default fallback
   return "free_demo";
+}
+
+export type LimitCheckResult = {
+  exceeded: boolean;
+  limitType?: "products" | "competitors" | "stores";
+  current: number;
+  limit: number;
+};
+
+/**
+ * Check if plan limits are exceeded
+ */
+export function isPlanLimitExceeded(
+  plan: Plan,
+  counts: {
+    totalProducts?: number;
+    competitorStores?: number;
+    stores?: number;
+  }
+): LimitCheckResult {
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free_demo;
+  
+  // Check products limit
+  if (counts.totalProducts !== undefined) {
+    if (counts.totalProducts >= limits.products) {
+      return {
+        exceeded: true,
+        limitType: "products",
+        current: counts.totalProducts,
+        limit: limits.products,
+      };
+    }
+  }
+  
+  // Check competitor stores limit (using competitorsPerProduct as a proxy)
+  if (counts.competitorStores !== undefined) {
+    // For now, use a reasonable default limit
+    const competitorLimit = getCompetitorLimit(plan);
+    if (counts.competitorStores >= competitorLimit) {
+      return {
+        exceeded: true,
+        limitType: "competitors",
+        current: counts.competitorStores,
+        limit: competitorLimit,
+      };
+    }
+  }
+  
+  // Check stores limit
+  if (counts.stores !== undefined && limits.stores !== undefined) {
+    if (counts.stores >= limits.stores) {
+      return {
+        exceeded: true,
+        limitType: "stores",
+        current: counts.stores,
+        limit: limits.stores,
+      };
+    }
+  }
+  
+  return {
+    exceeded: false,
+    current: 0,
+    limit: 0,
+  };
 }

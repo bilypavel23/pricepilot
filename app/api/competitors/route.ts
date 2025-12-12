@@ -8,7 +8,7 @@ const PRO_MAX_COMPETITORS = 5;
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const {
       data: { user },

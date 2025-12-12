@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from "@/lib/supabase/server-admin";
 
 export async function GET(req: Request) {
   // Use regular server client for authentication
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

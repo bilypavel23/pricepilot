@@ -7,7 +7,7 @@ interface Params {
 
 export async function PUT(req: Request, { params }: Params) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { id: storeId } = await params;
 
     const {

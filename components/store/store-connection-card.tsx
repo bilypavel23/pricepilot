@@ -24,6 +24,15 @@ export function StoreConnectionCard({ store }: StoreConnectionCardProps) {
       const res = await fetch("/api/shopify/products/import", {
         method: "POST",
       });
+      
+      // Check if response has content before parsing JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        alert(text || "Failed to import products");
+        return;
+      }
+      
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || "Failed to import products");

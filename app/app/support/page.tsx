@@ -1,5 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { AnnouncementForm } from "@/components/support/announcement-form";
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
 
 export default async function SupportDashboard() {
   const supabase = await createClient();
@@ -24,7 +33,7 @@ export default async function SupportDashboard() {
     .order("last_message_at", { ascending: false });
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Support Inbox</h1>
         <p className="text-sm text-muted-foreground">
@@ -32,6 +41,21 @@ export default async function SupportDashboard() {
           {(conversations?.length ?? 0) === 1 ? "" : "s"}
         </p>
       </div>
+
+      {/* Admin: Send Product Update */}
+      {profile.is_admin && (
+        <Card className="dark:bg-slate-900 dark:border-slate-700">
+          <CardHeader>
+            <CardTitle>Send Product Update</CardTitle>
+            <CardDescription>
+              Broadcast an update to all users. They will see it in their Messages as "Product Updates".
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AnnouncementForm />
+          </CardContent>
+        </Card>
+      )}
 
       {(!conversations || conversations.length === 0) && (
         <div className="rounded-xl border border-white/5 bg-neutral-900/70 px-4 py-6 text-sm text-muted-foreground">
@@ -65,4 +89,3 @@ export default async function SupportDashboard() {
     </div>
   );
 }
-

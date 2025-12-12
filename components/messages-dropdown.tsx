@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Mail } from "lucide-react";
 import {
   DropdownMenu,
@@ -79,6 +80,7 @@ interface MessagesDropdownProps {
 }
 
 export function MessagesDropdown({ plan }: MessagesDropdownProps) {
+  const router = useRouter();
   const [openDialog, setOpenDialog] = React.useState(false);
   const [openSupport, setOpenSupport] = React.useState(false);
   const [openDropdown, setOpenDropdown] = React.useState(false);
@@ -99,6 +101,25 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
   const [previewMessages, setPreviewMessages] = useState<SupportMessage[]>([]);
   const [previewReply, setPreviewReply] = useState("");
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [announcementsUnreadCount, setAnnouncementsUnreadCount] = useState(0);
+
+  // Load announcements unread count
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      try {
+        const res = await fetch("/api/announcements/unread-count");
+        const data = await res.json();
+        setAnnouncementsUnreadCount(data.count ?? 0);
+      } catch (e) {
+        console.error("Failed to load announcements unread count", e);
+      }
+    };
+
+    loadUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Load support conversations
   useEffect(() => {
@@ -128,7 +149,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
     (c) => c.last_message_from === "support"
   ).length;
   
-  const unreadCount = mockUnreadCount + supportUnreadCount;
+  const unreadCount = mockUnreadCount + supportUnreadCount + announcementsUnreadCount;
 
   const handleOpenMessage = (message: Message) => {
     setSelected(message);
@@ -244,6 +265,44 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
               {conversations.length > 0 && <DropdownMenuSeparator />}
             </>
           )}
+
+          {/* Product Updates - Fixed entry above conversations */}
+          <button
+            type="button"
+            className="w-full rounded-md px-3 py-2 text-left hover:bg-neutral-800/80 flex flex-col gap-1"
+            onClick={async () => {
+              setOpenDropdown(false);
+              router.push("/app/messages/updates");
+              // Refresh unread count after a short delay to allow mark-read to complete
+              setTimeout(() => {
+                fetch("/api/announcements/unread-count")
+                  .then((res) => res.json())
+                  .then((data) => setAnnouncementsUnreadCount(data.count ?? 0))
+                  .catch(console.error);
+              }, 1000);
+            }}
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="flex flex-col gap-0.5 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Product Updates</span>
+                  {announcementsUnreadCount > 0 && (
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                  )}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Read-only updates from the team
+                </span>
+              </div>
+              {announcementsUnreadCount > 0 && (
+                <span className="ml-2 rounded-full bg-blue-600 px-2 py-[2px] text-[10px] font-semibold text-white min-w-[20px] text-center">
+                  {announcementsUnreadCount}
+                </span>
+              )}
+            </div>
+          </button>
+
+          {(conversations.length > 0 || messages.length > 0) && <DropdownMenuSeparator />}
 
           {/* Support conversations */}
           <div className="flex flex-col gap-2 text-sm">
@@ -428,27 +487,28 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
 
       {/* Preview card */}
       {previewOpen && (
-        <div 
-          className="fixed inset-0 z-[9998] flex items-start justify-center pt-20"
-          data-preview-open="true"
-        >
+        <>
           {/* Backdrop overlay to block interactions with background */}
           <div 
-            className="fixed inset-0 bg-black/70 backdrop-blur-md -z-10"
+            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md"
             onClick={() => setPreviewOpen(false)}
           />
           {/* Preview card */}
           <div 
-            className="relative z-10 w-full max-w-lg rounded-xl bg-neutral-950 border border-white/10 shadow-2xl mx-4 pointer-events-auto"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-6 pointer-events-none"
+            data-preview-open="true"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div 
+              className="w-full max-w-xl max-h-[80vh] my-auto rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl pointer-events-auto flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
               <div>
-                <div className="text-sm font-semibold">
+                <div className="text-base font-semibold text-white">
                   Support Conversation
                 </div>
                 {activeConversation?.last_message_at && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs text-slate-400 mt-1">
                     {new Date(
                       activeConversation.last_message_at
                     ).toLocaleString()}
@@ -457,7 +517,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
               </div>
               <button
                 type="button"
-                className="text-muted-foreground hover:text-white text-sm"
+                className="text-slate-400 hover:text-white transition-colors rounded-full p-1 hover:bg-slate-800"
                 onClick={async () => {
                   setPreviewOpen(false);
                   // Refresh conversations to get any updates
@@ -470,19 +530,21 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
                   }
                 }}
               >
-                ✕
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="max-h-64 overflow-y-auto px-4 py-3 space-y-2 text-sm">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
               {previewLoading && (
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-slate-400 text-center py-8">
                   Loading conversation…
                 </div>
               )}
 
               {previewError && (
-                <div className="text-xs text-red-400">{previewError}</div>
+                <div className="text-sm text-red-400 text-center py-8">{previewError}</div>
               )}
 
               {!previewLoading &&
@@ -490,17 +552,17 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
                 previewMessages.map((m) => (
                   <div
                     key={m.id}
-                    className={`rounded-lg px-3 py-2 ${
+                    className={`rounded-lg px-4 py-3 ${
                       m.sender_type === "support"
-                        ? "bg-blue-600/80 text-white"
-                        : "bg-neutral-800 text-neutral-50"
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-800 text-slate-100"
                     }`}
                   >
-                    <div className="text-[10px] uppercase tracking-wide opacity-70 mb-1">
+                    <div className="text-xs uppercase tracking-wide opacity-80 mb-1.5 font-medium">
                       {m.sender_type === "support" ? "Support" : "You"}
                     </div>
-                    <div>{m.body}</div>
-                    <div className="mt-1 text-[10px] opacity-60">
+                    <div className="text-sm leading-relaxed">{m.body}</div>
+                    <div className="mt-1.5 text-xs opacity-70">
                       {new Date(m.created_at).toLocaleString()}
                     </div>
                   </div>
@@ -509,23 +571,23 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
               {!previewLoading &&
                 !previewError &&
                 previewMessages.length === 0 && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-sm text-slate-400 text-center py-8">
                     No messages yet in this conversation.
                   </div>
                 )}
             </div>
 
             {/* Fast reply */}
-            <div className="border-t border-white/10 px-4 py-3">
+            <div className="border-t border-slate-700 px-6 py-4 flex-shrink-0 bg-slate-900/50">
               <div className="flex flex-col gap-2">
                 {previewError && (
                   <div className="text-xs text-red-400">
                     You can't reply until the conversation loads.
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <input
-                    className="flex-1 rounded-lg border border-white/10 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     placeholder="Type a quick reply…"
                     value={previewReply}
                     onChange={(e) => setPreviewReply(e.target.value)}
@@ -595,7 +657,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
                   />
                   <button
                     type="button"
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
+                    className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60 transition-colors"
                     disabled={
                       previewLoading ||
                       !!previewError ||
@@ -666,6 +728,7 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
             </div>
           </div>
         </div>
+        </>
       )}
     </>
   );

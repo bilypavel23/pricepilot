@@ -10,7 +10,7 @@ interface Params {
 
 export async function POST(_req: Request, { params }: Params) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { competitorId } = await params;
 
     // 1) Auth

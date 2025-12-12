@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
+import { createActivityEvent } from "@/lib/activity-events/createActivityEvent";
 
 export async function POST() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Auth check
   const {
@@ -175,6 +176,16 @@ export async function POST() {
         { status: 500 }
       );
     }
+
+    // Log activity event
+    await createActivityEvent(
+      store.id,
+      "products_sync",
+      `Product sync completed: ${productsToUpsert.length} products`,
+      {
+        count: productsToUpsert.length,
+      }
+    );
 
     return NextResponse.json({
       success: true,

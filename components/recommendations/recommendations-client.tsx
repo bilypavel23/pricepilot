@@ -32,7 +32,6 @@ type Props = {
 
 export function RecommendationsClient({ store, recommendations, hasProducts }: Props) {
   const [typeFilter, setTypeFilter] = useState("all");
-  const [riskFilter, setRiskFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [updatedPrices, setUpdatedPrices] = useState<Record<string, number>>({});
@@ -54,14 +53,6 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
         type: "success",
       },
     ]);
-  };
-
-  // Risk scores based on changePercent
-  const getRiskScore = (changePercent: number): "low" | "med" | "high" => {
-    const abs = Math.abs(changePercent);
-    if (abs <= 3) return "low";
-    if (abs <= 7) return "med";
-    return "high";
   };
 
   // Generate placeholder recommendations if no products
@@ -129,12 +120,6 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
       if (typeFilter === "increases" && rec.changePercent <= 0) return false;
       if (typeFilter === "decreases" && rec.changePercent >= 0) return false;
       if (typeFilter === "safe-only" && Math.abs(rec.changePercent) > 5) return false;
-      if (riskFilter !== "all") {
-        const risk = getRiskScore(rec.changePercent);
-        if (riskFilter === "low" && risk !== "low") return false;
-        if (riskFilter === "med" && risk !== "med") return false;
-        if (riskFilter === "high" && risk !== "high") return false;
-      }
       return true;
     });
 
@@ -161,7 +146,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
     });
 
     return filtered;
-  }, [displayRecommendations, typeFilter, riskFilter, sortBy]);
+  }, [displayRecommendations, typeFilter, sortBy]);
 
   const removeToast = (id: string) => {
     setToasts(toasts.filter((t) => t.id !== id));
@@ -373,20 +358,6 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
                 Safe only
               </button>
             </div>
-
-            {/* Risk Filter */}
-            <Select
-              id="risk-filter"
-              name="risk-filter"
-              value={riskFilter}
-              onChange={(e) => setRiskFilter(e.target.value)}
-              className="w-32"
-            >
-              <option value="all">All Risk</option>
-              <option value="low">Low</option>
-              <option value="med">Medium</option>
-              <option value="high">High</option>
-            </Select>
 
             {/* Sort By */}
             <Select

@@ -3,6 +3,8 @@ import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateStore } from "@/lib/store";
+import { getRecommendationsWaitingCount } from "@/lib/recommendations/getRecommendationsWaitingCount";
+import { getActivityEvents } from "@/lib/activity-events/getActivityEvents";
 
 // Force dynamic rendering because we use cookies()
 export const dynamic = 'force-dynamic';
@@ -26,8 +28,6 @@ export default async function DashboardPage() {
   // Load products and competitors based on demo mode
   let products: any[] = [];
   let competitors: any[] = [];
-  let productMatches: any[] = [];
-  let priceRecommendations: any[] = [];
 
   if (isDemo) {
     // Load demo products
@@ -47,50 +47,34 @@ export default async function DashboardPage() {
     products = demoProducts ?? [];
     competitors = demoCompetitors ?? [];
   } else {
-    // Load user's real products for their store
+    // Load user's real products for their store (only active)
     const { data: userProducts } = await supabase
       .from("products")
-      .select("*")
+      .select("id, name, price, inventory, cost, status")
       .eq("store_id", store.id)
       .eq("is_demo", false)
+      .eq("status", "active")
       .order("created_at", { ascending: false });
 
     // Load user's real competitors for their store
     const { data: userCompetitors } = await supabase
       .from("competitors")
-      .select("*")
-      .eq("store_id", store.id)
-      .order("created_at", { ascending: false });
-
-    // Load product matches for competitor activity
-    const { data: matches } = await supabase
-      .from("product_matches")
       .select("id")
-      .eq("store_id", store.id);
-
-    // Load price recommendations (if table exists)
-    const { data: recommendations } = await supabase
-      .from("price_recommendations")
-      .select("id, status")
       .eq("store_id", store.id);
 
     products = userProducts ?? [];
     competitors = userCompetitors ?? [];
-    productMatches = matches ?? [];
-    priceRecommendations = recommendations ?? [];
   }
 
   // Calculate metrics
   const productsCount = products.length;
   const competitorsCount = competitors.length;
-  const matchesCount = productMatches.length;
-  const recommendationsCount = priceRecommendations.length;
-  const pendingRecommendationsCount = priceRecommendations.filter((r: any) => r.status === "pending").length;
 
-  // Calculate revenue estimate (sum of price * inventory, or just price if no inventory)
-  const revenueEstimate = products.reduce((sum, product) => {
+  // Calculate inventory worth (sum of price * inventory, or just price if no inventory)
+  // Only count active products
+  const inventoryWorth = products.reduce((sum, product) => {
     const price = product.price || 0;
-    const inventory = product.inventory || 1; // Default to 1 if no inventory
+    const inventory = product.inventory ?? 1; // Default to 1 if no inventory
     return sum + (price * inventory);
   }, 0);
 
@@ -105,11 +89,56 @@ export default async function DashboardPage() {
     averageMargin = totalMargin / productsWithMargin.length;
   }
 
-  // Calculate expected revenue next week (simple estimate: current revenue * 1.1)
-  const expectedRevenueNextWeek = {
-    min: Math.round(revenueEstimate * 0.95),
-    max: Math.round(revenueEstimate * 1.15),
-  };
+  // Calculate competitor activity count
+  // For now: if no competitors exist, show 0. Otherwise, show 0 until real activity tracking is implemented.
+  let competitorActivityCount = 0;
+  if (competitorsCount > 0 && !isDemo) {
+    // TODO: Implement real activity tracking from competitor_products updated_at in last 7 days
+    // For now, return 0
+    competitorActivityCount = 0;
+  }
+
+  // Calculate recommendations waiting (only for non-demo)
+  let recommendationsWaiting = 0;
+  if (!isDemo) {
+    recommendationsWaiting = await getRecommendationsWaitingCount(store.id);
+  }
+
+  // Calculate chart data (average price and margin from current products)
+  let avgPrice = 0;
+  let avgMargin: number | null = null;
+  let hasCostData = false;
+
+  if (products.length > 0) {
+    // Calculate average price
+    const totalPrice = products.reduce((sum, p) => sum + (p.price || 0), 0);
+    avgPrice = totalPrice / products.length;
+
+    // Calculate average margin if cost data exists
+    const productsWithCost = products.filter((p) => p.price && p.cost && p.price > 0);
+    if (productsWithCost.length > 0) {
+      hasCostData = true;
+      const totalMargin = productsWithCost.reduce((sum, p) => {
+        const margin = ((p.price - p.cost) / p.price) * 100;
+        return sum + margin;
+      }, 0);
+      avgMargin = Math.max(0, Math.min(100, totalMargin / productsWithCost.length));
+    }
+  }
+
+  // Load activity events (only for non-demo)
+  // Gracefully handle if table doesn't exist or RLS issues
+  // Limit to 5 for dashboard preview
+  let activityEvents: any[] = [];
+  if (!isDemo) {
+    try {
+      activityEvents = await getActivityEvents(store.id, 5);
+    } catch (err: any) {
+      // Log but don't fail the page - activity events are non-critical
+      console.warn("Could not load activity events (non-critical):", err?.message || err);
+      activityEvents = [];
+    }
+  }
 
     return (
       <DashboardContent 
@@ -120,13 +149,17 @@ export default async function DashboardPage() {
         metrics={{
           productsCount,
           competitorsCount,
-          matchesCount,
-          recommendationsCount,
-          pendingRecommendationsCount,
-          revenueEstimate,
+          inventoryWorth,
           averageMargin,
-          expectedRevenueNextWeek,
+          competitorActivityCount,
+          recommendationsWaiting,
         }}
+        chartData={{
+          avgPrice,
+          avgMargin,
+          hasCostData,
+        }}
+        activityEvents={activityEvents}
       />
     );
   } catch (error) {
