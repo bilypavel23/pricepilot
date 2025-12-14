@@ -24,3 +24,4 @@ export async function getAnnouncements(): Promise<Announcement[]> {
   return data || [];
 }
 
+

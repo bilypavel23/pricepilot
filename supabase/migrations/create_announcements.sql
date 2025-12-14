@@ -99,3 +99,4 @@ create policy "announcement_reads_delete_owner"
   to authenticated
   using (user_id = auth.uid());
 
+

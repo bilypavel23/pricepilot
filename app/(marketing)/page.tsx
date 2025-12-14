@@ -1,121 +1,200 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionItem } from "@/components/ui/accordion";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Sparkles,
   TrendingUp,
   BarChart3,
   Zap,
   Shield,
-  ArrowRight,
   CheckCircle2,
-  Play,
   LineChart,
+  Store,
+  FileSpreadsheet,
+  Link as LinkIcon,
+  Layers,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 export default function LandingPage() {
-  const [videoModalOpen, setVideoModalOpen] = useState(false);
 
   return (
     <div className="flex flex-col">
       {/* Hero Section */}
-      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24 sm:py-32 text-center">
-        <div className="mx-auto max-w-4xl space-y-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/50 px-4 py-1.5 text-xs sm:text-sm text-slate-300">
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20 text-center">
+        <div className="mx-auto max-w-[900px]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/50 px-4 py-1.5 text-xs sm:text-sm text-slate-300 mb-4">
             <span>⚡</span>
             <span>AI-Powered Price Optimization for e-commerce</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6">
             Stop Guessing Your Prices.
             <br />
             <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
               Let AI Optimize Them.
             </span>
           </h1>
-          <p className="mx-auto max-w-2xl text-lg sm:text-xl text-gray-300 leading-relaxed">
+          <p className="mx-auto max-w-2xl text-lg sm:text-xl text-gray-300 leading-relaxed mb-8">
             PricePilot tracks competitor prices, analyzes your margins and market trends, and gives you clear, data-backed price recommendations – so you can increase profit without losing customers.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <Button
-                asChild
-                className="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 shadow-md transition"
-              >
-                <Link href="/register">
-                  Start free trial
-                  <span>→</span>
-                </Link>
-              </Button>
-              <p className="text-xs text-gray-400 mt-2 text-center sm:ml-4 sm:mt-0">
-                No credit card required
-              </p>
-            </div>
-          </div>
           
-          {/* Video CTA Text */}
-          <p className="text-base mt-8" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            Watch our 2-minute demo ↓
-          </p>
-
-          {/* Video Rectangle */}
-          <div className="mt-12 mb-20">
-            <button
-              onClick={() => setVideoModalOpen(true)}
-              className="w-full max-w-[900px] mx-auto aspect-video rounded-[20px] bg-[#111726] border border-white/10 relative overflow-hidden cursor-pointer group transition-all duration-200 hover:scale-[1.01]"
-              style={{
-                boxShadow: '0 0 40px rgba(0,0,0,0.45)',
-              }}
-            >
-              {/* Subtle inner highlight */}
-              <div className="absolute inset-0 pointer-events-none" style={{
-                background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.05) 0%, transparent 70%)'
-              }} />
-              
-              {/* Play Icon */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                  <Play className="w-10 h-10 text-white ml-1" fill="white" />
-                </div>
-              </div>
-            </button>
+          {/* Benefit Pill Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-8 max-w-4xl mx-auto">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-full border border-slate-800 bg-slate-900/50 backdrop-blur-sm w-full min-h-[52px]">
+              <TrendingUp className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+              <span className="text-xs sm:text-sm text-slate-300 leading-tight break-words line-clamp-2">Track competitor prices automatically</span>
+            </div>
+            <div className="flex items-start gap-3 px-4 py-3 rounded-full border border-slate-800 bg-slate-900/50 backdrop-blur-sm w-full min-h-[52px]">
+              <BarChart3 className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+              <span className="text-xs sm:text-sm text-slate-300 leading-tight break-words line-clamp-2">See margin impact before you apply changes</span>
+            </div>
+            <div className="flex items-start gap-3 px-4 py-3 rounded-full border border-slate-800 bg-slate-900/50 backdrop-blur-sm w-full min-h-[52px]">
+              <Zap className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+              <span className="text-xs sm:text-sm text-slate-300 leading-tight break-words line-clamp-2">Bulk apply safe recommendations in one click</span>
+            </div>
           </div>
 
-          <div className="pt-8 space-y-3">
-            <p className="text-sm text-slate-500">
-              Trusted by modern e-commerce brands to manage millions in revenue.
+          <div className="flex flex-col items-center justify-center gap-2.5">
+            <Button
+              asChild
+              className="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 shadow-md transition"
+            >
+              <Link href="/register">
+                Start free trial
+                <span>→</span>
+              </Link>
+            </Button>
+            <p className="text-xs text-gray-400 text-center">
+              No credit card required
             </p>
-            <div className="flex items-center justify-center gap-6 opacity-40">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div
-                  key={i}
-                  className="h-8 w-20 rounded bg-slate-700"
-                  aria-hidden="true"
-                />
-              ))}
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Video Modal */}
-      <Dialog open={videoModalOpen} onOpenChange={setVideoModalOpen}>
-        <DialogContent className="max-w-4xl p-0 bg-transparent border-0 shadow-none">
-          <DialogTitle className="sr-only">Watch 2-minute demo video</DialogTitle>
-          <div className="w-full aspect-video bg-[#111726] rounded-2xl flex items-center justify-center">
-            <p className="text-white text-lg">Video player will be embedded here</p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Live Product Preview Section */}
+      <section id="preview" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+            Live product preview (real screenshots)
+          </h2>
+          <p className="text-lg text-slate-400">
+            See the dashboard, product catalog, and AI recommendations in action.
+          </p>
+        </div>
+        <div className="max-w-5xl mx-auto">
+          <Tabs defaultValue="dashboard" className="w-full">
+            <div className="flex justify-center mb-8">
+              <TabsList>
+                <TabsTrigger value="dashboard">Dashboard overview</TabsTrigger>
+                <TabsTrigger value="products">Products table</TabsTrigger>
+                <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="dashboard">
+              <div className="space-y-4">
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+                  <Image
+                    src="/landing/preview-dashboard.png"
+                    alt="Dashboard overview showing market overview, margin health, and next actions"
+                    fill
+                    className="object-contain"
+                    priority
+                  />
+                </div>
+                <p className="text-center text-sm text-slate-400">
+                  Market overview, margin health, and next actions
+                </p>
+              </div>
+            </TabsContent>
+            <TabsContent value="products">
+              <div className="space-y-4">
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+                  <Image
+                    src="/landing/preview-products.png"
+                    alt="Products table showing full catalog with price, cost, margin, inventory"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+                <p className="text-center text-sm text-slate-400">
+                  Full catalog with price, cost, margin, inventory
+                </p>
+              </div>
+            </TabsContent>
+            <TabsContent value="recommendations">
+              <div className="space-y-4">
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+                  <Image
+                    src="/landing/preview-recommendations.png"
+                    alt="Recommendations showing safe suggestions and bulk apply workflow"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+                <p className="text-center text-sm text-slate-400">
+                  Safe suggestions and bulk apply workflow
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </section>
+
+      {/* Works with your stack Section */}
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+            Works with your stack
+          </h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 max-w-5xl mx-auto">
+          {[
+            {
+              icon: Store,
+              label: "Shopify",
+              description: "Two-way sync (apply changes to your store)",
+            },
+            {
+              icon: FileSpreadsheet,
+              label: "CSV Import",
+              description: "Upload catalog + prices in minutes",
+            },
+            {
+              icon: LinkIcon,
+              label: "Feed URL",
+              description: "Auto-refresh your catalog from a link",
+            },
+            {
+              icon: Layers,
+              label: "Bulk Actions",
+              description: "Apply safe changes across products",
+            },
+          ].map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <Card
+                key={idx}
+                className="border-slate-800 bg-slate-900/50 hover:bg-slate-900/70 hover:-translate-y-1 transition-all duration-200"
+              >
+                <CardContent className="p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                      <Icon className="h-6 w-6 text-blue-400" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{item.label}</h3>
+                  <p className="text-sm text-slate-400">{item.description}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Feature Grid Section */}
       <section id="features" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
@@ -207,11 +286,13 @@ export default function LandingPage() {
           </div>
           <div className="relative">
             <Card className="border-slate-800 bg-slate-900/50 p-6">
-              <div className="aspect-video rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                <div className="text-center space-y-4">
-                  <LineChart className="h-16 w-16 text-slate-600 mx-auto" />
-                  <p className="text-sm text-slate-500">Dashboard preview</p>
-                </div>
+              <div className="aspect-video rounded-lg relative overflow-hidden">
+                <Image
+                  src="/landing/landing-graph.png"
+                  alt="PricePilot dashboard preview"
+                  fill
+                  className="object-cover rounded-lg"
+                />
               </div>
             </Card>
           </div>
@@ -364,7 +445,7 @@ export default function LandingPage() {
                   )}
                 >
                   <Link href={(plan as any).comingSoon ? "#" : "/register"}>
-                    {(plan as any).comingSoon ? "Coming Soon" : "Get started"}
+                    {(plan as any).comingSoon ? "Coming Soon" : "Start free trial"}
                   </Link>
                 </Button>
               </CardContent>
@@ -379,22 +460,24 @@ export default function LandingPage() {
         </p>
       </section>
 
-      {/* Testimonial Section */}
+      {/* Why teams use PricePilot Section */}
       <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
         <div className="max-w-3xl mx-auto">
-          <Card className="border-slate-800 bg-slate-900/50">
-            <CardContent className="p-8 sm:p-12">
-              <div className="space-y-6">
-                <p className="text-lg sm:text-xl text-slate-200 leading-relaxed italic">
-                  "We increased profit by 12% in 60 days without losing volume. PricePilot is now part of our weekly routine."
-                </p>
-                <div>
-                  <p className="font-semibold text-white">Alex Novak</p>
-                  <p className="text-sm text-slate-400">Head of E-commerce, TechStore</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-8 text-center">
+            Why teams use PricePilot
+          </h2>
+          <ul className="space-y-4">
+            {[
+              "Stop underpricing without killing conversions",
+              "Protect margin with clear impact previews",
+              "React faster to competitor price changes",
+            ].map((item, idx) => (
+              <li key={idx} className="flex items-start gap-3">
+                <CheckCircle2 className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <span className="text-lg text-slate-300">{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
@@ -406,7 +489,19 @@ export default function LandingPage() {
         <Accordion>
           <AccordionItem
             question="Do I need a developer to set this up?"
-            answer="No. You can import products via CSV or feed URL and start tracking competitors in a few minutes."
+            answer="No. You can get started in minutes. Connect Shopify for automatic two-way sync, or import products via CSV or a feed URL and start tracking competitors right away."
+          />
+          <AccordionItem
+            question="Will PricePilot update my Shopify prices automatically?"
+            answer="Yes — if you connect Shopify. When you apply changes in PricePilot, we push updated prices back to your Shopify store automatically. You stay in control — nothing changes until you click apply."
+          />
+          <AccordionItem
+            question="What if I use CSV import or a Feed URL instead of Shopify?"
+            answer="PricePilot still works for analysis, competitor tracking, and recommendations. But price changes won't sync back automatically. If you want the updated prices in your store, you'll need to export/apply them manually."
+          />
+          <AccordionItem
+            question="If I change prices in my store, will PricePilot stay up to date?"
+            answer="Shopify: Yes — your catalog stays synced automatically. CSV / Feed URL: You'll need to re-upload your CSV or refresh the feed link so PricePilot can pull the latest changes."
           />
           <AccordionItem
             question="Will PricePilot change prices automatically?"
@@ -414,7 +509,7 @@ export default function LandingPage() {
           />
           <AccordionItem
             question="Which platforms do you support?"
-            answer="Any store that can export a CSV or expose a product feed URL. Platform-specific apps will come later."
+            answer="Shopify is supported with two-way sync (apply changes directly to your store). We also support any store that can export a CSV or provide a product feed URL. Platform-specific integrations will expand over time."
           />
           <AccordionItem
             question="Can I cancel anytime?"

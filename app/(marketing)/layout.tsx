@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,14 +15,15 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       {/* Navbar */}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500 text-xs font-bold text-white">
-              PP
-            </div>
-            <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold">PricePilot</span>
-              <span className="text-[11px] text-slate-400">AI pricing engine</span>
-            </div>
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/landing/pricepilot.png"
+              alt="PricePilot"
+              height={32}
+              width={120}
+              className="h-7 sm:h-8 w-auto object-contain"
+              priority
+            />
           </Link>
 
           {/* Desktop Navigation */}
@@ -52,7 +54,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               size="sm"
               className="text-sm rounded-full bg-blue-500 px-5 font-medium text-white hover:bg-blue-600"
             >
-              <Link href="/register">Get started</Link>
+              <Link href="/register">Start free trial</Link>
             </Button>
           </div>
 
@@ -107,7 +109,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   className="w-full text-sm rounded-full bg-blue-500 font-medium text-white hover:bg-blue-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Link href="/register">Get started</Link>
+                  <Link href="/register">Start free trial</Link>
                 </Button>
               </div>
             </nav>
