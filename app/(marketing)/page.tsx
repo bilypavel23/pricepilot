@@ -312,17 +312,17 @@ export default function LandingPage() {
             {
               step: "1",
               title: "Connect your store",
-              description: "Import products via CSV or feed URL. We'll sync your catalog and margins automatically.",
+              description: "Connect Shopify for automatic two-way sync, or import products via CSV or a feed URL. We'll keep your catalog and margins up to date.",
             },
             {
               step: "2",
               title: "Add competitors",
-              description: "Paste competitor store URLs and let our AI match overlapping products for you.",
+              description: "Paste competitor store URLs and let PricePilot match overlapping products automatically. Review matches once and start tracking price changes.",
             },
             {
               step: "3",
               title: "Review & apply prices",
-              description: "Get AI price suggestions, review the impact on margin, and apply safe changes with one click.",
+              description: "Get AI price suggestions, preview margin impact, and apply safe changes in bulk. If Shopify is connected, updates sync back to your store.",
             },
           ].map((item, idx) => (
             <div key={idx} className="text-center space-y-4">
