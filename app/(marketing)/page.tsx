@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,12 +17,90 @@ import {
   FileSpreadsheet,
   Link as LinkIcon,
   Layers,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 export default function LandingPage() {
+  const [activeImageSrc, setActiveImageSrc] = useState<string | null>(null);
+  
+  // Preview navigation state
+  const previews = [
+    { id: "dashboard", label: "Dashboard overview", image: "/landing/preview-dashboard.png", alt: "Dashboard overview showing market overview, margin health, and next actions", caption: "Market overview, margin health, and next actions" },
+    { id: "products", label: "Products table", image: "/landing/preview-products.png", alt: "Products table showing full catalog with price, cost, margin, inventory", caption: "Full catalog with price, cost, margin, inventory" },
+    { id: "recommendations", label: "Recommendations", image: "/landing/preview-recommendations.png", alt: "Recommendations showing safe suggestions and bulk apply workflow", caption: "Safe suggestions and bulk apply workflow" },
+  ];
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+
+  // Handle ESC key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && activeImageSrc) {
+        setActiveImageSrc(null);
+      }
+    };
+
+    if (activeImageSrc) {
+      document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
+    };
+  }, [activeImageSrc]);
+
+  const handleImageClick = (src: string) => {
+    setActiveImageSrc(src);
+  };
+
+  const handleCloseModal = () => {
+    setActiveImageSrc(null);
+  };
+
+  // Preview navigation functions
+  const goToPrevious = () => {
+    setActivePreviewIndex((prev) => (prev === 0 ? previews.length - 1 : prev - 1));
+  };
+
+  const goToNext = () => {
+    setActivePreviewIndex((prev) => (prev === previews.length - 1 ? 0 : prev + 1));
+  };
+
+  const handlePreviewTabChange = (value: string) => {
+    const index = previews.findIndex((p) => p.id === value);
+    if (index !== -1) {
+      setActivePreviewIndex(index);
+    }
+  };
+
+  // Keyboard navigation for preview section
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle arrow keys when not in a modal
+      if (activeImageSrc) return;
+      
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setActivePreviewIndex((prev) => (prev === 0 ? previews.length - 1 : prev - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setActivePreviewIndex((prev) => (prev === previews.length - 1 ? 0 : prev + 1));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeImageSrc, previews.length]);
 
   return (
     <div className="flex flex-col">
@@ -65,7 +144,7 @@ export default function LandingPage() {
               className="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 shadow-md transition"
             >
               <Link href="/register">
-                Start free trial
+                Get started
                 <span>→</span>
               </Link>
             </Button>
@@ -87,7 +166,11 @@ export default function LandingPage() {
           </p>
         </div>
         <div className="max-w-5xl mx-auto">
-          <Tabs defaultValue="dashboard" className="w-full">
+          <Tabs 
+            value={previews[activePreviewIndex].id} 
+            onValueChange={handlePreviewTabChange}
+            className="w-full"
+          >
             <div className="flex justify-center mb-8">
               <TabsList>
                 <TabsTrigger value="dashboard">Dashboard overview</TabsTrigger>
@@ -95,52 +178,66 @@ export default function LandingPage() {
                 <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="dashboard">
-              <div className="space-y-4">
-                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
-                  <Image
-                    src="/landing/preview-dashboard.png"
-                    alt="Dashboard overview showing market overview, margin health, and next actions"
-                    fill
-                    className="object-contain"
-                    priority
-                  />
-                </div>
-                <p className="text-center text-sm text-slate-400">
-                  Market overview, margin health, and next actions
-                </p>
+            
+            {/* Preview container with arrows */}
+            <div className="relative group">
+              {/* Left Arrow */}
+              <button
+                onClick={goToPrevious}
+                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-12 md:-translate-x-16 z-10 
+                         w-10 h-10 md:w-12 md:h-12 rounded-full 
+                         bg-black/60 backdrop-blur-md border border-white/20
+                         flex items-center justify-center
+                         text-white hover:text-blue-400
+                         opacity-0 group-hover:opacity-100 transition-all duration-200
+                         hover:bg-black/80 hover:border-white/30 hover:scale-110
+                         shadow-xl"
+                aria-label="Previous preview"
+              >
+                <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
+              </button>
+
+              {/* Right Arrow */}
+              <button
+                onClick={goToNext}
+                className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-12 md:translate-x-16 z-10
+                         w-10 h-10 md:w-12 md:h-12 rounded-full
+                         bg-black/60 backdrop-blur-md border border-white/20
+                         flex items-center justify-center
+                         text-white hover:text-blue-400
+                         opacity-0 group-hover:opacity-100 transition-all duration-200
+                         hover:bg-black/80 hover:border-white/30 hover:scale-110
+                         shadow-xl"
+                aria-label="Next preview"
+              >
+                <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
+              </button>
+
+              {/* Preview Content */}
+              <div className="transition-opacity duration-300">
+                {previews.map((preview, index) => (
+                  <TabsContent key={preview.id} value={preview.id}>
+                    <div className="space-y-4">
+                      <div 
+                        onClick={() => handleImageClick(preview.image)}
+                        className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)] cursor-zoom-in transition-transform hover:scale-[1.02]"
+                      >
+                        <Image
+                          src={preview.image}
+                          alt={preview.alt}
+                          fill
+                          className="object-contain transition-opacity duration-300"
+                          priority={index === 0}
+                        />
+                      </div>
+                      <p className="text-center text-sm text-slate-400">
+                        {preview.caption}
+                      </p>
+                    </div>
+                  </TabsContent>
+                ))}
               </div>
-            </TabsContent>
-            <TabsContent value="products">
-              <div className="space-y-4">
-                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
-                  <Image
-                    src="/landing/preview-products.png"
-                    alt="Products table showing full catalog with price, cost, margin, inventory"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
-                <p className="text-center text-sm text-slate-400">
-                  Full catalog with price, cost, margin, inventory
-                </p>
-              </div>
-            </TabsContent>
-            <TabsContent value="recommendations">
-              <div className="space-y-4">
-                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#111726] shadow-[0_0_40px_rgba(0,0,0,0.45)]">
-                  <Image
-                    src="/landing/preview-recommendations.png"
-                    alt="Recommendations showing safe suggestions and bulk apply workflow"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
-                <p className="text-center text-sm text-slate-400">
-                  Safe suggestions and bulk apply workflow
-                </p>
-              </div>
-            </TabsContent>
+            </div>
           </Tabs>
         </div>
       </section>
@@ -445,7 +542,7 @@ export default function LandingPage() {
                   )}
                 >
                   <Link href={(plan as any).comingSoon ? "#" : "/register"}>
-                    {(plan as any).comingSoon ? "Coming Soon" : "Start free trial"}
+                    {(plan as any).comingSoon ? "Coming Soon" : "Get started"}
                   </Link>
                 </Button>
               </CardContent>
@@ -539,7 +636,7 @@ export default function LandingPage() {
                   className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium px-8 py-3 rounded-full shadow-md shadow-blue-600/20 inline-flex items-center gap-2 transition"
                 >
                   <Link href="/register">
-                    Start free trial
+                    Get started
                     <span>→</span>
                   </Link>
                 </Button>
@@ -551,6 +648,44 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Image Lightbox Modal */}
+      {activeImageSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={handleCloseModal}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm transition-opacity duration-200" />
+          
+          {/* Modal Content */}
+          <div
+            className="relative z-10 max-h-[90vh] max-w-[90vw] transition-all duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={handleCloseModal}
+              className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors p-2 rounded-full hover:bg-white/10 z-20"
+              aria-label="Close preview"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            
+            {/* Image */}
+            <div className="relative rounded-lg overflow-hidden shadow-2xl border border-white/10 bg-[#111726]">
+              <Image
+                src={activeImageSrc}
+                alt="Preview screenshot"
+                width={1200}
+                height={800}
+                className="max-h-[90vh] max-w-[90vw] object-contain"
+                priority
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

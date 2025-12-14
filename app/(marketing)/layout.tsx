@@ -54,7 +54,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               size="sm"
               className="text-sm rounded-full bg-blue-500 px-5 font-medium text-white hover:bg-blue-600"
             >
-              <Link href="/register">Start free trial</Link>
+              <Link href="/register">Get started</Link>
             </Button>
           </div>
 
@@ -109,7 +109,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   className="w-full text-sm rounded-full bg-blue-500 font-medium text-white hover:bg-blue-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Link href="/register">Start free trial</Link>
+                  <Link href="/register">Get started</Link>
                 </Button>
               </div>
             </nav>

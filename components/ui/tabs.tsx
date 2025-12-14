@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 interface TabsProps {
   children: React.ReactNode;
   defaultValue?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
   className?: string;
 }
 
@@ -34,8 +36,17 @@ const TabsContext = React.createContext<{
   setValue: () => {},
 });
 
-export function Tabs({ children, defaultValue = "", className }: TabsProps) {
-  const [value, setValue] = React.useState(defaultValue);
+export function Tabs({ children, defaultValue = "", value: controlledValue, onValueChange, className }: TabsProps) {
+  const [internalValue, setInternalValue] = React.useState(defaultValue);
+  const isControlled = controlledValue !== undefined;
+  const value = isControlled ? controlledValue : internalValue;
+  
+  const setValue = React.useCallback((newValue: string) => {
+    if (!isControlled) {
+      setInternalValue(newValue);
+    }
+    onValueChange?.(newValue);
+  }, [isControlled, onValueChange]);
 
   return (
     <TabsContext.Provider value={{ value, setValue }}>
