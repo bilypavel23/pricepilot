@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
 import { createActivityEvent } from "@/lib/activity-events/createActivityEvent";
+import { enforceProductLimit } from "@/lib/enforcement/productLimits";
 
 export async function POST() {
   const supabase = await createClient();
@@ -15,6 +16,15 @@ export async function POST() {
   if (userError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Get user plan
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
+
+  const plan = profile?.plan;
 
   const store = await getOrCreateStore();
 
@@ -124,7 +134,7 @@ export async function POST() {
     }
 
     // 4) Transform products for upsert into DB (price + inventory + cost)
-    const productsToUpsert = productsData.products.map((p: any) => {
+    const allProducts = productsData.products.map((p: any) => {
       const variant = p.variants?.[0];
 
       const price =
@@ -161,7 +171,24 @@ export async function POST() {
       };
     });
 
-    // 5) Upsert by (store_id, external_id)
+    // 5) Enforce product limit - partial imports allowed
+    const limitEnforcement = await enforceProductLimit(store.id, plan, allProducts.length);
+
+    if (limitEnforcement.allowedCount === 0) {
+      return NextResponse.json(
+        {
+          error: limitEnforcement.message,
+          currentCount: limitEnforcement.currentCount,
+          limit: limitEnforcement.limit,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Take only the allowed number of products
+    const productsToUpsert = allProducts.slice(0, limitEnforcement.allowedCount);
+
+    // 6) Upsert by (store_id, external_id)
     const { error: upsertError } = await supabase
       .from("products")
       .upsert(productsToUpsert, {
@@ -184,14 +211,25 @@ export async function POST() {
       `Product sync completed: ${productsToUpsert.length} products`,
       {
         count: productsToUpsert.length,
+        truncated: limitEnforcement.truncated,
       }
     );
 
-    return NextResponse.json({
+    const response: any = {
       success: true,
       imported: productsToUpsert.length,
       withCost: Array.from(inventoryCostMap.keys()).length,
-    });
+    };
+
+    // Add warning if import was truncated
+    if (limitEnforcement.truncated) {
+      response.warning = limitEnforcement.message;
+      response.truncated = true;
+      response.requested = allProducts.length;
+      response.limit = limitEnforcement.limit;
+    }
+
+    return NextResponse.json(response);
   } catch (e: any) {
     return NextResponse.json(
       {

@@ -149,7 +149,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 100 products</span>
+                          <span>Up to 50 products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -189,7 +189,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 250 products</span>
+                          <span>Up to 200 products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -197,7 +197,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Sync frequency: 4× per day</span>
+                          <span>Sync frequency: 2× per day</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -229,7 +229,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 500 products</span>
+                          <span>Up to 400+ products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -237,7 +237,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Sync frequency: 6× per day / near real-time</span>
+                          <span>Sync frequency: 4× per day</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -307,9 +307,9 @@ export default function PricingPage() {
             <TableBody>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Products limit</TableCell>
-                <TableCell className="text-center">100</TableCell>
-                <TableCell className="text-center">250</TableCell>
-                <TableCell className="text-center">500</TableCell>
+                <TableCell className="text-center">50</TableCell>
+                <TableCell className="text-center">200</TableCell>
+                <TableCell className="text-center">400+</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitors per product</TableCell>
@@ -320,10 +320,8 @@ export default function PricingPage() {
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Sync frequency</TableCell>
                 <TableCell className="text-center">1×/day</TableCell>
+                <TableCell className="text-center">2×/day</TableCell>
                 <TableCell className="text-center">4×/day</TableCell>
-                <TableCell className="text-center">
-                  <span className="whitespace-nowrap">6×/day / near real-time</span>
-                </TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Shopify & CSV import</TableCell>

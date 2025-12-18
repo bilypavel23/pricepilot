@@ -200,56 +200,43 @@ export function ProductDetailClient({
 
     setIsAddingCompetitor(true);
 
+    // Build request payload
+    const payload = { competitorUrl: competitorUrl.trim() };
+    console.log("[add-competitor] Sending payload:", payload);
+
     try {
       const res = await fetch(`/api/products/${product.id}/competitors/add-by-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: competitorUrl.trim() }),
+        body: JSON.stringify(payload),
       });
 
-      // Read response as text first, then attempt JSON.parse
-      const responseText = await res.text();
-      let data: any = {};
-      let isJson = false;
-
-      // Try to parse as JSON
-      if (responseText) {
+      // Read response - try JSON first, fallback to text
+      let data: any = null;
+      let text = "";
+      
+      try {
+        data = await res.json();
+      } catch {
+        // Response is not JSON, try text
         try {
-          data = JSON.parse(responseText);
-          isJson = true;
-        } catch (jsonError) {
-          // Response is not JSON
-          console.error("Failed to parse JSON response:", jsonError);
-          console.error("Raw response:", responseText);
-          console.error("Response status:", res.status);
-          
-          // Show raw response as error message
-          const errorMessage = responseText || `Server error (${res.status}). Please try again.`;
-          setCompetitorError(errorMessage);
-          setToasts([
-            ...toasts,
-            {
-              id: Date.now().toString(),
-              message: errorMessage,
-              type: "error",
-            },
-          ]);
-          return;
+          text = await res.text();
+        } catch {
+          text = "";
         }
       }
 
       if (!res.ok) {
-        console.error("API error:", res.status, "Response data:", data);
-        // Extract error message from JSON response
-        const errorMessage = data?.error || data?.message || `Server error (${res.status}). Please try again.`;
-        setCompetitorError(errorMessage);
+        // Extract error message with fallbacks
+        const msg = data?.error || data?.message || text || `Server error (${res.status})`;
+        console.error("[add-competitor] API error:", res.status, { data, text, payload });
         
-        // Show error toast
+        setCompetitorError(msg);
         setToasts([
           ...toasts,
           {
             id: Date.now().toString(),
-            message: errorMessage,
+            message: msg,
             type: "error",
           },
         ]);
@@ -257,24 +244,28 @@ export function ProductDetailClient({
       }
 
       // Success
+      console.log("[add-competitor] Success:", data);
       setIsAddCompetitorDialogOpen(false);
       setCompetitorUrl("");
       setCompetitorError(null);
       
-      // Show toast
+      // Show toast - check for warning
+      const hasWarning = data?.warning;
       setToasts([
         ...toasts,
         {
           id: Date.now().toString(),
-          message: "Competitor product added.",
-          type: "success",
+          message: hasWarning 
+            ? data.warning 
+            : "Competitor product added.",
+          type: hasWarning ? "warning" : "success",
         },
       ]);
 
       // Refresh the page data
       router.refresh();
     } catch (err: any) {
-      console.error("Error adding competitor:", err);
+      console.error("[add-competitor] Network/fetch error:", err, { payload });
       const errorMessage = err.message || "An unexpected error occurred";
       setCompetitorError(errorMessage);
       

@@ -448,7 +448,7 @@ export default function LandingPage() {
               description: "Perfect for small stores",
               features: [
                 "Shopify & CSV import",
-                "Up to 100 products",
+                "Up to 50 products",
                 "2 competitors per product",
                 "Sync frequency: 1× per day",
                 "Alerts: Basic (price changes only)",
@@ -465,9 +465,9 @@ export default function LandingPage() {
               description: "For growing businesses",
               features: [
                 "Shopify & CSV import",
-                "Up to 250 products",
+                "Up to 200 products",
                 "5 competitors per product",
-                "Sync frequency: 4× per day",
+                "Sync frequency: 2× per day",
                 "Alerts: Priority (price + stock changes)",
                 "Bulk Apply (update many products at once)",
                 "Automatic pricing rules",
@@ -483,9 +483,9 @@ export default function LandingPage() {
               description: "For large operations",
               features: [
                 "Shopify & CSV import",
-                "Up to 500 products",
+                "Up to 400+ products",
                 "10 competitors per product",
-                "Sync frequency: 6× per day / near real-time",
+                "Sync frequency: 4× per day",
                 "Alerts: Fast / Premium",
                 "Advanced automation priority",
                 "Team access & API access",
@@ -550,7 +550,7 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="text-center text-sm text-slate-500 mt-8">
-          Need more than 500 products?{" "}
+          Need more than 400 products?{" "}
           <Link href="#" className="text-blue-400 hover:text-blue-300">
             Contact us for a custom plan.
           </Link>

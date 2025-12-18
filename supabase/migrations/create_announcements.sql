@@ -100,3 +100,4 @@ create policy "announcement_reads_delete_owner"
   using (user_id = auth.uid());
 
 
+

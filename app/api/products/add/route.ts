@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getOrCreateStore } from "@/lib/store";
+import { checkProductLimit, getUserPlan } from "@/lib/enforcement/productLimits";
 
 export async function POST(req: Request) {
   try {
@@ -36,7 +37,8 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .single();
 
-    const isDemo = profile?.plan === "free_demo";
+    const plan = profile?.plan;
+    const isDemo = plan === "free_demo";
 
     if (isDemo) {
       return NextResponse.json(
@@ -47,6 +49,19 @@ export async function POST(req: Request) {
 
     // Get or create store for the user
     const store = await getOrCreateStore();
+
+    // Check product limit BEFORE adding
+    const limitCheck = await checkProductLimit(store.id, plan, 1);
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: limitCheck.error,
+          currentCount: limitCheck.currentCount,
+          limit: limitCheck.limit,
+        },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const name = (body.name ?? "").trim();
@@ -69,23 +84,23 @@ export async function POST(req: Request) {
         ? Number(body.inventory)
         : null;
 
+    const insertData = {
+      store_id: store.id,
+      name,
+      sku,
+      price: Number(price),
+      cost,
+      inventory,
+      currency: "USD",
+      is_demo: false,
+    };
+
     const { error } = await supabase
       .from("products")
-      .insert({
-        store_id: store.id,  // DŮLEŽITÉ
-        name,
-        sku,
-        price: Number(price),
-        cost,
-        inventory,
-        currency: "USD",
-        is_demo: false,
-      });
+      .insert(insertData);
 
     if (error) {
       console.error("Supabase insert error:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
-      console.error("Insert data:", JSON.stringify(insertData, null, 2));
       return NextResponse.json(
         { 
           error: "Failed to add product.", 
@@ -106,5 +121,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-

@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { findBestMatches } from "@/lib/competitors/matching";
 import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
 import { isAmazonUrl } from "@/lib/competitors/validation";
+import { getHoursBetweenSyncs, getSyncsPerDay } from "@/lib/plans";
+import { checkSyncLimit, recordSyncRun } from "@/lib/enforcement/syncLimits";
 
 interface Params {
   params: Promise<{ competitorId: string }>;
@@ -23,7 +25,7 @@ export async function POST(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2) Najdi competitor store + jeho store_id (můj shop)
+    // 2) Find competitor store + its store_id
     const { data: competitor, error: compError } = await supabase
       .from("competitors")
       .select("id, store_id, url, last_sync_at")
@@ -47,17 +49,33 @@ export async function POST(_req: Request, { params }: Params) {
       );
     }
 
-    // 3) Zjisti plán a frekvenci (Starter 1×, Pro 4× denně)
-    // Pro jednoduchost jen limit v hodinách:
+    // 3) Get plan and enforce sync limits
     const { data: profile } = await supabase
       .from("profiles")
       .select("plan")
       .eq("id", user.id)
       .single();
 
-    const plan = profile?.plan ?? "STARTER";
-    const hoursBetweenSync =
-      plan === "PRO" ? 6 : 24; // PRO ~ 4x / STARTER ~ 1x
+    const plan = profile?.plan;
+
+    // Check daily sync limit
+    const syncLimitCheck = await checkSyncLimit(storeId, plan);
+    if (!syncLimitCheck.allowed) {
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: true,
+          reason: syncLimitCheck.reason || "Sync limit reached for today.",
+          todayCount: syncLimitCheck.todayCount,
+          limit: syncLimitCheck.limit,
+          nextAllowedAt: syncLimitCheck.nextAllowedAt?.toISOString(),
+        },
+        { status: 200 }
+      );
+    }
+
+    // Check cooldown between syncs
+    const hoursBetweenSync = getHoursBetweenSyncs(plan);
 
     if (competitor.last_sync_at) {
       const last = new Date(competitor.last_sync_at);
@@ -69,14 +87,15 @@ export async function POST(_req: Request, { params }: Params) {
           {
             ok: true,
             skipped: true,
-            reason: "Sync already run recently for this plan.",
+            reason: `Sync already run recently. Next sync available at ${nextAllowed.toISOString()}`,
+            nextAllowedAt: nextAllowed.toISOString(),
           },
           { status: 200 }
         );
       }
     }
 
-    // 4) Načti moje produkty pro tento store
+    // 4) Load my products for this store
     const { data: myProducts, error: myErr } = await supabase
       .from("products")
       .select("id, name, sku")
@@ -91,19 +110,18 @@ export async function POST(_req: Request, { params }: Params) {
       );
     }
 
-    // 5) Scrap konkurenta
+    // 5) Scrape competitor
     const competitorUrl = competitor.url as string;
     const scraped = await scrapeCompetitorProducts(competitorUrl);
 
     // 6) Upsert competitor_products
-    //  - můžeš použí t external_id jako unique klíč, tady použijeme (competitor_id, name, sku)
     const upsertPayload = (scraped ?? []).map((p) => ({
       competitor_id: competitorId,
       external_id: p.external_id ?? null,
       name: p.name,
-      sku: null, // momentálně neřešíme
+      sku: null,
       price: p.price ?? null,
-      currency: "USD", // nebo nech default v DB
+      currency: "USD",
       url: p.url ?? null,
       raw: p.raw ?? null,
     }));
@@ -124,7 +142,7 @@ export async function POST(_req: Request, { params }: Params) {
       );
     }
 
-    // 7) Najdi best matches
+    // 7) Find best matches
     const matches = findBestMatches(
       (myProducts ?? []).map((p) => ({
         id: p.id as string,
@@ -139,7 +157,7 @@ export async function POST(_req: Request, { params }: Params) {
       60 // minScore
     );
 
-    // 8) Ulož do product_matches (pending / auto_confirmed)
+    // 8) Save to product_matches (pending / auto_confirmed)
     const now = new Date().toISOString();
     const rows = matches.map((m) => ({
       store_id: storeId,
@@ -160,7 +178,6 @@ export async function POST(_req: Request, { params }: Params) {
 
       if (pmErr) {
         console.error("product_matches upsert error:", pmErr);
-        // není fatální, ale vrátíme error
         return NextResponse.json(
           { error: "Failed to save matches" },
           { status: 500 }
@@ -174,12 +191,16 @@ export async function POST(_req: Request, { params }: Params) {
       .update({ last_sync_at: now })
       .eq("id", competitorId);
 
+    // 10) Record sync run for daily limit tracking
+    await recordSyncRun(storeId);
+
     return NextResponse.json(
       {
         ok: true,
         matched: rows.length,
         autoConfirmed: rows.filter((r) => r.status === "auto_confirmed")
           .length,
+        syncsRemaining: syncLimitCheck.remaining - 1,
       },
       { status: 200 }
     );
@@ -191,4 +212,3 @@ export async function POST(_req: Request, { params }: Params) {
     );
   }
 }
-

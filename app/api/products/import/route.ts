@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { getOrCreateStore } from "@/lib/store";
+import { enforceProductLimit } from "@/lib/enforcement/productLimits";
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +34,8 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .single();
 
-    const isDemo = profile?.plan === "free_demo";
+    const plan = profile?.plan;
+    const isDemo = plan === "free_demo";
 
     if (isDemo) {
       return NextResponse.json(
@@ -40,6 +43,9 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+
+    // Get or create store
+    const store = await getOrCreateStore();
 
     const body = await req.json();
     const products = body.products;
@@ -52,25 +58,42 @@ export async function POST(req: Request) {
     }
 
     // Validate required fields and prepare for insert
-    const productsToInsert = products
+    const validProducts = products
       .map((p: any) => ({
         name: p.name?.trim() || null,
         sku: p.sku?.trim() || null,
         price: p.price != null && !isNaN(Number(p.price)) ? Number(p.price) : null,
         cost: p.cost != null && !isNaN(Number(p.cost)) ? Number(p.cost) : null,
         inventory: p.inventory != null && !isNaN(Number(p.inventory)) ? Number(p.inventory) : null,
-        user_id: user.id,
+        store_id: store.id,
         is_demo: false,
         source: "csv",
       }))
       .filter((p: any) => p.name && p.sku && p.price !== null);
 
-    if (productsToInsert.length === 0) {
+    if (validProducts.length === 0) {
       return NextResponse.json(
         { error: "No valid products to import (missing required fields)" },
         { status: 400 }
       );
     }
+
+    // Enforce product limit - partial imports allowed
+    const limitEnforcement = await enforceProductLimit(store.id, plan, validProducts.length);
+
+    if (limitEnforcement.allowedCount === 0) {
+      return NextResponse.json(
+        { 
+          error: limitEnforcement.message,
+          currentCount: limitEnforcement.currentCount,
+          limit: limitEnforcement.limit,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Take only the allowed number of products
+    const productsToInsert = validProducts.slice(0, limitEnforcement.allowedCount);
 
     // Insert into Supabase
     const { error } = await supabase
@@ -85,10 +108,20 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ 
+    const response: any = { 
       success: true, 
-      imported: productsToInsert.length 
-    });
+      imported: productsToInsert.length,
+    };
+
+    // Add warning if import was truncated
+    if (limitEnforcement.truncated) {
+      response.warning = limitEnforcement.message;
+      response.truncated = true;
+      response.requested = validProducts.length;
+      response.limit = limitEnforcement.limit;
+    }
+
+    return NextResponse.json(response);
   } catch (err) {
     console.error(err);
     return NextResponse.json(
@@ -97,6 +130,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
-

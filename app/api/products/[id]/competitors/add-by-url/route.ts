@@ -4,7 +4,10 @@ import { getOrCreateStore } from "@/lib/store";
 import { scrapeProductPage } from "@/lib/competitors/scrapeProductPage";
 
 // Helper to ensure JSON response with proper headers
-function jsonResponse(data: any, status: number = 200) {
+function jsonResponse(
+  data: { error: string; code?: string; details?: Record<string, any>; received?: string } | { ok: boolean; warning?: string },
+  status: number = 200
+) {
   return NextResponse.json(data, {
     status,
     headers: {
@@ -13,11 +16,24 @@ function jsonResponse(data: any, status: number = 200) {
   });
 }
 
+// Redact sensitive fields for logging
+function redactBody(body: any): any {
+  if (!body) return body;
+  const redacted = { ...body };
+  const sensitiveKeys = ['password', 'token', 'secret', 'key', 'authorization'];
+  for (const key of Object.keys(redacted)) {
+    if (sensitiveKeys.some(s => key.toLowerCase().includes(s))) {
+      redacted[key] = '[REDACTED]';
+    }
+  }
+  return redacted;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  console.log("[API] Add competitor by URL - Request received");
+  console.log("[add-competitor-url] Request received");
   
   // Wrap entire handler in try/catch to ensure we always return JSON
   try {
@@ -25,28 +41,34 @@ export async function POST(
     try {
       const resolvedParams = await params;
       productId = resolvedParams.id;
-      console.log("[API] Product ID from params:", productId);
+      console.log("[add-competitor-url] Product ID from params:", productId);
       
       if (!productId) {
-        console.error("[API] Missing productId in route params");
-        return jsonResponse({ error: "Product ID is required" }, 400);
+        console.error("[add-competitor-url] validation failed: Missing productId in route params");
+        return jsonResponse({ 
+          error: "Product ID missing.", 
+          code: "VALIDATION_ERROR",
+          details: { field: "productId" }
+        }, 400);
       }
     } catch (paramsError: any) {
-      console.error("[API] Error parsing route params:", paramsError);
+      console.error("[add-competitor-url] Error parsing route params:", paramsError);
       return jsonResponse({ 
-        error: paramsError?.message || "Invalid route parameters" 
+        error: paramsError?.message || "Invalid route parameters",
+        code: "VALIDATION_ERROR"
       }, 400);
     }
     
-    console.log("[API] Add competitor by URL - Starting, productId:", productId);
+    console.log("[add-competitor-url] Starting, productId:", productId);
     
     let supabase;
     try {
       supabase = await createClient();
     } catch (supabaseError: any) {
-      console.error("[API] Error creating Supabase client:", supabaseError);
+      console.error("[add-competitor-url] Error creating Supabase client:", supabaseError);
       return jsonResponse({ 
-        error: supabaseError?.message || "Failed to initialize database connection" 
+        error: supabaseError?.message || "Failed to initialize database connection",
+        code: "SERVER_ERROR"
       }, 500);
     }
 
@@ -57,69 +79,107 @@ export async function POST(
       user = authResult.data.user;
       userError = authResult.error;
     } catch (authErr: any) {
-      console.error("[API] Exception during auth check:", authErr);
+      console.error("[add-competitor-url] Exception during auth check:", authErr);
       return jsonResponse({ 
-        error: authErr?.message || "Authentication failed" 
+        error: authErr?.message || "Authentication failed",
+        code: "AUTH_ERROR"
       }, 401);
     }
 
     if (userError) {
-      console.error("[API] Supabase auth error:", userError);
+      console.error("[add-competitor-url] Supabase auth error:", userError);
       return jsonResponse({ 
-        error: userError.message || "Unauthorized" 
+        error: userError.message || "Unauthorized",
+        code: "AUTH_ERROR"
       }, 401);
     }
 
     if (!user) {
-      console.error("[API] No user found in session");
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      console.error("[add-competitor-url] No user found in session");
+      return jsonResponse({ error: "Unauthorized", code: "AUTH_ERROR" }, 401);
+    }
+
+    // Check Content-Type header
+    const contentType = req.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      console.error("[add-competitor-url] Invalid Content-Type:", contentType);
+      return jsonResponse({ 
+        error: "Invalid request body. Expected JSON.",
+        code: "BAD_REQUEST_BODY"
+      }, 400);
     }
 
     // Parse request body with error handling
     let body: any;
     try {
       body = await req.json();
+      console.log("[add-competitor-url] Received body:", redactBody(body));
     } catch (parseError: any) {
-      console.error("Error parsing request body:", parseError);
-      return jsonResponse({ error: "Invalid request body. Expected JSON." }, 400);
+      console.error("[add-competitor-url] body parse error:", parseError);
+      return jsonResponse({ 
+        error: "Invalid request body. Expected JSON.",
+        code: "BAD_REQUEST_BODY"
+      }, 400);
     }
 
-    const { url } = body as { url: string };
+    // Accept both competitorUrl and legacy url for backward compatibility
+    const competitorUrl = body.competitorUrl ?? body.url;
 
-    if (!url || typeof url !== "string") {
-      console.error("Missing or invalid URL in request body:", body);
-      return jsonResponse({ error: "URL is required and must be a string" }, 400);
+    if (!competitorUrl || typeof competitorUrl !== "string" || !competitorUrl.trim()) {
+      console.error("[add-competitor-url] validation failed: Missing competitorUrl", { body: redactBody(body) });
+      return jsonResponse({ 
+        error: "competitorUrl is required",
+        code: "VALIDATION_ERROR",
+        details: { field: "competitorUrl" }
+      }, 400);
     }
 
-    // Validate URL
+    // Validate URL format
     let parsedUrl: URL;
     try {
-      parsedUrl = new URL(url);
+      parsedUrl = new URL(competitorUrl.trim());
+      if (!parsedUrl.protocol.startsWith("http")) {
+        throw new Error("Invalid protocol");
+      }
     } catch {
-      return jsonResponse({ error: "Invalid URL format" }, 400);
+      console.error("[add-competitor-url] validation failed: Invalid URL format", { competitorUrl });
+      return jsonResponse({ 
+        error: "Invalid URL, include https://",
+        code: "VALIDATION_ERROR",
+        received: competitorUrl
+      }, 400);
     }
 
     // Block Amazon URLs
     if (parsedUrl.hostname.toLowerCase().includes("amazon.")) {
-      return jsonResponse({ error: "Amazon URLs are not supported." }, 400);
+      console.error("[add-competitor-url] validation failed: Amazon URL blocked", { competitorUrl });
+      return jsonResponse({ 
+        error: "Amazon URLs are not supported.",
+        code: "VALIDATION_ERROR",
+        details: { field: "competitorUrl", reason: "amazon_blocked" }
+      }, 400);
     }
 
     let store;
     try {
       store = await getOrCreateStore();
       if (!store || !store.id) {
-        console.error("Failed to get or create store");
-        return jsonResponse({ error: "Failed to get or create store" }, 500);
+        console.error("[add-competitor-url] validation failed: Store ID missing");
+        return jsonResponse({ 
+          error: "Store ID missing.",
+          code: "VALIDATION_ERROR",
+          details: { field: "storeId" }
+        }, 400);
       }
     } catch (storeError: any) {
-      console.error("Error getting or creating store:", storeError);
-      return jsonResponse(
-        { error: storeError?.message || "Failed to get or create store" },
-        500
-      );
+      console.error("[add-competitor-url] Error getting or creating store:", storeError);
+      return jsonResponse({
+        error: storeError?.message || "Failed to get or create store",
+        code: "SERVER_ERROR"
+      }, 500);
     }
     
-    console.log("Add competitor by URL - storeId:", store.id, "productId:", productId);
+    console.log("[add-competitor-url] storeId:", store.id, "productId:", productId);
 
     // Load product and verify it belongs to user's store
     let product, productError;
@@ -134,23 +194,27 @@ export async function POST(
       product = productResult.data;
       productError = productResult.error;
     } catch (productErr: any) {
-      console.error("[API] Exception loading product:", productErr);
+      console.error("[add-competitor-url] Exception loading product:", productErr);
       return jsonResponse({ 
-        error: productErr?.message || "Failed to load product" 
-      }, 400);
+        error: productErr?.message || "Failed to load product",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     if (productError) {
-      console.error("[API] Supabase error loading product:", productError);
-      return jsonResponse(
-        { error: productError.message || "Product not found" },
-        400
-      );
+      console.error("[add-competitor-url] Supabase error loading product:", productError);
+      return jsonResponse({
+        error: productError.message || "Product not found",
+        code: "NOT_FOUND"
+      }, 404);
     }
 
     if (!product) {
-      console.error("[API] Product not found for productId:", productId, "storeId:", store.id);
-      return jsonResponse({ error: "Product not found" }, 404);
+      console.error("[add-competitor-url] Product not found for productId:", productId, "storeId:", store.id);
+      return jsonResponse({ 
+        error: "Product not found",
+        code: "NOT_FOUND"
+      }, 404);
     }
 
     // Extract hostname from URL
@@ -175,18 +239,19 @@ export async function POST(
       existingCompetitors = findResult.data;
       findCompetitorError = findResult.error;
     } catch (findErr: any) {
-      console.error("[API] Exception finding competitor:", findErr);
+      console.error("[add-competitor-url] Exception finding competitor:", findErr);
       return jsonResponse({ 
-        error: findErr?.message || "Failed to check for existing competitor" 
-      }, 400);
+        error: findErr?.message || "Failed to check for existing competitor",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     if (findCompetitorError) {
-      console.error("[API] Supabase error finding competitor:", findCompetitorError);
-      return jsonResponse(
-        { error: findCompetitorError.message || "Failed to check for existing competitor" },
-        400
-      );
+      console.error("[add-competitor-url] Supabase error finding competitor:", findCompetitorError);
+      return jsonResponse({
+        error: findCompetitorError.message || "Failed to check for existing competitor",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     if (existingCompetitors) {
@@ -214,23 +279,27 @@ export async function POST(
         newCompetitor = insertResult.data;
         competitorError = insertResult.error;
       } catch (insertErr: any) {
-        console.error("[API] Exception creating competitor:", insertErr);
+        console.error("[add-competitor-url] Exception creating competitor:", insertErr);
         return jsonResponse({ 
-          error: insertErr?.message || "Failed to create competitor store" 
-        }, 400);
+          error: insertErr?.message || "Failed to create competitor store",
+          code: "SERVER_ERROR"
+        }, 500);
       }
 
       if (competitorError) {
-        console.error("[API] Supabase error creating competitor:", competitorError);
-        return jsonResponse(
-          { error: competitorError.message || "Failed to create competitor store" },
-          400
-        );
+        console.error("[add-competitor-url] Supabase error creating competitor:", competitorError);
+        return jsonResponse({
+          error: competitorError.message || "Failed to create competitor store",
+          code: "SERVER_ERROR"
+        }, 500);
       }
 
       if (!newCompetitor) {
-        console.error("[API] Competitor insert returned no data");
-        return jsonResponse({ error: "Failed to create competitor store" }, 500);
+        console.error("[add-competitor-url] Competitor insert returned no data");
+        return jsonResponse({ 
+          error: "Failed to create competitor store",
+          code: "SERVER_ERROR"
+        }, 500);
       }
 
       competitorId = newCompetitor.id;
@@ -239,29 +308,34 @@ export async function POST(
     // Scrape product page
     let scrapedData;
     try {
-      scrapedData = await scrapeProductPage(url);
+      scrapedData = await scrapeProductPage(competitorUrl.trim());
     } catch (error: any) {
-      console.error("Scraping error:", error);
-      return jsonResponse(
-        {
-          error:
-            "Could not fetch product data from this URL. Please check the link.",
-        },
-        400
-      );
+      console.error("[add-competitor-url] Scraping error:", error);
+      
+      // Handle BOT_BLOCKED specifically
+      if (error.message === "BOT_BLOCKED") {
+        return jsonResponse({
+          error: "This store blocks automated access for this URL. Try another URL or we'll retry later.",
+          code: "BOT_BLOCKED"
+        }, 422);
+      }
+      
+      return jsonResponse({
+        error: "Could not fetch product data from this URL. Please check the link.",
+        code: "SCRAPE_ERROR",
+        details: { competitorUrl: competitorUrl.trim() }
+      }, 400);
     }
 
-    if (!scrapedData.price || scrapedData.price <= 0) {
-      return jsonResponse(
-        {
-          error:
-            "Could not extract a valid price from this URL. Please check the link.",
-        },
-        400
-      );
+    // Determine if price was found
+    const hasPrice = scrapedData.price !== null && scrapedData.price > 0;
+    const needsPrice = !hasPrice;
+    
+    if (needsPrice) {
+      console.warn("[add-competitor-url] No valid price found, will create with pending status", { competitorUrl, scrapedData });
     }
 
-    // Insert competitor product
+    // Insert competitor product (even without price)
     let competitorProduct, cpError;
     try {
       const cpResult = await supabase
@@ -269,10 +343,10 @@ export async function POST(
         .insert({
           competitor_id: competitorId,
           name: scrapedData.name,
-          price: scrapedData.price,
+          price: hasPrice ? scrapedData.price : null,
           currency: scrapedData.currency || "USD",
-          url: url,
-          raw: { sourceUrl: url },
+          url: competitorUrl.trim(),
+          raw: { sourceUrl: competitorUrl.trim(), needsPrice },
         })
         .select("id")
         .single();
@@ -280,23 +354,27 @@ export async function POST(
       competitorProduct = cpResult.data;
       cpError = cpResult.error;
     } catch (cpErr: any) {
-      console.error("[API] Exception creating competitor product:", cpErr);
+      console.error("[add-competitor-url] Exception creating competitor product:", cpErr);
       return jsonResponse({ 
-        error: cpErr?.message || "Failed to create competitor product" 
-      }, 400);
+        error: cpErr?.message || "Failed to create competitor product",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     if (cpError) {
-      console.error("[API] Supabase error creating competitor product:", cpError);
-      return jsonResponse(
-        { error: cpError.message || "Failed to create competitor product" },
-        400
-      );
+      console.error("[add-competitor-url] Supabase error creating competitor product:", cpError);
+      return jsonResponse({
+        error: cpError.message || "Failed to create competitor product",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     if (!competitorProduct) {
-      console.error("[API] Competitor product insert returned no data");
-      return jsonResponse({ error: "Failed to create competitor product" }, 500);
+      console.error("[add-competitor-url] Competitor product insert returned no data");
+      return jsonResponse({ 
+        error: "Failed to create competitor product",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     // Create product match
@@ -306,24 +384,31 @@ export async function POST(
         product_id: productId,
         competitor_product_id: competitorProduct.id,
         similarity: 100, // User explicitly added it
-        status: "confirmed",
+        status: needsPrice ? "pending" : "confirmed",
       });
 
       if (matchError) {
-        console.error("[API] Supabase error creating product match:", matchError);
+        console.error("[add-competitor-url] Supabase error creating product match:", matchError);
         // Don't fail the request if match creation fails - product was added
-        // But log it for debugging
       }
     } catch (matchErr: any) {
-      console.error("[API] Exception creating product match:", matchErr);
+      console.error("[add-competitor-url] Exception creating product match:", matchErr);
       // Don't fail the request if match creation fails - product was added
-      // But log it for debugging
     }
 
-    console.log("Add competitor by URL - Success");
+    console.log("[add-competitor-url] Success", { needsPrice });
+    
+    // Return with warning if price couldn't be detected
+    if (needsPrice) {
+      return jsonResponse({ 
+        ok: true, 
+        warning: "Price could not be detected yet. We'll retry during the next sync."
+      });
+    }
+    
     return jsonResponse({ ok: true });
   } catch (err: any) {
-    console.error("Unexpected error in add competitor by URL:", {
+    console.error("[add-competitor-url] Unexpected error:", {
       error: err,
       message: err?.message,
       stack: err?.stack,
@@ -332,7 +417,10 @@ export async function POST(
     
     // Ensure we always return a proper error response
     const errorMessage = err?.message || err?.toString() || "An unexpected error occurred";
-    return jsonResponse({ error: errorMessage }, 500);
+    return jsonResponse({ 
+      error: errorMessage,
+      code: "SERVER_ERROR"
+    }, 500);
   }
 }
 

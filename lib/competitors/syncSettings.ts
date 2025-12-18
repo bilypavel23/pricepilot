@@ -8,13 +8,17 @@ export type StoreSyncSettings = {
 
 /**
  * Default sync times based on plan.
- * PRO: 4x per day – every 6 hours starting at 06:00
+ * PRO: 2x per day – every 12 hours (06:00 and 18:00)
+ * ULTRA/SCALE: 4x per day – every 6 hours
  * STARTER/other: 1x per day – 06:00
  */
 export function getDefaultSyncTimes(plan?: string | null): string[] {
   const normalized = (plan ?? "STARTER").toUpperCase();
-  if (normalized === "PRO") {
+  if (normalized === "ULTRA" || normalized === "SCALE") {
     return ["06:00", "12:00", "18:00", "00:00"];
+  }
+  if (normalized === "PRO") {
+    return ["06:00", "18:00"];
   }
   // Starter / Free
   return ["06:00"];
