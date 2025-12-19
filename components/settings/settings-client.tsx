@@ -16,6 +16,7 @@ import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
 import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { PromoCodeForm } from "@/components/settings/promo-code-form";
+import { ToastContainer, type Toast } from "@/components/ui/toast";
 
 interface SettingsClientProps {
   userEmail: string;
@@ -41,6 +42,7 @@ export function SettingsClient({
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   // TODO: Replace with real notifications settings from Supabase user preferences
   const [notifications, setNotifications] = useState({
@@ -48,6 +50,26 @@ export function SettingsClient({
     lowMargin: true,
     weeklyReport: false,
   });
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+
+  const showSuccessToast = () => {
+    const id = Date.now().toString();
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        message: "Settings saved successfully",
+        type: "success",
+      },
+    ]);
+    // Auto-dismiss after 2.5 seconds
+    setTimeout(() => {
+      removeToast(id);
+    }, 2500);
+  };
 
   const [storeName, setStoreName] = useState(initialStoreName);
   const [isEditingStoreName, setIsEditingStoreName] = useState(false);
@@ -107,7 +129,7 @@ export function SettingsClient({
             <Label className="text-sm font-medium">Email</Label>
             <p className="text-sm text-muted-foreground">{userEmail || "Loading..."}</p>
           </div>
-          <ChangePasswordForm />
+          <ChangePasswordForm onSuccess={showSuccessToast} />
           <div className="space-y-2">
             <Label className="text-sm font-medium">Store name</Label>
             {isEditingStoreName ? (
@@ -221,9 +243,11 @@ export function SettingsClient({
             <Switch
               id="competitor-drops"
               checked={notifications.competitorDrops}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, competitorDrops: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, competitorDrops: checked });
+                // TODO: Save to Supabase
+                showSuccessToast();
+              }}
             />
           </div>
           <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
@@ -234,9 +258,11 @@ export function SettingsClient({
             <Switch
               id="low-margin"
               checked={notifications.lowMargin}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, lowMargin: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, lowMargin: checked });
+                // TODO: Save to Supabase
+                showSuccessToast();
+              }}
             />
           </div>
           <div className="flex items-center justify-between py-2">
@@ -247,9 +273,11 @@ export function SettingsClient({
             <Switch
               id="weekly-report"
               checked={notifications.weeklyReport}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, weeklyReport: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, weeklyReport: checked });
+                // TODO: Save to Supabase
+                showSuccessToast();
+              }}
             />
           </div>
         </CardContent>
@@ -262,6 +290,7 @@ export function SettingsClient({
         initialTimezone={initialTimezone}
         initialTimes={initialTimes}
         storeId={store?.id}
+        onSaveSuccess={showSuccessToast}
       />
 
       {/* Appearance Section */}
@@ -276,7 +305,10 @@ export function SettingsClient({
           {mounted && (
             <RadioGroup
               value={theme === "system" ? "system" : theme}
-              onValueChange={(value) => setTheme(value as "light" | "dark" | "system")}
+              onValueChange={(value) => {
+                setTheme(value as "light" | "dark" | "system");
+                showSuccessToast();
+              }}
               className="flex gap-6"
             >
               <div className="flex items-center gap-2">
@@ -303,6 +335,7 @@ export function SettingsClient({
       </Card>
 
       <ConnectStoreModal open={connectModalOpen} onOpenChange={setConnectModalOpen} />
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

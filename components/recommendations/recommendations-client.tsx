@@ -41,6 +41,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
   const [decreaseOffset, setDecreaseOffset] = useState<number>(0);
   const [increaseOffset, setIncreaseOffset] = useState<number>(0);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
+  const [visibleCount, setVisibleCount] = useState<number>(10);
 
   const isShopify = store.platform === "shopify" && !!store.shopify_access_token;
 
@@ -278,6 +279,9 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
                 <li>• {decreaseCount} decreases</li>
                 <li>• {neutralCount} neutral opportunities</li>
               </ul>
+              <p className="mt-3 text-xs text-blue-700 dark:text-blue-300 font-medium">
+                Start with the top recommendations below — they have the biggest impact on revenue.
+              </p>
             </>
           ) : (
             <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
@@ -362,7 +366,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
       </Card>
 
       {/* Recommendations List */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         {!hasProducts ? (
           <div className="text-center py-12 text-muted-foreground">
             <p>You don&apos;t have any products yet. Add products first to see pricing recommendations.</p>
@@ -372,17 +376,69 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
             <p>No recommendations match your current filters.</p>
           </div>
         ) : (
-          filteredRecommendations.map((rec) => (
-            <RecommendationCard
-              key={rec.productId}
-              recommendation={rec}
-              store={store}
-              plan={plan}
-              onPriceUpdated={handlePriceUpdated}
-              isSelected={selectedIds.includes(rec.productId)}
-              onToggleSelect={toggleSelect}
-            />
-          ))
+          <>
+            {/* Top Opportunities Section */}
+            {filteredRecommendations.length > 0 && (
+              <div className="space-y-4">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold tracking-tight">Top opportunities today</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Start here — these changes have the biggest estimated impact.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  {filteredRecommendations.slice(0, 5).map((rec) => (
+                    <RecommendationCard
+                      key={rec.productId}
+                      recommendation={rec}
+                      store={store}
+                      plan={plan}
+                      onPriceUpdated={handlePriceUpdated}
+                      isSelected={selectedIds.includes(rec.productId)}
+                      onToggleSelect={toggleSelect}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Remaining Recommendations */}
+            {filteredRecommendations.length > 5 && visibleCount > 5 && (
+              <div className="space-y-4">
+                {filteredRecommendations.slice(5, visibleCount).map((rec) => (
+                  <RecommendationCard
+                    key={rec.productId}
+                    recommendation={rec}
+                    store={store}
+                    plan={plan}
+                    onPriceUpdated={handlePriceUpdated}
+                    isSelected={selectedIds.includes(rec.productId)}
+                    onToggleSelect={toggleSelect}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Show More Button */}
+            {visibleCount < filteredRecommendations.length && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const scrollPosition = window.scrollY;
+                    setVisibleCount((prev) => Math.min(prev + 10, filteredRecommendations.length));
+                    // Restore scroll position after state update
+                    setTimeout(() => {
+                      window.scrollTo(0, scrollPosition);
+                    }, 0);
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Show next 10 recommendations
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

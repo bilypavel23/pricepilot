@@ -174,8 +174,11 @@ export default async function CompetitorsPage() {
 
       {/* Amazon Warning */}
       <div className="p-4 border border-yellow-400 bg-yellow-50 text-yellow-800 rounded-md text-sm mb-4 dark:bg-yellow-950/20 dark:border-yellow-600 dark:text-yellow-300">
-        <strong>Note:</strong> Amazon URLs are not supported due to strict anti-scraping protections on Amazon&apos;s platform.
-        Please add other competitor stores (Shopify, WooCommerce, Shoptet, Magento, custom shops, etc.).
+        <strong>⚠️ Note about large marketplaces</strong>
+        <p className="mt-1">
+          Tracking prices from large marketplaces (Amazon, Walmart, etc.) may be unreliable due to advanced anti-scraping protections.
+          For best results, we recommend adding competitor stores running on Shopify, WooCommerce, Shoptet, Magento, or custom storefronts.
+        </p>
       </div>
 
       {/* Global Sync Box */}

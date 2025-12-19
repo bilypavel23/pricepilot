@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createBrowserClient } from "@supabase/ssr";
 
-export function ChangePasswordForm() {
+type ChangePasswordFormProps = {
+  onSuccess?: () => void;
+};
+
+export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,6 +51,7 @@ export function ChangePasswordForm() {
       setPassword("");
       setConfirmPassword("");
       setSuccess(true);
+      onSuccess?.();
     } catch (err: any) {
       console.error("Error updating password:", err);
       setError(err.message || "An unexpected error occurred");

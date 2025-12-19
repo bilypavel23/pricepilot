@@ -115,18 +115,18 @@ export default function LandingPage() {
             Stop Guessing Your Prices.
             <br />
             <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Let AI Optimize Them.
+              Let AI Show You Where You're Leaving Money on the Table.
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-lg sm:text-xl text-gray-300 leading-relaxed mb-8">
-            PricePilot tracks competitor prices, analyzes your margins and market trends, and gives you clear, data-backed price recommendations – so you can increase profit without losing customers.
+            Track competitors, understand your margins, and apply data-backed price recommendations — without losing customers.
           </p>
           
           {/* Benefit Pill Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-8 max-w-4xl mx-auto">
             <div className="flex items-start gap-3 px-4 py-3 rounded-full border border-slate-800 bg-slate-900/50 backdrop-blur-sm w-full min-h-[52px]">
               <TrendingUp className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
-              <span className="text-xs sm:text-sm text-slate-300 leading-tight break-words line-clamp-2">Track competitor prices automatically</span>
+              <span className="text-xs sm:text-sm text-slate-300 leading-tight break-words line-clamp-2">See competitor prices without manual tracking</span>
             </div>
             <div className="flex items-start gap-3 px-4 py-3 rounded-full border border-slate-800 bg-slate-900/50 backdrop-blur-sm w-full min-h-[52px]">
               <BarChart3 className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -265,6 +265,7 @@ export default function LandingPage() {
               icon: LinkIcon,
               label: "Feed URL",
               description: "Auto-refresh your catalog from a link",
+              helper: "Ideal for suppliers & large catalogs",
             },
             {
               icon: Layers,
@@ -286,6 +287,9 @@ export default function LandingPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-white mb-2">{item.label}</h3>
                   <p className="text-sm text-slate-400">{item.description}</p>
+                  {(item as any).helper && (
+                    <p className="text-xs text-slate-500 mt-1.5">{(item as any).helper}</p>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -326,14 +330,14 @@ export default function LandingPage() {
               description: "Connect feeds or your store once and keep your product catalog in sync automatically.",
             },
             {
-              icon: Shield,
-              title: "Risk Assessment",
-              description: "See risk scores before applying changes so you can protect brand positioning and avoid underpricing.",
-            },
-            {
               icon: CheckCircle2,
               title: "Bulk Actions",
               description: "Apply safe recommendations in bulk with one click to update hundreds of products at once.",
+            },
+            {
+              icon: Shield,
+              title: "Risk Assessment",
+              description: "See risk scores before applying changes so you can protect brand positioning and avoid underpricing.",
             },
           ].map((feature, idx) => {
             const Icon = feature.icon;
@@ -415,6 +419,7 @@ export default function LandingPage() {
               step: "2",
               title: "Add competitors",
               description: "Paste competitor store URLs and let PricePilot match overlapping products automatically. Review matches once and start tracking price changes.",
+              disclaimer: "Amazon-style marketplaces may be limited due to anti-scraping protections.",
             },
             {
               step: "3",
@@ -428,6 +433,9 @@ export default function LandingPage() {
               </div>
               <h3 className="text-xl font-semibold text-white">{item.title}</h3>
               <p className="text-slate-400 leading-relaxed">{item.description}</p>
+              {(item as any).disclaimer && (
+                <p className="text-xs text-slate-500 mt-2">{(item as any).disclaimer}</p>
+              )}
             </div>
           ))}
         </div>
@@ -446,6 +454,7 @@ export default function LandingPage() {
               price: "$29",
               period: "/mo",
               description: "Perfect for small stores",
+              clarifier: "Best for testing PricePilot on a small catalog.",
               features: [
                 "Shopify & CSV import",
                 "Up to 50 products",
@@ -463,6 +472,7 @@ export default function LandingPage() {
               price: "$79",
               period: "/mo",
               description: "For growing businesses",
+              clarifier: "Most stores upgrade to Pro within 7 days.",
               features: [
                 "Shopify & CSV import",
                 "Up to 200 products",
@@ -516,8 +526,11 @@ export default function LandingPage() {
                   )}
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-1">{plan.name}</h3>
-                <p className="text-sm text-slate-400 mb-6">{plan.description}</p>
-                <div className="mb-6">
+                <p className="text-sm text-slate-400 mb-1">{plan.description}</p>
+                {(plan as any).clarifier && (
+                  <p className="text-xs text-slate-500 mb-6">{(plan as any).clarifier}</p>
+                )}
+                <div className={cn((plan as any).clarifier ? "" : "mb-6")}>
                   <span className="text-4xl font-bold text-white">{plan.price}</span>
                   <span className="text-slate-400">{plan.period}</span>
                 </div>
