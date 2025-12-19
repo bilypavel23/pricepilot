@@ -70,6 +70,21 @@ export default async function DashboardPage() {
   const productsCount = products.length;
   const competitorsCount = competitors.length;
 
+  // Count competitor URLs (product_matches) for the store
+  let competitorUrlsCount = 0;
+  if (!isDemo) {
+    const { count: urlsCount, error: urlsError } = await supabase
+      .from("product_matches")
+      .select("*", { count: "exact", head: true })
+      .eq("store_id", store.id);
+    
+    if (urlsError) {
+      console.error("Error counting competitor URLs:", urlsError);
+    } else {
+      competitorUrlsCount = urlsCount || 0;
+    }
+  }
+
   // Calculate inventory worth (sum of price * inventory, or just price if no inventory)
   // Only count active products
   const inventoryWorth = products.reduce((sum, product) => {
@@ -89,20 +104,14 @@ export default async function DashboardPage() {
     averageMargin = totalMargin / productsWithMargin.length;
   }
 
-  // Calculate competitor activity count
-  // For now: if no competitors exist, show 0. Otherwise, show 0 until real activity tracking is implemented.
-  let competitorActivityCount = 0;
-  if (competitorsCount > 0 && !isDemo) {
-    // TODO: Implement real activity tracking from competitor_products updated_at in last 7 days
-    // For now, return 0
-    competitorActivityCount = 0;
-  }
-
   // Calculate recommendations waiting (only for non-demo)
   let recommendationsWaiting = 0;
   if (!isDemo) {
     recommendationsWaiting = await getRecommendationsWaitingCount(store.id);
   }
+
+  // Competitor activity should show recommendations waiting count
+  const competitorActivityCount = recommendationsWaiting;
 
   // Calculate chart data (average price and margin from current products)
   let avgPrice = 0;
@@ -149,6 +158,7 @@ export default async function DashboardPage() {
         metrics={{
           productsCount,
           competitorsCount,
+          competitorUrlsCount,
           inventoryWorth,
           averageMargin,
           competitorActivityCount,

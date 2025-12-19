@@ -134,6 +134,7 @@ function KPICard({
 interface DashboardMetrics {
   productsCount: number;
   competitorsCount: number;
+  competitorUrlsCount: number;
   inventoryWorth: number;
   averageMargin: number;
   competitorActivityCount: number;
@@ -188,6 +189,7 @@ export function DashboardContent({
   const margin = metrics?.averageMargin ?? 0;
   const productsCount = metrics?.productsCount ?? 0;
   const competitorsCount = metrics?.competitorsCount ?? 0;
+  const competitorUrlsCount = metrics?.competitorUrlsCount ?? 0;
   const competitorActivityCount = metrics?.competitorActivityCount ?? 0;
   const recommendationsWaiting = metrics?.recommendationsWaiting ?? 0;
   return (
@@ -238,7 +240,7 @@ export function DashboardContent({
               {productsCount > 0 ? (
                 <>
                   <li>• Inventory worth: <span className="font-semibold">{formatCurrency(inventoryWorth)}</span></li>
-                  <li>• {competitorsCount} competitor{competitorsCount !== 1 ? 's' : ''} tracked</li>
+                  <li>• <span className="font-semibold">{competitorUrlsCount}</span> competitor URL{competitorUrlsCount !== 1 ? 's' : ''} tracked</li>
                   <li>• <span className="font-semibold">{recommendationsWaiting}</span> recommendation{recommendationsWaiting !== 1 ? 's' : ''} waiting</li>
                 </>
               ) : (
