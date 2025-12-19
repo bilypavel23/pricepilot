@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateStore } from "@/lib/store";
 import { scrapeProductPage } from "@/lib/competitors/scrapeProductPage";
+import { getCompetitorLimit } from "@/lib/planLimits";
 
 // Helper to ensure JSON response with proper headers
 function jsonResponse(
@@ -105,6 +106,16 @@ export async function POST(
       console.error("[add-competitor-url] No user found in session");
       return jsonResponse({ error: "Unauthorized", code: "AUTH_ERROR" }, 401);
     }
+
+    // Get user plan for per-product limit
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .single();
+    
+    const plan = profile?.plan || "STARTER";
+    const maxCompetitorsPerProduct = getCompetitorLimit(plan);
 
     // Check Content-Type header
     const contentType = req.headers.get("content-type");
@@ -242,26 +253,30 @@ export async function POST(
       }, 403);
     }
 
-    // Extract hostname from URL
-    const hostname = parsedUrl.hostname.replace(/^www\./, "");
-    const competitorBaseUrl = `${parsedUrl.protocol}//${hostname}`;
+    // Extract and normalize domain from URL
+    const hostname = parsedUrl.hostname;
+    const domain = hostname.toLowerCase().replace(/^www\./, "");
+    // Always use https:// for baseUrl to ensure consistency with unique index
+    const competitorBaseUrl = `https://${domain}`;
+    const competitorName = domain.split(".").slice(0, -1).join(".") || domain;
 
-    // Find or create competitor store
-    let competitorId: string;
+    // Find or create competitor grouped by domain (for "Added by URL")
+    // Use find-or-create pattern to avoid duplicate key errors
+    // Check by URL to match the unique index on (store_id, url)
+    let competitorId: string | undefined;
 
-    // Try to find existing competitor by URL pattern
-    // Check if URL contains the hostname or matches the base URL
-    let existingCompetitors, findCompetitorError;
+    // First, try to find existing competitor by URL
+    let existingCompetitor, findCompetitorError;
     try {
-      const findResult = await supabase
+      const findResult = await supabaseAdmin
         .from("competitors")
         .select("id")
         .eq("store_id", store.id)
-        .ilike("url", `%${hostname}%`)
+        .eq("url", competitorBaseUrl)
         .limit(1)
         .maybeSingle();
       
-      existingCompetitors = findResult.data;
+      existingCompetitor = findResult.data;
       findCompetitorError = findResult.error;
     } catch (findErr: any) {
       console.error("[add-competitor-url] Exception finding competitor:", findErr);
@@ -279,66 +294,117 @@ export async function POST(
       }, 500);
     }
 
-    if (existingCompetitors) {
-      competitorId = existingCompetitors.id;
+    if (existingCompetitor) {
+      competitorId = existingCompetitor.id;
       console.log("[add-competitor-url] Using existing competitor:", {
         id: competitorId,
-        hostname,
+        url: competitorBaseUrl,
+        domain,
       });
     } else {
-      // Create new competitor
-      const competitorName = hostname
-        .split(".")
-        .slice(0, -1)
-        .join(".")
-        .replace(/^www\./, "") || hostname;
-
-      let newCompetitor, competitorError;
+      // Create new "Added by URL" competitor (grouped by domain)
+      // This route must be idempotent - handle duplicate key gracefully
       try {
-        // Use admin client to bypass RLS for insert (ownership already verified above)
         const insertResult = await supabaseAdmin
           .from("competitors")
           .insert({
             store_id: store.id,
             name: competitorName,
             url: competitorBaseUrl,
+            domain: domain,
+            source: "product_url",
+            is_tracked: false,
           })
           .select("id")
           .single();
         
-        newCompetitor = insertResult.data;
-        competitorError = insertResult.error;
+        if (insertResult.data) {
+          competitorId = insertResult.data.id;
+          console.log("[add-competitor-url] Inserted domain-grouped competitor:", {
+            id: competitorId,
+            name: competitorName,
+            url: competitorBaseUrl,
+            domain,
+            source: "product_url",
+            is_tracked: false,
+            store_id: store.id,
+          });
+        } else if (insertResult.error) {
+          // If unique constraint violation (23505), retry find
+          if (insertResult.error.code === "23505" || insertResult.error.message?.includes("unique")) {
+            console.warn("[add-competitor-url] Duplicate key error, retrying find:", insertResult.error);
+            const retryResult = await supabaseAdmin
+              .from("competitors")
+              .select("id")
+              .eq("store_id", store.id)
+              .eq("url", competitorBaseUrl)
+              .limit(1)
+              .maybeSingle();
+            
+            if (retryResult.data) {
+              competitorId = retryResult.data.id;
+              console.log("[add-competitor-url] Found competitor after duplicate key error:", competitorId);
+            } else {
+              console.error("[add-competitor-url] Could not find competitor after duplicate key error");
+              return jsonResponse({ 
+                error: "Failed to create competitor store (duplicate key)",
+                code: "SERVER_ERROR"
+              }, 500);
+            }
+          } else {
+            console.error("[add-competitor-url] Supabase error creating competitor:", insertResult.error);
+            return jsonResponse({
+              error: insertResult.error.message || "Failed to create competitor store",
+              code: "SERVER_ERROR"
+            }, 500);
+          }
+        }
       } catch (insertErr: any) {
         console.error("[add-competitor-url] Exception creating competitor:", insertErr);
-        return jsonResponse({ 
-          error: insertErr?.message || "Failed to create competitor store",
-          code: "SERVER_ERROR"
-        }, 500);
+        // If unique constraint violation, try to find the competitor again
+        if (insertErr.code === "23505" || insertErr.message?.includes("unique")) {
+          console.warn("[add-competitor-url] Duplicate key error in catch, retrying find:", insertErr);
+          const retryResult = await supabaseAdmin
+            .from("competitors")
+            .select("id")
+            .eq("store_id", store.id)
+            .eq("url", competitorBaseUrl)
+            .limit(1)
+            .maybeSingle();
+          
+          if (retryResult.data) {
+            competitorId = retryResult.data.id;
+            console.log("[add-competitor-url] Found competitor after duplicate key error in catch:", competitorId);
+          } else {
+            console.error("[add-competitor-url] Could not find competitor after duplicate key error in catch");
+            return jsonResponse({ 
+              error: "Failed to create competitor store (duplicate key)",
+              code: "SERVER_ERROR"
+            }, 500);
+          }
+        } else {
+          return jsonResponse({ 
+            error: insertErr?.message || "Failed to create competitor store",
+            code: "SERVER_ERROR"
+          }, 500);
+        }
       }
 
-      if (competitorError) {
-        console.error("[add-competitor-url] Supabase error creating competitor:", competitorError);
-        return jsonResponse({
-          error: competitorError.message || "Failed to create competitor store",
-          code: "SERVER_ERROR"
-        }, 500);
-      }
-
-      if (!newCompetitor) {
-        console.error("[add-competitor-url] Competitor insert returned no data");
+      if (!competitorId) {
+        console.error("[add-competitor-url] Competitor insert returned no data and no retry found");
         return jsonResponse({ 
           error: "Failed to create competitor store",
           code: "SERVER_ERROR"
         }, 500);
       }
+    }
 
-      competitorId = newCompetitor.id;
-      console.log("[add-competitor-url] Inserted competitor:", {
-        id: competitorId,
-        name: competitorName,
-        url: competitorBaseUrl,
-        store_id: store.id,
-      });
+    // Ensure competitorId is set before proceeding
+    if (!competitorId) {
+      return jsonResponse({
+        error: "Failed to get or create competitor",
+        code: "SERVER_ERROR"
+      }, 500);
     }
 
     // Scrape product page
@@ -393,7 +459,8 @@ export async function POST(
       console.warn("[add-competitor-url] No valid price found, will create with pending status", { competitorUrl, scrapedData });
     }
 
-    // Check competitor limit before inserting (max 5 per product)
+    // Check per-product competitor limit (2/5/10 based on plan)
+    // Note: This is per-product limit, NOT store limit - URL competitors don't count toward store limit
     let existingMatchCount = 0;
     try {
       const { count, error: countError } = await supabaseAdmin
@@ -411,7 +478,7 @@ export async function POST(
       }
       
       existingMatchCount = count || 0;
-      console.log("[add-competitor-url] Existing competitor count:", existingMatchCount, "for product:", productId);
+      console.log("[add-competitor-url] Existing competitor count:", existingMatchCount, "for product:", productId, "plan:", plan, "limit:", maxCompetitorsPerProduct);
     } catch (countErr: any) {
       console.error("[add-competitor-url] Exception counting existing matches:", countErr);
       return jsonResponse({
@@ -420,20 +487,22 @@ export async function POST(
       }, 500);
     }
 
-    if (existingMatchCount >= 5) {
-      console.warn("[add-competitor-url] Competitor limit reached", {
+    if (existingMatchCount >= maxCompetitorsPerProduct) {
+      console.warn("[add-competitor-url] Per-product competitor limit reached", {
         productId,
         storeId: store.id,
         currentCount: existingMatchCount,
-        limit: 5
+        limit: maxCompetitorsPerProduct,
+        plan
       });
       return jsonResponse({
-        error: "Competitor limit reached (max 5).",
+        error: `Competitor limit reached for this product (max ${maxCompetitorsPerProduct}).`,
         code: "LIMIT_EXCEEDED",
         details: {
           currentCount: existingMatchCount,
-          limit: 5,
-          productId
+          limit: maxCompetitorsPerProduct,
+          productId,
+          plan
         }
       }, 400);
     }

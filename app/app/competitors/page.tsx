@@ -57,37 +57,50 @@ export default async function CompetitorsPage() {
   const plan = (profile?.plan as string) ?? "STARTER";
   const limit = getCompetitorLimit(plan);
 
-  // Load competitors for the store
-  const { data: competitors = [], error: competitorsError } = await supabase
+  // Load tracked competitors (counts toward limit)
+  const { data: trackedCompetitors = [], error: trackedError } = await supabase
     .from("competitors")
-    .select("id, name, url, created_at")
+    .select("id, name, url, created_at, source, is_tracked, domain")
     .eq("store_id", store.id)
+    .eq("is_tracked", true)
     .order("created_at", { ascending: true });
 
-  const used = competitors?.length ?? 0;
-
-  console.log("Competitors page - store.id:", store.id);
-  console.log("Competitors page - competitors count:", competitors?.length || 0);
-  console.log("Competitors page - competitors:", competitors);
-  if (competitorsError) {
-    console.error("Error loading competitors:", competitorsError);
-  }
-  
-  // Also try loading all competitors for debugging
-  const { data: allCompetitors, error: allError } = await supabase
+  // Count URL-added competitor products (URLs) - doesn't count toward limit
+  // Step 1: Get competitor IDs where is_tracked=false
+  const { data: urlCompetitors, error: urlCompetitorsError } = await supabase
     .from("competitors")
-    .select("id, name, url, store_id, created_at")
-    .order("created_at", { ascending: true });
-  
-  console.log("Competitors page - all competitors count:", allCompetitors?.length || 0);
-  console.log("Competitors page - all competitors:", allCompetitors);
-  if (allError) {
-    console.error("Error loading all competitors:", allError);
+    .select("id")
+    .eq("store_id", store.id)
+    .eq("is_tracked", false);
+
+  let urlCount = 0;
+  if (urlCompetitorsError) {
+    console.error("Error loading URL competitors:", urlCompetitorsError);
+  } else if (urlCompetitors && urlCompetitors.length > 0) {
+    // Step 2: Count competitor_products for these competitors
+    const competitorIds = urlCompetitors.map((c) => c.id);
+    const { count: urlProductsCount, error: urlProductsError } = await supabase
+      .from("competitor_products")
+      .select("*", { count: "exact", head: true })
+      .in("competitor_id", competitorIds);
+
+    if (urlProductsError) {
+      console.error("Error counting URL competitor products:", urlProductsError);
+    } else {
+      urlCount = urlProductsCount || 0;
+    }
   }
 
-  // Get match counts for each competitor
-  const competitorsWithMatches = await Promise.all(
-    competitors.map(async (competitor) => {
+  // Only count tracked competitors toward limit
+  const used = trackedCompetitors?.length ?? 0;
+
+  if (trackedError) {
+    console.error("Error loading tracked competitors:", trackedError);
+  }
+
+  // Get match counts for tracked competitors
+  const trackedWithMatches = await Promise.all(
+    trackedCompetitors.map(async (competitor) => {
       const matchCount = await getMatchCountForCompetitor(competitor.id);
       return {
         ...competitor,
@@ -96,11 +109,12 @@ export default async function CompetitorsPage() {
     })
   );
 
-  // LAST SYNC – max(last_sync_at) from competitors for this store
+  // LAST SYNC – max(last_sync_at) from tracked competitors only
   const { data: lastSyncRow } = await supabase
     .from("competitors")
     .select("last_sync_at")
     .eq("store_id", store.id)
+    .eq("is_tracked", true)
     .order("last_sync_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -110,6 +124,7 @@ export default async function CompetitorsPage() {
     : null;
 
   // SYNC SETTINGS + NEXT SYNC
+  const now = new Date();
   let settings;
   let nextSyncDate: Date | null = null;
   let nextSyncText = "not scheduled";
@@ -117,7 +132,6 @@ export default async function CompetitorsPage() {
   
   try {
     settings = await getOrCreateStoreSyncSettings(store.id, user.id);
-    const now = new Date();
     nextSyncDate = computeNextSyncDate(settings, now);
     nextSyncText = formatNextSyncDistance(nextSyncDate, now);
     nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
@@ -129,7 +143,6 @@ export default async function CompetitorsPage() {
       timezone: "Europe/Prague",
       daily_sync_times: ["06:00"],
     };
-    const now = new Date();
     nextSyncDate = computeNextSyncDate(settings, now);
     nextSyncText = formatNextSyncDistance(nextSyncDate, now);
     nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
@@ -182,7 +195,7 @@ export default async function CompetitorsPage() {
               </Link>
               <div className="mt-2 space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  Tracked stores: {competitorsWithMatches.length}
+                  Tracked stores: {trackedWithMatches.length}
                 </p>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>Last sync: {lastSyncLabel}</span>
@@ -211,20 +224,20 @@ export default async function CompetitorsPage() {
         </CardContent>
       </Card>
 
-      {/* Competitor Stores Grid */}
+      {/* Competitor Stores */}
       <Card>
         <CardHeader>
           <CardTitle>Competitor Stores</CardTitle>
           <CardDescription>Manage your tracked competitor stores and review matches.</CardDescription>
         </CardHeader>
         <CardContent>
-          {competitorsWithMatches.length === 0 ? (
+          {trackedWithMatches.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <p>No competitor stores added yet. Click "Add competitor" to get started.</p>
+              <p>No tracked competitor stores added yet. Click "Add competitor" to get started.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {competitorsWithMatches.map((competitor) => {
+              {trackedWithMatches.map((competitor) => {
                 const firstLetter = competitor.name.charAt(0).toUpperCase();
                 const lastSync = formatDate(competitor.created_at);
 
@@ -273,6 +286,37 @@ export default async function CompetitorsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Added by URL - Virtual Card */}
+      {urlCount > 0 && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 flex-1">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <Globe className="h-6 w-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-foreground">Added by URL</p>
+                  <p className="text-sm text-muted-foreground">
+                    Competitors added via product URLs (doesn&apos;t count toward store limit)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {urlCount} URL{urlCount === 1 ? "" : "s"} added
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/app/competitors/added-by-url"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Details
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
