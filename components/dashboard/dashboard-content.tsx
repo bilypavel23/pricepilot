@@ -59,13 +59,15 @@ function KPICard({
   value, 
   trend, 
   icon, 
-  sparklineData 
+  sparklineData,
+  helperText
 }: { 
   title: string; 
   value: string; 
   trend?: { value: number; label: string }; 
   icon: React.ReactNode;
   sparklineData: number[];
+  helperText?: string;
 }) {
   const hasData = value !== "No data yet" && sparklineData.length > 0;
   const isPositive = trend && trend.value > 0;
@@ -106,6 +108,9 @@ function KPICard({
               {trend.value}% {trend.label}
             </span>
           </p>
+        )}
+        {helperText && (
+          <p className="text-xs text-muted-foreground mt-1.5">{helperText}</p>
         )}
         {/* Mini sparkline */}
         {hasData && sparklineData.length > 0 ? (
@@ -218,25 +223,51 @@ export function DashboardContent({
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Welcome back! Here's what's happening with your pricing.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Pricing intelligence powered by competitor-based insights. Track market changes and optimize your prices automatically.
+        </p>
       </div>
 
-      {/* AI Market Summary */}
+      {/* AI Market Overview */}
       <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm dark:border-blue-900/40 dark:bg-blue-950/30">
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-white/70 p-2 shadow-sm dark:bg-blue-900/50">
             <Bot className="h-5 w-5 text-blue-600 dark:text-blue-300" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-              AI Market Overview
-            </p>
-            <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
-              {competitorsCount > 0 
-                ? "Add competitors to unlock recommendations and price tracking."
-                : "Connect competitors to start getting pricing recommendations."}
-            </p>
-            <ul className="mt-3 grid gap-1 text-xs text-blue-900 dark:text-blue-100">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                AI Market Overview
+              </p>
+              {competitorUrlsCount === 0 && productsCount > 0 && (
+                <Button 
+                  size="sm" 
+                  asChild
+                  className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Link href="/app/competitors">
+                    Add Competitor
+                  </Link>
+                </Button>
+              )}
+              {competitorUrlsCount > 0 && recommendationsWaiting > 0 && (
+                <Button 
+                  size="sm" 
+                  asChild
+                  className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Link href="/app/recommendations">
+                    Review Recommendations
+                  </Link>
+                </Button>
+              )}
+            </div>
+            {competitorUrlsCount === 0 && productsCount > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-300 mb-2 font-medium">
+                ⚠️ Low coverage — add competitors to unlock AI pricing recommendations.
+              </p>
+            )}
+            <ul className="mt-2 grid gap-1 text-xs text-blue-900 dark:text-blue-100">
               {productsCount > 0 ? (
                 <>
                   <li>• Inventory worth: <span className="font-semibold">{formatCurrency(inventoryWorth)}</span></li>
@@ -244,14 +275,9 @@ export function DashboardContent({
                   <li>• <span className="font-semibold">{recommendationsWaiting}</span> recommendation{recommendationsWaiting !== 1 ? 's' : ''} waiting</li>
                 </>
               ) : (
-                <li>• No data yet. Add products to see insights.</li>
+                <li>• No products yet. <Link href="/app/products" className="text-blue-700 dark:text-blue-300 underline font-medium">Add products</Link> to see insights.</li>
               )}
             </ul>
-            {competitorsCount === 0 && productsCount > 0 && (
-              <p className="mt-3 text-xs text-blue-700 dark:text-blue-300 italic">
-                Add at least 1 competitor to unlock AI pricing recommendations.
-              </p>
-            )}
           </div>
         </div>
       </div>
@@ -264,6 +290,7 @@ export function DashboardContent({
           trend={undefined}
           icon={<DollarSign />}
           sparklineData={productsCount > 0 ? Array(7).fill(0) : []}
+          helperText={productsCount === 0 ? "Add products to track inventory value" : competitorUrlsCount === 0 ? "Add competitors for pricing insights" : undefined}
         />
         <KPICard
           title="Margin"
@@ -271,6 +298,7 @@ export function DashboardContent({
           trend={undefined}
           icon={<TrendingUp />}
           sparklineData={margin > 0 ? Array(7).fill(0) : []}
+          helperText={margin === 0 && productsCount > 0 ? "Add cost data to calculate margins" : margin === 0 ? "Add products with cost data" : undefined}
         />
         <KPICard
           title="Products synced"
@@ -278,6 +306,7 @@ export function DashboardContent({
           trend={undefined}
           icon={<Package />}
           sparklineData={productsCount > 0 ? Array(7).fill(0) : []}
+          helperText={productsCount === 0 ? "Import products to get started" : undefined}
         />
         <KPICard
           title="Competitor activity"
@@ -285,46 +314,132 @@ export function DashboardContent({
           trend={undefined}
           icon={<Activity />}
           sparklineData={competitorActivityCount > 0 ? Array(7).fill(0) : Array(7).fill(0)}
+          helperText={competitorActivityCount === 0 && competitorUrlsCount > 0 ? "Recommendations will appear here" : competitorUrlsCount === 0 ? "Add competitors to see activity" : undefined}
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        {isDemo ? (
-          <Button 
-            className="h-16 rounded-2xl flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" 
-            disabled
-            title="Demo mode: You can't add products. Upgrade to STARTER to connect your store."
-          >
-            <Upload className="h-5 w-5" /> Add Products
-          </Button>
+      {/* Primary CTA - Dynamic based on state */}
+      <div className="mt-6">
+        {productsCount === 0 ? (
+          // No products → Primary CTA = Add Products
+          <div className="space-y-3">
+            <Button 
+              className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-base font-medium" 
+              asChild
+              disabled={isDemo}
+            >
+              {isDemo ? (
+                <span className="opacity-50 cursor-not-allowed inline-flex items-center gap-2">
+                  <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add Products
+                </span>
+              ) : (
+                <Link href="/app/products" className="inline-flex items-center gap-2">
+                  <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add Products
+                </Link>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Import your product catalog to start tracking prices and competitors.
+            </p>
+          </div>
+        ) : competitorUrlsCount === 0 ? (
+          // No competitors → Primary CTA = Add Competitor
+          <div className="space-y-3">
+            <Button 
+              className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-base font-medium" 
+              asChild
+              disabled={isDemo}
+            >
+              {isDemo ? (
+                <span className="opacity-50 cursor-not-allowed inline-flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add Competitor
+                </span>
+              ) : (
+                <Link href="/app/competitors" className="inline-flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add Competitor
+                </Link>
+              )}
+            </Button>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                className="h-12 rounded-xl flex-1 flex items-center justify-center gap-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-colors" 
+                asChild
+                disabled={isDemo}
+              >
+                {isDemo ? (
+                  <span className="opacity-50 cursor-not-allowed inline-flex items-center gap-2">
+                    <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Import products
+                  </span>
+                ) : (
+                  <Link href="/app/products" className="inline-flex items-center gap-2">
+                    <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Import products
+                  </Link>
+                )}
+              </Button>
+              <Button 
+                variant="outline"
+                className="h-12 rounded-xl flex-1 flex items-center justify-center gap-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-colors" 
+                asChild
+              >
+                <Link href="/app/recommendations" className="inline-flex items-center gap-2">
+                  <Lightbulb className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Recommendations
+                </Link>
+              </Button>
+            </div>
+          </div>
         ) : (
-          <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
-            <Link href="/app/products">
-              <Upload className="h-5 w-5" /> Add Products
-            </Link>
-          </Button>
+          // Has competitors → Primary CTA = Review Recommendations
+          <div className="space-y-3">
+            <Button 
+              className="h-16 rounded-2xl flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-base font-medium" 
+              asChild
+            >
+              <Link href="/app/recommendations" className="inline-flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Review Recommendations
+                {recommendationsWaiting > 0 && (
+                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                    {recommendationsWaiting} waiting
+                  </span>
+                )}
+              </Link>
+            </Button>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                className="h-12 rounded-xl flex-1 flex items-center justify-center gap-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-colors" 
+                asChild
+                disabled={isDemo}
+              >
+                {isDemo ? (
+                  <span className="opacity-50 cursor-not-allowed inline-flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add another competitor
+                  </span>
+                ) : (
+                  <Link href="/app/competitors" className="inline-flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Add another competitor
+                  </Link>
+                )}
+              </Button>
+              <Button 
+                variant="outline"
+                className="h-12 rounded-xl flex-1 flex items-center justify-center gap-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-colors" 
+                asChild
+                disabled={isDemo}
+              >
+                {isDemo ? (
+                  <span className="opacity-50 cursor-not-allowed inline-flex items-center gap-2">
+                    <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Import products
+                  </span>
+                ) : (
+                  <Link href="/app/products" className="inline-flex items-center gap-2">
+                    <Upload className="h-4 w-4 translate-y-[-1px]" strokeWidth={2} /> Import products
+                  </Link>
+                )}
+              </Button>
+            </div>
+          </div>
         )}
-        {isDemo ? (
-          <Button 
-            className="h-16 rounded-2xl flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" 
-            disabled
-            title="Demo mode: You can't add competitors. Upgrade to STARTER to connect your store."
-          >
-            <LinkIcon className="h-5 w-5" /> Add Competitor
-          </Button>
-        ) : (
-          <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
-            <Link href="/app/competitors">
-              <LinkIcon className="h-5 w-5" /> Add Competitor
-            </Link>
-          </Button>
-        )}
-        <Button className="h-16 rounded-2xl flex items-center justify-center gap-2" asChild>
-          <Link href="/app/recommendations">
-            <Lightbulb className="h-5 w-5" /> Review Recommendations
-          </Link>
-        </Button>
       </div>
 
       {/* Chart Section */}
@@ -387,14 +502,24 @@ export function DashboardContent({
               </ResponsiveContainer>
               {/* Show note if data is flat (all values are the same) */}
               {chartData.avgPrice > 0 && (
-                <p className="text-xs text-muted-foreground text-center mt-2 px-4">
-                  Collecting data — first meaningful trend available within 24 hours.
-                </p>
+                <div className="mt-4 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <p className="text-xs text-muted-foreground text-center">
+                    <span className="font-medium">Collecting data</span> — trends will appear after price changes or competitor syncs. Historical data builds over time.
+                  </p>
+                </div>
               )}
             </>
           ) : (
-            <div className="flex items-center justify-center h-[300px] text-slate-400 dark:text-slate-500">
-              <p className="text-sm">No data yet. Add products to see trends.</p>
+            <div className="flex flex-col items-center justify-center h-[300px] text-slate-400 dark:text-slate-500 space-y-2">
+              <p className="text-sm font-medium">No pricing data yet</p>
+              <p className="text-xs text-center max-w-sm">
+                Add products and track competitors to see price and margin trends over time.
+              </p>
+              {productsCount === 0 && (
+                <Button size="sm" variant="outline" className="mt-2" asChild>
+                  <Link href="/app/products">Add Products</Link>
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -403,7 +528,14 @@ export function DashboardContent({
       {/* Activity Timeline */}
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Recent Events</CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base font-semibold">Recent Events</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Activity log for transparency and audit. Track price changes, syncs, and recommendations.
+              </p>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {activityEvents.length > 0 ? (
@@ -411,8 +543,16 @@ export function DashboardContent({
               <div className="space-y-4">
                 {activityEvents.map((event) => {
                   const Icon = getEventIcon(event.type);
-                  return (
-                    <div key={event.id} className="flex items-start gap-3">
+                  // Determine link based on event type
+                  let eventLink: string | null = null;
+                  if (event.type === "price_updated" && event.meta?.product_id) {
+                    eventLink = `/app/products/${event.meta.product_id}`;
+                  } else if (event.type === "recommendation_created" && event.meta?.product_id) {
+                    eventLink = `/app/recommendations`;
+                  }
+                  
+                  const content = (
+                    <div className="flex items-start gap-3">
                       <div className="mt-0.5 rounded-full bg-slate-100 dark:bg-slate-800 p-2">
                         <Icon className="h-4 w-4 text-slate-600 dark:text-slate-400" />
                       </div>
@@ -422,6 +562,21 @@ export function DashboardContent({
                           {formatRelativeTime(event.created_at)}
                         </p>
                       </div>
+                    </div>
+                  );
+
+                  return (
+                    <div key={event.id}>
+                      {eventLink ? (
+                        <Link 
+                          href={eventLink}
+                          className="block hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg p-2 -m-2 transition-colors"
+                        >
+                          {content}
+                        </Link>
+                      ) : (
+                        content
+                      )}
                     </div>
                   );
                 })}
@@ -436,13 +591,20 @@ export function DashboardContent({
               </div>
             </>
           ) : (
-            <div className="py-8 text-center">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                No recent events yet.
+            <div className="py-8 text-center space-y-2">
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                No recent events yet
               </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                Apply a price or run a sync to see activity here.
+              <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto">
+                Events appear when you apply price changes, sync products, or receive recommendations. 
+                {productsCount === 0 && " Start by adding products."}
+                {productsCount > 0 && competitorUrlsCount === 0 && " Add competitors to see sync events."}
               </p>
+              {productsCount === 0 && (
+                <Button size="sm" variant="outline" className="mt-3" asChild>
+                  <Link href="/app/products">Add Products</Link>
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

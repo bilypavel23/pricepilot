@@ -13,11 +13,11 @@ import { cn } from "@/lib/utils";
 
 type CsvImportDialogProps = {
   open: boolean;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 };
 
-export function CsvImportDialog({ open, onClose, onSuccess }: CsvImportDialogProps) {
+export function CsvImportDialog({ open, onOpenChange, onSuccess }: CsvImportDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
@@ -26,6 +26,23 @@ export function CsvImportDialog({ open, onClose, onSuccess }: CsvImportDialogPro
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadSample = () => {
+    const sampleCsv = `Name,SKU,Price,Cost,Inventory
+Wireless Headphones,WH-001,79.99,45.00,25
+USB-C Cable,USB-C-001,12.99,5.50,100
+Laptop Stand,LS-001,49.99,25.00,15`;
+
+    const blob = new Blob([sampleCsv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "sample-products.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -142,7 +159,7 @@ export function CsvImportDialog({ open, onClose, onSuccess }: CsvImportDialogPro
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    onClose();
+    onOpenChange(false);
   };
 
   if (!open) return null;
@@ -180,6 +197,13 @@ export function CsvImportDialog({ open, onClose, onSuccess }: CsvImportDialogPro
                 <p className="text-xs text-muted-foreground mt-2">
                   CSV files only. Required columns: Name, SKU, Price
                 </p>
+                <button
+                  type="button"
+                  onClick={handleDownloadSample}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2"
+                >
+                  Download sample CSV
+                </button>
               </div>
             </div>
           )}

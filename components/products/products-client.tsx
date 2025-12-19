@@ -436,6 +436,9 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
               </Link>
               .
             </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Products are kept in sync automatically. Manual import is only needed if something changes.
+            </p>
             {/* Last sync status */}
             <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
               <span>
@@ -488,21 +491,21 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
                   onClick={() => setShowAddDialog(true)}
                 >
                   <Plus className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                  <span>Add Product</span>
+                  <span>Add single product</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors"
                   onClick={() => setShowCsvImportDialog(true)}
                 >
                   <Upload className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                  <span>Upload CSV File</span>
+                  <span>Import products (CSV)</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors"
                   onClick={() => setShowFeedUrlModal(true)}
                 >
                   <Link2 className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                  <span>Add Feed URL</span>
+                  <span>Import via Feed URL</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -626,6 +629,9 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
                     placeholder="Optional"
                     className="mt-1"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Used to calculate margin and recommendations.
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="inventory">Inventory</Label>
@@ -640,6 +646,9 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
                     placeholder="Optional"
                     className="mt-1"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Optional. Helps detect low-stock products.
+                  </p>
                 </div>
                 {addError && (
                   <p className="mt-2 text-sm text-red-400">
@@ -678,6 +687,9 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
             value={feedUrl}
             onChange={(e) => setFeedUrl(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            We'll refresh this feed automatically to keep your catalog up to date.
+          </p>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowFeedUrlModal(false)}>
               Cancel

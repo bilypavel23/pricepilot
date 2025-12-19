@@ -24,6 +24,7 @@ import {
 import { Pencil, Trash2, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 type Product = {
   id: string;
@@ -187,6 +188,7 @@ export function ProductTable({
           const marginPercent = product.price != null && product.cost != null
             ? ((product.price - product.cost) / product.price) * 100
             : null;
+          const isOutOfStock = product.inventory === 0;
           return (
             <TableRow 
               key={product.id}
@@ -195,13 +197,29 @@ export function ProductTable({
                 isLowInventory && "bg-orange-50/50 dark:bg-orange-950/10"
               )}
             >
-              <TableCell className="font-medium">{product.name}</TableCell>
+              <TableCell className="font-medium">
+                {product.name}
+              </TableCell>
               <TableCell className="text-muted-foreground">{product.sku ?? "—"}</TableCell>
               <TableCell className="font-semibold">
                 {product.price != null ? `$${product.price.toFixed(2)}` : "—"}
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {product.cost != null ? `$${product.cost.toFixed(2)}` : "—"}
+                {product.cost != null ? (
+                  `$${product.cost.toFixed(2)}`
+                ) : (
+                  <Tooltip side="top">
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 cursor-help">
+                        <AlertCircle className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
+                        <span>—</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Cost is missing. Add cost to enable margin calculation and recommendations.
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </TableCell>
               <TableCell>
                 {marginPercent != null ? (
@@ -212,19 +230,41 @@ export function ProductTable({
                     {marginPercent.toFixed(1)}%
                   </span>
                 ) : (
-                  "—"
+                  <Tooltip side="top">
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help">—</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Margin unavailable because cost is missing.
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </TableCell>
               <TableCell>
                 {product.inventory != null ? (
-                  <div className="flex items-center gap-2">
-                    <Badge variant={isLowInventory ? "destructive" : "outline"}>
-                      {product.inventory}
-                    </Badge>
-                    {isLowInventory && (
-                      <AlertCircle className="h-3 w-3 text-orange-600 dark:text-orange-400" />
-                    )}
-                  </div>
+                  <Tooltip side="top">
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          variant={isOutOfStock ? "destructive" : isLowInventory ? "destructive" : "outline"}
+                          className={isOutOfStock ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800" : ""}
+                        >
+                          {product.inventory}
+                        </Badge>
+                        {isLowInventory && !isOutOfStock && (
+                          <AlertCircle className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isOutOfStock 
+                        ? "Out of stock — pricing recommendations are paused for this product."
+                        : isLowInventory
+                        ? "Low inventory — consider restocking soon."
+                        : `Inventory: ${product.inventory} units`
+                      }
+                    </TooltipContent>
+                  </Tooltip>
                 ) : (
                   <span className="text-muted-foreground italic">—</span>
                 )}
