@@ -28,9 +28,10 @@ type Props = {
   store: StoreInfo;
   recommendations: ProductRecommendation[];
   hasProducts: boolean;
+  plan: string;
 };
 
-export function RecommendationsClient({ store, recommendations, hasProducts }: Props) {
+export function RecommendationsClient({ store, recommendations, hasProducts, plan }: Props) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -376,6 +377,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts }: P
               key={rec.productId}
               recommendation={rec}
               store={store}
+              plan={plan}
               onPriceUpdated={handlePriceUpdated}
               isSelected={selectedIds.includes(rec.productId)}
               onToggleSelect={toggleSelect}

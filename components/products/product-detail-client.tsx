@@ -547,13 +547,13 @@ export function ProductDetailClient({
                         Add competitor
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
-                        Competitor limit reached for this product ({currentCount}/{maxCompetitors}).
+                        You&apos;ve reached the limit for this product ({currentCount}/{maxCompetitors}).
                         <br />
                         <Link
                           href="/app/pricing"
                           className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
                         >
-                          Delete one or upgrade your plan
+                          Delete a competitor or upgrade your plan
                         </Link>
                       </p>
                     </div>

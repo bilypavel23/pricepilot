@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,10 +10,21 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if redirected from password reset
+    if (searchParams.get("password_reset") === "success") {
+      setSuccessMessage("Password has been reset successfully. You can now sign in with your new password.");
+      // Remove the query param from URL
+      window.history.replaceState({}, "", "/login");
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +98,7 @@ export default function LoginPage() {
                   Password
                 </Label>
                 <Link
-                  href="#"
+                  href="/forgot-password"
                   className="text-xs text-blue-400 hover:text-blue-300"
                 >
                   Forgot password?
@@ -101,6 +113,12 @@ export default function LoginPage() {
                 className="bg-slate-800 border-slate-700 text-white"
               />
             </div>
+            
+            {successMessage && (
+              <div className="text-sm text-green-400 bg-green-900/20 border border-green-800 rounded p-2">
+                {successMessage}
+              </div>
+            )}
             
             {error && (
               <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded p-2">

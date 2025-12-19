@@ -5,3 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Re-export formatMoney for convenience
+export { formatMoney } from "./utils/formatMoney";
+

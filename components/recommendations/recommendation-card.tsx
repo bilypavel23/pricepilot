@@ -25,6 +25,9 @@ import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { ProductRecommendation, CompetitorSlot } from "@/lib/recommendations/types";
 import { useRouter } from "next/navigation";
+import { getCompetitorLimit } from "@/lib/planLimits";
+import Link from "next/link";
+import { formatMoney } from "@/lib/utils";
 
 type StoreInfo = {
   platform: string | null;
@@ -34,12 +37,13 @@ type StoreInfo = {
 type Props = {
   recommendation: ProductRecommendation & { isPlaceholder?: boolean };
   store: StoreInfo;
+  plan: string;
   onPriceUpdated?: (productId: string, newPrice: number) => void;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
 };
 
-export function RecommendationCard({ recommendation, store, onPriceUpdated, isSelected = false, onToggleSelect }: Props) {
+export function RecommendationCard({ recommendation, store, plan, onPriceUpdated, isSelected = false, onToggleSelect }: Props) {
   const router = useRouter();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isAddCompetitorDialogOpen, setIsAddCompetitorDialogOpen] = useState(false);
@@ -52,6 +56,11 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
   const [localCurrentPrice, setLocalCurrentPrice] = useState(recommendation.productPrice ?? 0);
 
   const hasNoCompetitors = recommendation.competitorCount === 0;
+
+  // Calculate competitor limit for this product
+  const maxCompetitors = getCompetitorLimit(plan);
+  const linkedCount = recommendation.competitorCount;
+  const canAddCompetitor = linkedCount < maxCompetitors;
 
   const isShopify = store.platform === "shopify" && !!store.shopify_access_token;
   const canApplyPlatform = isShopify;
@@ -201,6 +210,9 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
     ? ((recommended - current) / current) * 100 
     : 0;
 
+  // Currency (default to USD, could be from store.currency or product.currency in future)
+  const currency = "USD";
+
   // Prepare competitor slots (always 5 items)
   const competitorSlots: CompetitorSlot[] = [
     recommendation.competitors[0] ?? { label: "Competitor 1" },
@@ -282,43 +294,69 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
                     </>
                   )}
 
-                  {/* Apply Button or Message */}
-                  <div className="pt-2 space-y-2">
-                    {hasNoCompetitors ? (
-                      <>
-                        {canApply && (
-                          <>
-                            <Button size="sm" onClick={handleOpenSheet} className="gap-2" variant="outline">
-                              Change price
-                            </Button>
-                            <p className="text-xs text-muted-foreground">
-                              Add at least 1 competitor to unlock competitor-based recommendations.
-                            </p>
-                          </>
-                        )}
+                  {/* Action Buttons Bar */}
+                  <div className="mt-4">
+                    {/* Button Container */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      {/* Change price button - secondary/outline style */}
+                      {canApply && (
                         <Button 
-                          size="sm" 
+                          onClick={handleOpenSheet} 
+                          variant="outline"
+                          className="h-10 px-4 rounded-lg w-full sm:w-auto"
+                        >
+                          Change price
+                        </Button>
+                      )}
+                      
+                      {/* Add competitor button - primary style */}
+                      {canAddCompetitor ? (
+                        <Button 
                           onClick={() => setIsAddCompetitorDialogOpen(true)}
-                          className="gap-2 dark:bg-blue-600 dark:hover:bg-blue-700"
+                          className="h-10 px-4 rounded-lg bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700 w-full sm:w-auto"
                         >
                           Add competitor
                         </Button>
-                      </>
-                    ) : canApply ? (
-                      <Button size="sm" onClick={handleOpenSheet} className="gap-2">
-                        Change price
-                      </Button>
-                    ) : !isShopify ? (
-                      <p className="text-xs text-muted-foreground">
+                      ) : (
+                        <Button 
+                          disabled
+                          className="h-10 px-4 rounded-lg bg-blue-500/50 hover:bg-blue-500/50 text-white dark:bg-blue-600/50 dark:hover:bg-blue-600/50 cursor-not-allowed w-full sm:w-auto"
+                        >
+                          Add competitor
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Helper messages */}
+                    {!canApply && !isShopify && (
+                      <p className="text-xs text-muted-foreground mt-2">
                         Automatic price updates are available only for Shopify stores.
                       </p>
-                    ) : recommendation.isPlaceholder ? (
-                      <p className="text-xs text-muted-foreground">
+                    )}
+                    {!canApply && recommendation.isPlaceholder && (
+                      <p className="text-xs text-muted-foreground mt-2">
                         Add your products first to unlock recommendations.
                       </p>
-                    ) : !hasBasePrice ? (
-                      <p className="text-xs text-muted-foreground">No price available for this product.</p>
-                    ) : null}
+                    )}
+                    {!canApply && !hasBasePrice && (
+                      <p className="text-xs text-muted-foreground mt-2">No price available for this product.</p>
+                    )}
+                    {!canAddCompetitor && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Limit reached ({linkedCount}/{maxCompetitors}).{" "}
+                        <Link
+                          href="/app/pricing"
+                          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                        >
+                          Delete a competitor or upgrade
+                        </Link>
+                      </p>
+                    )}
+                    {hasNoCompetitors && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Add at least 1 competitor to unlock competitor-based recommendations.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -374,7 +412,7 @@ export function RecommendationCard({ recommendation, store, onPriceUpdated, isSe
                               )}
 
                               <span className="shrink-0 text-sm text-muted-foreground">
-                                ${c.oldPrice?.toFixed(2) ?? "?"} → ${c.newPrice?.toFixed(2) ?? "?"}
+                                {formatMoney(recommendation.productPrice, currency)} → {formatMoney(c.newPrice, currency)}
                               </span>
                             </div>
 

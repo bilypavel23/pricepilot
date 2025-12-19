@@ -48,6 +48,8 @@ export default async function RecommendationsPage() {
     ? await getRecommendationsForStore(store.id)
     : [];
 
+  const plan = (profile?.plan as string) ?? "STARTER";
+
   return (
     <RecommendationsClient
       store={{
@@ -56,6 +58,7 @@ export default async function RecommendationsPage() {
       }}
       recommendations={recommendations}
       hasProducts={hasProducts}
+      plan={plan}
     />
   );
 }
