@@ -229,8 +229,21 @@ export function ProductDetailClient({
       if (!res.ok) {
         // Extract error message with fallbacks
         const msg = data?.error || data?.message || text || `Server error (${res.status})`;
-        console.error("[add-competitor] API error:", res.status, { data, text, payload });
+        const errorCode = data?.code || "UNKNOWN_ERROR";
+        const errorDetails = data?.details || {};
         
+        // Log full error details for debugging
+        console.error("[add-competitor] API error:", {
+          status: res.status,
+          code: errorCode,
+          message: msg,
+          details: errorDetails,
+          fullResponse: data,
+          text,
+          payload,
+        });
+        
+        // Display error message to user
         setCompetitorError(msg);
         setToasts([
           ...toasts,

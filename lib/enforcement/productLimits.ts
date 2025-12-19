@@ -123,3 +123,4 @@ export async function getUserPlan(userId: string): Promise<string | null> {
   return profile?.plan || null;
 }
 
+

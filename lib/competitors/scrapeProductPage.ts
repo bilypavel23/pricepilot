@@ -129,76 +129,111 @@ export async function scrapeProductPage(
 
   const $ = cheerio.load(html);
 
-  // ---------- NAME ----------
-  const nameSelectors = [
-    'h1[class*="product"]',
-    'h1[class*="title"]',
-    ".product-title",
-    ".product-name",
-    "h1",
-    '[property="og:title"]',
-    'meta[name="twitter:title"]',
-    'meta[property="og:title"]',
-  ];
-
+  // Initialize result with defaults
   let name = "Product";
-  for (const selector of nameSelectors) {
-    const el = $(selector).first();
-    if (el.length) {
-      const text = el.text().trim() || el.attr("content");
-      if (text) {
-        name = text;
-        break;
-      }
-    }
-  }
-
-  // ---------- PRICE ----------
-  const priceSelectors = [
-    '[itemprop="price"]',
-    '[data-price]',
-    '[data-product-price]',
-    '[class*="price"]',
-    'meta[property="product:price:amount"]',
-    'meta[property="og:price:amount"]',
-  ];
-
   let price: number | null = null;
-  for (const selector of priceSelectors) {
-    const el = $(selector).first();
-    if (el.length) {
-      const raw =
-        el.text().trim() ||
-        el.attr("content") ||
-        el.attr("data-price");
-      const parsed = parsePrice(raw || "");
-      if (parsed !== null) {
-        price = parsed;
-        break;
-      }
-    }
-  }
-
-  // ---------- CURRENCY ----------
   let currency = "USD";
-  const currencySelectors = [
-    '[itemprop="priceCurrency"]',
-    'meta[property="product:price:currency"]',
-    'meta[property="og:price:currency"]',
-  ];
 
-  for (const selector of currencySelectors) {
-    const el = $(selector).first();
-    if (el.length) {
-      const c = el.attr("content") || el.text().trim();
-      if (c) {
-        currency = c.toUpperCase();
-        break;
+  // ========== STRATEGY 1: Try Shopify .js endpoint (if applicable) ==========
+  const shopifyData = await tryShopifyProductJs(productUrl);
+  if (shopifyData) {
+    if (shopifyData.name) name = shopifyData.name;
+    if (shopifyData.price !== undefined) price = shopifyData.price;
+    if (shopifyData.currency) currency = shopifyData.currency;
+    
+    // If we got price from Shopify, we can return early (but still check LD+JSON for better name/currency)
+    if (price !== null) {
+      console.log(`[scrapeProductPage] Got price from Shopify .js, continuing to extract name/currency from HTML`);
+    }
+  }
+
+  // ========== STRATEGY 2: Extract from LD+JSON (preferred, cheap) ==========
+  const ldJsonData = extractFromLdJson($);
+  if (ldJsonData.name && name === "Product") {
+    name = ldJsonData.name;
+  }
+  if (ldJsonData.price !== undefined && price === null) {
+    price = ldJsonData.price;
+  }
+  if (ldJsonData.currency) {
+    currency = ldJsonData.currency;
+  }
+
+  // ========== STRATEGY 3: Fallback to Cheerio DOM selectors ==========
+  
+  // Extract name (only if not already found)
+  if (name === "Product") {
+    const nameSelectors = [
+      'h1[class*="product"]',
+      'h1[class*="title"]',
+      ".product-title",
+      ".product-name",
+      "h1",
+      '[property="og:title"]',
+      'meta[name="twitter:title"]',
+      'meta[property="og:title"]',
+    ];
+
+    for (const selector of nameSelectors) {
+      const el = $(selector).first();
+      if (el.length) {
+        const text = el.text().trim() || el.attr("content");
+        if (text) {
+          name = text;
+          break;
+        }
       }
     }
   }
 
-  console.log(`[scrapeProductPage] Parsed - name: "${name}", price: ${price}, currency: ${currency}`);
+  // Extract price (only if not already found)
+  if (price === null) {
+    const priceSelectors = [
+      '[itemprop="price"]',
+      '[data-price]',
+      '[data-product-price]',
+      '[class*="price"]',
+      'meta[property="product:price:amount"]',
+      'meta[property="og:price:amount"]',
+    ];
+
+    for (const selector of priceSelectors) {
+      const el = $(selector).first();
+      if (el.length) {
+        const raw =
+          el.text().trim() ||
+          el.attr("content") ||
+          el.attr("data-price");
+        const parsed = parsePrice(raw || "");
+        if (parsed !== null) {
+          price = parsed;
+          break;
+        }
+      }
+    }
+  }
+
+  // Extract currency (only if not already found)
+  if (currency === "USD") {
+    const currencySelectors = [
+      '[itemprop="priceCurrency"]',
+      'meta[property="product:price:currency"]',
+      'meta[property="og:price:currency"]',
+    ];
+
+    for (const selector of currencySelectors) {
+      const el = $(selector).first();
+      if (el.length) {
+        const c = el.attr("content") || el.text().trim();
+        if (c) {
+          currency = c.toUpperCase();
+          break;
+        }
+      }
+    }
+  }
+
+  console.log(`[scrapeProductPage] Final parsed - name: "${name}", price: ${price}, currency: ${currency}`);
 
   return { name, price, currency };
 }
@@ -208,6 +243,10 @@ export async function scrapeProductPage(
  */
 function parsePrice(str: string): number | null {
   if (!str) return null;
+  // Handle both string and number inputs
+  if (typeof str === "number") {
+    return str > 0 ? str : null;
+  }
   // Remove currency symbols and letters, keep digits, dots, commas
   const cleaned = str
     .replace(/[^\d.,-]+/g, "")
@@ -237,4 +276,200 @@ function parsePrice(str: string): number | null {
   const n = Number(normalized);
   if (Number.isNaN(n) || n < 0) return null;
   return n;
+}
+
+/**
+ * Extract price, currency, and name from LD+JSON structured data
+ */
+function extractFromLdJson($: ReturnType<typeof cheerio.load>): {
+  price?: number;
+  currency?: string;
+  name?: string;
+} {
+  const result: { price?: number; currency?: string; name?: string } = {};
+
+  try {
+    const scripts = $('script[type="application/ld+json"]');
+    
+    scripts.each((_, el) => {
+      try {
+        const text = $(el).text().trim();
+        if (!text) return;
+
+        let data: any;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          return; // Skip invalid JSON
+        }
+
+        // Handle arrays, @graph, or single objects
+        let items: any[] = [];
+        if (Array.isArray(data)) {
+          items = data;
+        } else if (data["@graph"] && Array.isArray(data["@graph"])) {
+          items = data["@graph"];
+        } else {
+          items = [data];
+        }
+
+        for (const item of items) {
+          // Check if this is a Product type
+          const type = item["@type"];
+          const types = Array.isArray(type) ? type : type ? [type] : [];
+          const isProduct = types.some((t: string) => 
+            typeof t === "string" && t.toLowerCase().includes("product")
+          );
+
+          if (!isProduct) continue;
+
+          // Extract name
+          if (!result.name && item.name) {
+            result.name = typeof item.name === "string" ? item.name : String(item.name);
+          }
+
+          // Extract price from offers
+          if (!result.price && item.offers) {
+            const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+            
+            for (const offer of offers) {
+              if (!offer) continue;
+
+              // Try different price paths
+              let priceValue: any = null;
+              if (offer.price !== undefined) {
+                priceValue = offer.price;
+              } else if (offer.priceSpecification?.price !== undefined) {
+                priceValue = offer.priceSpecification.price;
+              }
+
+              if (priceValue !== null && priceValue !== undefined) {
+                const parsed = parsePrice(String(priceValue));
+                if (parsed !== null) {
+                  result.price = parsed;
+                  break;
+                }
+              }
+
+              // Extract currency
+              if (!result.currency && offer.priceCurrency) {
+                result.currency = String(offer.priceCurrency).toUpperCase();
+              }
+            }
+          }
+
+          // Also check for direct priceCurrency on Product
+          if (!result.currency && item.priceCurrency) {
+            result.currency = String(item.priceCurrency).toUpperCase();
+          }
+        }
+      } catch (err) {
+        // Skip this script if parsing fails
+        console.warn("[extractFromLdJson] Error parsing script:", err);
+      }
+    });
+  } catch (err) {
+    console.warn("[extractFromLdJson] Error extracting LD+JSON:", err);
+  }
+
+  return result;
+}
+
+/**
+ * Try to fetch product data from Shopify .js endpoint
+ * Returns null if URL doesn't look like Shopify or fetch fails
+ */
+async function tryShopifyProductJs(
+  productUrl: string
+): Promise<{ name?: string; price?: number; currency?: string } | null> {
+  try {
+    const url = new URL(productUrl);
+    const pathname = url.pathname;
+
+    // Check if URL looks like Shopify product page
+    const shopifyMatch = pathname.match(/^\/products\/([^\/\?]+)/);
+    if (!shopifyMatch) {
+      return null; // Not a Shopify product URL
+    }
+
+    const handle = shopifyMatch[1];
+    const shopifyJsUrl = `${url.origin}/products/${handle}.js`;
+
+    console.log(`[tryShopifyProductJs] Attempting Shopify .js endpoint: ${shopifyJsUrl}`);
+
+    // Try fetching with ScrapingBee (cheapest option first)
+    let jsonText: string;
+    try {
+      jsonText = await fetchHtmlWithScrapingBee(shopifyJsUrl, 1, {
+        renderJs: false,
+        premiumProxy: false,
+      });
+    } catch (err1) {
+      try {
+        console.warn("[tryShopifyProductJs] Attempt 1 failed, trying premium proxy", err1);
+        jsonText = await fetchHtmlWithScrapingBee(shopifyJsUrl, 2, {
+          renderJs: false,
+          premiumProxy: true,
+        });
+      } catch (err2) {
+        console.warn("[tryShopifyProductJs] All attempts failed", err2);
+        return null; // Fail silently, fall back to other methods
+      }
+    }
+
+    // Parse JSON
+    let data: any;
+    try {
+      data = JSON.parse(jsonText);
+    } catch (parseErr) {
+      console.warn("[tryShopifyProductJs] Failed to parse JSON", parseErr);
+      return null;
+    }
+
+    const result: { name?: string; price?: number; currency?: string } = {};
+
+    // Extract name
+    if (data.title) {
+      result.name = String(data.title);
+    }
+
+    // Extract price from variants
+    if (data.variants && Array.isArray(data.variants) && data.variants.length > 0) {
+      const firstVariant = data.variants[0];
+      if (firstVariant.price !== undefined) {
+        let priceValue = firstVariant.price;
+        
+        // Handle string prices
+        if (typeof priceValue === "string") {
+          const parsed = parsePrice(priceValue);
+          if (parsed !== null) {
+            result.price = parsed;
+          }
+        } else if (typeof priceValue === "number") {
+          // Shopify often uses cents (integer > 1000 with no decimals)
+          // Check if it looks like cents: integer and > 1000
+          if (Number.isInteger(priceValue) && priceValue > 1000 && priceValue % 100 !== 0) {
+            result.price = priceValue / 100;
+          } else {
+            result.price = priceValue;
+          }
+        }
+      }
+    }
+
+    // Currency might not be in .js endpoint, will use default or from HTML
+    if (data.currency) {
+      result.currency = String(data.currency).toUpperCase();
+    }
+
+    if (result.name || result.price !== undefined) {
+      console.log(`[tryShopifyProductJs] Success - name: "${result.name}", price: ${result.price}`);
+      return result;
+    }
+
+    return null;
+  } catch (err) {
+    console.warn("[tryShopifyProductJs] Error:", err);
+    return null;
+  }
 }

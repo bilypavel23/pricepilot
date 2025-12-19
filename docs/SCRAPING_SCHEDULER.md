@@ -193,3 +193,4 @@ Or use a queue system like BullMQ/Inngest for more sophisticated scheduling.
 - Updated `lib/competitors/syncSettings.ts`: PRO default times changed from 4 to 2
 - Updated sync route: `hoursBetweenSync` for PRO changed from 6 to 12 hours
 
+

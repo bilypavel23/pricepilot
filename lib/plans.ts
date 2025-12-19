@@ -187,3 +187,4 @@ export function getHoursBetweenSyncs(plan: string | null | undefined): number {
   return Math.floor(24 / syncsPerDay);
 }
 
+

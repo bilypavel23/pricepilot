@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateStore } from "@/lib/store";
 import { scrapeProductPage } from "@/lib/competitors/scrapeProductPage";
 
 // Helper to ensure JSON response with proper headers
 function jsonResponse(
-  data: { error: string; code?: string; details?: Record<string, any>; received?: string } | { ok: boolean; warning?: string },
+  data: { error: string; code?: string; details?: Record<string, any>; received?: string } | { 
+    ok: boolean; 
+    warning?: string;
+    competitorId?: string;
+    competitorProductId?: string;
+    productMatchId?: string;
+  },
   status: number = 200
 ) {
   return NextResponse.json(data, {
@@ -181,6 +188,15 @@ export async function POST(
     
     console.log("[add-competitor-url] storeId:", store.id, "productId:", productId);
 
+    // Enforce ownership: Verify store belongs to user
+    if (store.owner_id !== user.id) {
+      console.error("[add-competitor-url] Ownership violation: store.owner_id", store.owner_id, "!= user.id", user.id);
+      return jsonResponse({
+        error: "Unauthorized: Store does not belong to user",
+        code: "FORBIDDEN"
+      }, 403);
+    }
+
     // Load product and verify it belongs to user's store
     let product, productError;
     try {
@@ -215,6 +231,15 @@ export async function POST(
         error: "Product not found",
         code: "NOT_FOUND"
       }, 404);
+    }
+
+    // Enforce ownership: Verify product belongs to the store
+    if (product.store_id !== store.id) {
+      console.error("[add-competitor-url] Ownership violation: product.store_id", product.store_id, "!= store.id", store.id);
+      return jsonResponse({
+        error: "Unauthorized: Product does not belong to store",
+        code: "FORBIDDEN"
+      }, 403);
     }
 
     // Extract hostname from URL
@@ -256,6 +281,10 @@ export async function POST(
 
     if (existingCompetitors) {
       competitorId = existingCompetitors.id;
+      console.log("[add-competitor-url] Using existing competitor:", {
+        id: competitorId,
+        hostname,
+      });
     } else {
       // Create new competitor
       const competitorName = hostname
@@ -266,7 +295,8 @@ export async function POST(
 
       let newCompetitor, competitorError;
       try {
-        const insertResult = await supabase
+        // Use admin client to bypass RLS for insert (ownership already verified above)
+        const insertResult = await supabaseAdmin
           .from("competitors")
           .insert({
             store_id: store.id,
@@ -303,28 +333,56 @@ export async function POST(
       }
 
       competitorId = newCompetitor.id;
+      console.log("[add-competitor-url] Inserted competitor:", {
+        id: competitorId,
+        name: competitorName,
+        url: competitorBaseUrl,
+        store_id: store.id,
+      });
     }
 
     // Scrape product page
+    const trimmedUrl = competitorUrl.trim();
+    console.log("[add-competitor-url] Starting scrape for URL:", trimmedUrl);
+    
     let scrapedData;
     try {
-      scrapedData = await scrapeProductPage(competitorUrl.trim());
+      scrapedData = await scrapeProductPage(trimmedUrl);
+      console.log("[add-competitor-url] Scrape succeeded", {
+        name: scrapedData.name,
+        price: scrapedData.price,
+        currency: scrapedData.currency,
+      });
     } catch (error: any) {
-      console.error("[add-competitor-url] Scraping error:", error);
+      const errorMessage = error?.message || String(error);
+      const errorCode = errorMessage === "BOT_BLOCKED" ? "BOT_BLOCKED" : "SCRAPE_FAILED";
+      
+      console.error("[add-competitor-url] Scrape failed", {
+        competitorUrl: trimmedUrl,
+        message: errorMessage,
+        code: errorCode,
+        error: error,
+        stack: error?.stack,
+      });
       
       // Handle BOT_BLOCKED specifically
-      if (error.message === "BOT_BLOCKED") {
+      if (errorMessage === "BOT_BLOCKED") {
         return jsonResponse({
           error: "This store blocks automated access for this URL. Try another URL or we'll retry later.",
-          code: "BOT_BLOCKED"
+          code: "BOT_BLOCKED",
+          details: { competitorUrl: trimmedUrl }
         }, 422);
       }
       
+      // Handle other scrape failures
       return jsonResponse({
-        error: "Could not fetch product data from this URL. Please check the link.",
-        code: "SCRAPE_ERROR",
-        details: { competitorUrl: competitorUrl.trim() }
-      }, 400);
+        error: errorMessage || "Could not fetch product data from this URL. Please check the link.",
+        code: errorCode,
+        details: { 
+          competitorUrl: trimmedUrl,
+          reason: errorMessage || "unknown"
+        }
+      }, 422);
     }
 
     // Determine if price was found
@@ -335,18 +393,68 @@ export async function POST(
       console.warn("[add-competitor-url] No valid price found, will create with pending status", { competitorUrl, scrapedData });
     }
 
-    // Insert competitor product (even without price)
+    // Check competitor limit before inserting (max 5 per product)
+    let existingMatchCount = 0;
+    try {
+      const { count, error: countError } = await supabaseAdmin
+        .from("product_matches")
+        .select("*", { count: "exact", head: true })
+        .eq("product_id", productId)
+        .eq("store_id", store.id);
+      
+      if (countError) {
+        console.error("[add-competitor-url] Error counting existing matches:", countError);
+        return jsonResponse({
+          error: "Failed to check competitor limit",
+          code: "SERVER_ERROR"
+        }, 500);
+      }
+      
+      existingMatchCount = count || 0;
+      console.log("[add-competitor-url] Existing competitor count:", existingMatchCount, "for product:", productId);
+    } catch (countErr: any) {
+      console.error("[add-competitor-url] Exception counting existing matches:", countErr);
+      return jsonResponse({
+        error: "Failed to check competitor limit",
+        code: "SERVER_ERROR"
+      }, 500);
+    }
+
+    if (existingMatchCount >= 5) {
+      console.warn("[add-competitor-url] Competitor limit reached", {
+        productId,
+        storeId: store.id,
+        currentCount: existingMatchCount,
+        limit: 5
+      });
+      return jsonResponse({
+        error: "Competitor limit reached (max 5).",
+        code: "LIMIT_EXCEEDED",
+        details: {
+          currentCount: existingMatchCount,
+          limit: 5,
+          productId
+        }
+      }, 400);
+    }
+
+    // Upsert competitor product (even without price) to avoid duplicates
+    // Use admin client to bypass RLS (ownership already verified above)
+    // Upsert on unique key (competitor_id, url)
     let competitorProduct, cpError;
     try {
-      const cpResult = await supabase
+      const cpResult = await supabaseAdmin
         .from("competitor_products")
-        .insert({
+        .upsert({
           competitor_id: competitorId,
+          url: competitorUrl.trim(),
           name: scrapedData.name,
           price: hasPrice ? scrapedData.price : null,
           currency: scrapedData.currency || "USD",
-          url: competitorUrl.trim(),
           raw: { sourceUrl: competitorUrl.trim(), needsPrice },
+        }, {
+          onConflict: "competitor_id,url",
+          ignoreDuplicates: false, // Update existing row
         })
         .select("id")
         .single();
@@ -354,7 +462,7 @@ export async function POST(
       competitorProduct = cpResult.data;
       cpError = cpResult.error;
     } catch (cpErr: any) {
-      console.error("[add-competitor-url] Exception creating competitor product:", cpErr);
+      console.error("[add-competitor-url] Exception upserting competitor product:", cpErr);
       return jsonResponse({ 
         error: cpErr?.message || "Failed to create competitor product",
         code: "SERVER_ERROR"
@@ -362,7 +470,7 @@ export async function POST(
     }
 
     if (cpError) {
-      console.error("[add-competitor-url] Supabase error creating competitor product:", cpError);
+      console.error("[add-competitor-url] Supabase error upserting competitor product:", cpError);
       return jsonResponse({
         error: cpError.message || "Failed to create competitor product",
         code: "SERVER_ERROR"
@@ -370,43 +478,101 @@ export async function POST(
     }
 
     if (!competitorProduct) {
-      console.error("[add-competitor-url] Competitor product insert returned no data");
+      console.error("[add-competitor-url] Competitor product upsert returned no data");
       return jsonResponse({ 
         error: "Failed to create competitor product",
         code: "SERVER_ERROR"
       }, 500);
     }
 
-    // Create product match
-    try {
-      const { error: matchError } = await supabase.from("product_matches").insert({
-        store_id: store.id,
-        product_id: productId,
-        competitor_product_id: competitorProduct.id,
-        similarity: 100, // User explicitly added it
-        status: needsPrice ? "pending" : "confirmed",
-      });
+    console.log("[add-competitor-url] Upserted competitor_product:", {
+      id: competitorProduct.id,
+      name: scrapedData.name,
+      price: hasPrice ? scrapedData.price : null,
+      url: competitorUrl.trim(),
+    });
 
-      if (matchError) {
-        console.error("[add-competitor-url] Supabase error creating product match:", matchError);
-        // Don't fail the request if match creation fails - product was added
-      }
+    // Create product match using admin client (ownership already verified above)
+    // Use "confirmed" status so it appears in UI immediately (even if price is missing)
+    let productMatch, matchError;
+    try {
+      const matchResult = await supabaseAdmin
+        .from("product_matches")
+        .insert({
+          store_id: store.id,
+          product_id: productId,
+          competitor_product_id: competitorProduct.id,
+          similarity: 100, // User explicitly added it
+          status: "confirmed", // Always use "confirmed" so it appears in UI
+        })
+        .select("id")
+        .single();
+      
+      productMatch = matchResult.data;
+      matchError = matchResult.error;
     } catch (matchErr: any) {
       console.error("[add-competitor-url] Exception creating product match:", matchErr);
-      // Don't fail the request if match creation fails - product was added
+      return jsonResponse({ 
+        error: matchErr?.message || "Failed to create product match link",
+        code: "SERVER_ERROR",
+        details: { 
+          competitorProductId: competitorProduct.id,
+          productId,
+          storeId: store.id
+        }
+      }, 500);
     }
 
-    console.log("[add-competitor-url] Success", { needsPrice });
-    
-    // Return with warning if price couldn't be detected
-    if (needsPrice) {
+    if (matchError) {
+      console.error("[add-competitor-url] Supabase error creating product match:", matchError);
+      return jsonResponse({
+        error: matchError.message || "Failed to create product match link",
+        code: "SERVER_ERROR",
+        details: { 
+          competitorProductId: competitorProduct.id,
+          productId,
+          storeId: store.id,
+          error: matchError
+        }
+      }, 500);
+    }
+
+    if (!productMatch) {
+      console.error("[add-competitor-url] Product match insert returned no data");
       return jsonResponse({ 
-        ok: true, 
-        warning: "Price could not be detected yet. We'll retry during the next sync."
-      });
+        error: "Failed to create product match link",
+        code: "SERVER_ERROR"
+      }, 500);
+    }
+
+    console.log("[add-competitor-url] Inserted product_match:", {
+      id: productMatch.id,
+      product_id: productId,
+      competitor_product_id: competitorProduct.id,
+      store_id: store.id,
+      status: "confirmed",
+    });
+
+    console.log("[add-competitor-url] Success", { 
+      needsPrice,
+      competitorId,
+      competitorProductId: competitorProduct.id,
+      productMatchId: productMatch.id
+    });
+    
+    // Return with warning if price couldn't be detected, include IDs for debugging
+    const responseData: any = {
+      ok: true,
+      competitorId,
+      competitorProductId: competitorProduct.id,
+      productMatchId: productMatch.id,
+    };
+    
+    if (needsPrice) {
+      responseData.warning = "Price could not be detected yet. We'll retry during the next sync.";
     }
     
-    return jsonResponse({ ok: true });
+    return jsonResponse(responseData);
   } catch (err: any) {
     console.error("[add-competitor-url] Unexpected error:", {
       error: err,

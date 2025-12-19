@@ -386,3 +386,4 @@ CREATE TRIGGER update_user_matching_rate_limit_updated_at
   BEFORE UPDATE ON public.user_matching_rate_limit
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+
