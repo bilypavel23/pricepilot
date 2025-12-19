@@ -15,13 +15,14 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { user } = await getProfile();
+  const { user, profile } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
   const store = await getOrCreateStore();
+  const plan = (profile?.plan as string) ?? "STARTER";
 
   // Load product with competitors
   const productData = await getProductWithCompetitors(id, store.id);
@@ -60,6 +61,7 @@ export default async function ProductDetailPage({
       competitorAvg={productData.competitorAvg}
       margin={margin}
       activityEvents={activityEvents}
+      plan={plan}
       store={{
         platform: store.platform,
         shopify_access_token: store.shopify_access_token,

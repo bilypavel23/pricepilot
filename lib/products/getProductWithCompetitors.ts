@@ -11,6 +11,7 @@ export interface ProductWithCompetitors {
     status: string;
   };
   competitors: Array<{
+    matchId: string; // product_matches.id
     competitorId: string;
     competitorName: string;
     competitorUrl: string | null;
@@ -155,6 +156,7 @@ export async function getProductWithCompetitors(
     }
 
     competitorList.push({
+      matchId: match.id, // Include product_matches.id for delete operations
       competitorId: competitor.id,
       competitorName: competitor.name,
       competitorUrl: competitor.url,

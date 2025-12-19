@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ExternalLink, TrendingUp, TrendingDown, DollarSign, Package, Edit, Trash2 } from "lucide-react";
+import { PLAN_LIMITS, getCompetitorLimit } from "@/lib/planLimits";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +39,7 @@ interface Product {
 }
 
 interface Competitor {
+  matchId: string; // product_matches.id for delete operations
   competitorId: string;
   competitorName: string;
   competitorUrl: string | null;
@@ -60,6 +62,7 @@ interface ProductDetailClientProps {
   competitorAvg: number;
   margin: number | null;
   activityEvents: ActivityEvent[];
+  plan: string;
   store: {
     platform: string | null;
     shopify_access_token: string | null;
@@ -106,6 +109,7 @@ export function ProductDetailClient({
   competitorAvg,
   margin,
   activityEvents,
+  plan,
   store,
 }: ProductDetailClientProps) {
   const router = useRouter();
@@ -300,6 +304,47 @@ export function ProductDetailClient({
     setToasts(toasts.filter((t) => t.id !== id));
   };
 
+  // Delete competitor match handler
+  const handleDeleteCompetitor = async (matchId: string, competitorName: string) => {
+    if (!confirm(`Are you sure you want to remove ${competitorName} as a competitor?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/products/${product.id}/competitors/${matchId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Failed to delete competitor" }));
+        throw new Error(data.error || `Server error (${res.status})`);
+      }
+
+      // Show success toast
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: "Competitor removed",
+          type: "success",
+        },
+      ]);
+
+      // Refresh the page data
+      router.refresh();
+    } catch (err: any) {
+      console.error("[delete-competitor] Error:", err);
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: err.message || "Failed to remove competitor",
+          type: "error",
+        },
+      ]);
+    }
+  };
+
   // Calculate price difference for each competitor
   const competitorsWithDiff = competitors.map((comp) => {
     if (!comp.competitorPrice || !product.price) {
@@ -432,27 +477,37 @@ export function ProductDetailClient({
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
-                    {comp.competitorPrice != null ? (
-                      <>
-                        <p className="text-base font-semibold">${comp.competitorPrice.toFixed(2)}</p>
-                        {comp.diffPercent != null && (
-                          <p
-                            className={cn(
-                              "text-xs font-medium",
-                              comp.diffPercent > 0
-                                ? "text-red-600 dark:text-red-400"
-                                : "text-green-600 dark:text-green-400"
-                            )}
-                          >
-                            {comp.diffPercent > 0 ? "+" : ""}
-                            {comp.diffPercent.toFixed(1)}%
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No price</p>
-                    )}
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      {comp.competitorPrice != null ? (
+                        <>
+                          <p className="text-base font-semibold">${comp.competitorPrice.toFixed(2)}</p>
+                          {comp.diffPercent != null && (
+                            <p
+                              className={cn(
+                                "text-xs font-medium",
+                                comp.diffPercent > 0
+                                  ? "text-red-600 dark:text-red-400"
+                                  : "text-green-600 dark:text-green-400"
+                              )}
+                            >
+                              {comp.diffPercent > 0 ? "+" : ""}
+                              {comp.diffPercent.toFixed(1)}%
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No price</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteCompetitor(comp.matchId, comp.competitorName)}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -462,14 +517,51 @@ export function ProductDetailClient({
               <p className="text-sm text-muted-foreground mb-4">
                 No competitors linked to this product yet.
               </p>
-              <Button
-                variant="outline"
-                onClick={() => setIsAddCompetitorDialogOpen(true)}
-              >
-                Add competitor
-              </Button>
             </div>
           )}
+          
+          {/* Always show Add competitor button */}
+          <div className="mt-4 pt-4 border-t border-border">
+            {(() => {
+              const maxCompetitors = getCompetitorLimit(plan);
+              const currentCount = competitors.length;
+              const canAdd = currentCount < maxCompetitors;
+              
+              return (
+                <div className="space-y-2">
+                  {canAdd ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAddCompetitorDialogOpen(true)}
+                      className="w-full"
+                    >
+                      Add competitor
+                    </Button>
+                  ) : (
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        disabled
+                        className="w-full"
+                      >
+                        Add competitor
+                      </Button>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Competitor limit reached for this product ({currentCount}/{maxCompetitors}).
+                        <br />
+                        <Link
+                          href="/app/pricing"
+                          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                        >
+                          Delete one or upgrade your plan
+                        </Link>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </CardContent>
       </Card>
 

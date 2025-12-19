@@ -113,7 +113,7 @@ export function getCompetitorLimit(plan?: string | null): number {
   
   const normalized = plan.toLowerCase().trim();
   
-  // Map Plan values to PlanId
+  // Map Plan values to limits
   if (normalized === "free_demo" || normalized === "demo" || normalized === "free") {
     return PLAN_COMPETITOR_LIMIT.FREE;
   }
@@ -123,14 +123,18 @@ export function getCompetitorLimit(plan?: string | null): number {
   if (normalized === "pro" || normalized === "professional") {
     return PLAN_COMPETITOR_LIMIT.PRO;
   }
+  // Scale/Ultra plans get 10 competitors per product
   if (normalized === "ultra" || normalized === "scale" || normalized === "enterprise") {
-    return PLAN_COMPETITOR_LIMIT.PRO; // ultra maps to PRO limit
+    return 10;
   }
   
   // Try direct uppercase match
-  const upper = plan.toUpperCase() as PlanId;
+  const upper = plan.toUpperCase();
+  if (upper === "SCALE" || upper === "ULTRA") {
+    return 10;
+  }
   if (upper in PLAN_COMPETITOR_LIMIT) {
-    return PLAN_COMPETITOR_LIMIT[upper];
+    return PLAN_COMPETITOR_LIMIT[upper as PlanId];
   }
   
   return PLAN_COMPETITOR_LIMIT.STARTER;
