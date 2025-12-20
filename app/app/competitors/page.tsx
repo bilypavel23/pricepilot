@@ -4,13 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Globe, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Globe, ExternalLink, CheckCircle2, AlertCircle, Loader2, Info } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CompetitorsClient } from "@/components/competitors/competitors-client";
 import { DeleteCompetitorButton } from "@/components/competitors/delete-competitor-button";
 import { getCompetitorLimit } from "@/lib/planLimits";
 import { getDiscoveryQuota } from "@/lib/discovery-quota";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   getOrCreateStoreSyncSettings,
   computeNextSyncDate,
@@ -37,6 +43,40 @@ function formatDate(date: Date | string): string {
   } else {
     return d.toLocaleDateString();
   }
+}
+
+/**
+ * Get plan display name (Starter/Pro/Scale) from plan string
+ */
+function getPlanDisplayName(plan: string | null | undefined): string {
+  if (!plan) return "Starter";
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  if (normalized === "starter" || normalized === "basic" || normalized === "free_demo" || normalized === "demo" || normalized === "free") {
+    return "Starter";
+  }
+  if (normalized === "pro" || normalized === "professional") {
+    return "Pro";
+  }
+  if (normalized === "scale" || normalized === "ultra" || normalized === "enterprise") {
+    return "Scale";
+  }
+  
+  // Try uppercase match
+  const upper = plan.toUpperCase();
+  if (upper === "STARTER") {
+    return "Starter";
+  }
+  if (upper === "PRO") {
+    return "Pro";
+  }
+  if (upper === "SCALE" || upper === "ULTRA") {
+    return "Scale";
+  }
+  
+  // Default fallback
+  return "Starter";
 }
 
 export default async function CompetitorsPage() {
@@ -122,7 +162,7 @@ export default async function CompetitorsPage() {
   let discoveryQuota = null;
   if (store?.id) {
     try {
-      discoveryQuota = await getDiscoveryQuota(store.id);
+      discoveryQuota = await getDiscoveryQuota(store.id, profile?.plan);
     } catch (error: any) {
       // Structured error logging for discovery quota
       const errorDetails = {
@@ -243,9 +283,33 @@ export default async function CompetitorsPage() {
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h3 className="text-sm font-medium">Competitor discovery</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium">Competitor discovery</h3>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label="Info about competitor discovery quota"
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="right"
+                        align="start"
+                        className="min-w-[480px] max-w-[560px] text-sm leading-relaxed whitespace-normal px-5 py-3"
+                      >
+                        <p>
+                          You can scan up to {discoveryQuota.limit_amount.toLocaleString()} competitor products per month. Only scanned products count toward the limit. This applies only to &apos;Add competitor store&apos;. Adding competitors via product URLs is free.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  6,000 products / month
+                  {discoveryQuota.limit_amount.toLocaleString()} products / month
                 </p>
                 <div className="mt-2">
                   <p className="text-sm font-semibold">
