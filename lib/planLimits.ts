@@ -1,6 +1,64 @@
 export type PlanId = "FREE" | "STARTER" | "PRO";
 export type Plan = "free_demo" | "STARTER" | "pro" | "ultra";
 
+// ============================================================================
+// CENTRAL PRODUCT LIMITS CONFIGURATION
+// ============================================================================
+// This is the single source of truth for product limits per plan.
+// All other files should import from here.
+
+export const PLAN_PRODUCT_LIMITS = {
+  starter: 50,
+  pro: 150,
+  scale: 300,
+} as const;
+
+export type PlanKey = keyof typeof PLAN_PRODUCT_LIMITS;
+
+/**
+ * Get product limit for a plan
+ * Normalizes plan names to match PLAN_PRODUCT_LIMITS keys
+ */
+export function getProductLimit(plan: string | null | undefined): number {
+  if (!plan) return PLAN_PRODUCT_LIMITS.starter;
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  // Map plan values to keys
+  if (normalized === "starter" || normalized === "basic" || normalized === "free_demo" || normalized === "demo" || normalized === "free") {
+    return PLAN_PRODUCT_LIMITS.starter;
+  }
+  if (normalized === "pro" || normalized === "professional") {
+    return PLAN_PRODUCT_LIMITS.pro;
+  }
+  if (normalized === "scale" || normalized === "ultra" || normalized === "enterprise" || normalized === "SCALE") {
+    return PLAN_PRODUCT_LIMITS.scale;
+  }
+  
+  // Try uppercase match
+  const upper = plan.toUpperCase();
+  if (upper === "STARTER") {
+    return PLAN_PRODUCT_LIMITS.starter;
+  }
+  if (upper === "PRO") {
+    return PLAN_PRODUCT_LIMITS.pro;
+  }
+  if (upper === "SCALE" || upper === "ULTRA") {
+    return PLAN_PRODUCT_LIMITS.scale;
+  }
+  
+  // Default fallback
+  return PLAN_PRODUCT_LIMITS.starter;
+}
+
+/**
+ * Check if product limit is reached
+ */
+export function isLimitReached(plan: string | null | undefined, productCount: number): boolean {
+  const limit = getProductLimit(plan);
+  return limit > 0 && productCount >= limit;
+}
+
 export type PlanBadge = {
   emoji: string;
   label: string;
@@ -53,7 +111,7 @@ export type PlanLimits = {
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   STARTER: {
-    products: 50,
+    products: PLAN_PRODUCT_LIMITS.starter, // 50
     competitorsPerProduct: 2,
     stores: 1,
     syncsPerDay: 1,
@@ -61,7 +119,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: false,
   },
   PRO: {
-    products: 200,
+    products: PLAN_PRODUCT_LIMITS.pro, // 150
     competitorsPerProduct: 5,
     stores: 3,
     syncsPerDay: 2,
@@ -69,7 +127,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: true,
   },
   SCALE: {
-    products: 400,
+    products: PLAN_PRODUCT_LIMITS.scale, // 300
     competitorsPerProduct: 10,
     stores: 10,
     syncsPerDay: 4,
@@ -77,7 +135,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: true,
   },
   free_demo: {
-    products: 50,
+    products: PLAN_PRODUCT_LIMITS.starter, // 50
     competitorsPerProduct: 1,
     stores: 1,
     syncsPerDay: 0,
@@ -85,7 +143,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: false,
   },
   pro: {
-    products: 200,
+    products: PLAN_PRODUCT_LIMITS.pro, // 150
     competitorsPerProduct: 5,
     stores: 3,
     syncsPerDay: 2,
@@ -93,7 +151,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     bulkApply: true,
   },
   ultra: {
-    products: 400,
+    products: PLAN_PRODUCT_LIMITS.scale, // 300
     competitorsPerProduct: 10,
     stores: 10,
     syncsPerDay: 4,

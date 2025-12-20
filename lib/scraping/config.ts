@@ -21,7 +21,7 @@
 // ============================================================================
 
 /** Maximum products tracked per user on PRO plan */
-export const PRO_PRODUCTS_LIMIT = parseInt(process.env.PRO_PRODUCTS_LIMIT || '200', 10);
+export const PRO_PRODUCTS_LIMIT = parseInt(process.env.PRO_PRODUCTS_LIMIT || '150', 10);
 
 /** Maximum competitor matches per product on PRO plan */
 export const PRO_COMPETITORS_PER_PRODUCT_LIMIT = parseInt(process.env.PRO_COMPETITORS_PER_PRODUCT_LIMIT || '5', 10);
@@ -33,13 +33,13 @@ export const PRO_TRACKING_RUNS_PER_DAY = parseInt(process.env.PRO_TRACKING_RUNS_
 export const STARTER_TRACKING_RUNS_PER_DAY = parseInt(process.env.STARTER_TRACKING_RUNS_PER_DAY || '1', 10);
 
 /** Maximum products tracked per user on STARTER plan */
-export const STARTER_PRODUCTS_LIMIT = parseInt(process.env.STARTER_PRODUCTS_LIMIT || '50', 10);
+export const STARTER_PRODUCTS_LIMIT = parseInt(process.env.STARTER_PRODUCTS_LIMIT || '150', 10);
 
 /** Maximum competitor matches per product on STARTER plan */
 export const STARTER_COMPETITORS_PER_PRODUCT_LIMIT = parseInt(process.env.STARTER_COMPETITORS_PER_PRODUCT_LIMIT || '2', 10);
 
 /** Maximum products tracked per user on SCALE plan */
-export const SCALE_PRODUCTS_LIMIT = parseInt(process.env.SCALE_PRODUCTS_LIMIT || '400', 10);
+export const SCALE_PRODUCTS_LIMIT = parseInt(process.env.SCALE_PRODUCTS_LIMIT || '150', 10);
 
 /** Number of tracking runs per day for SCALE users */
 export const SCALE_TRACKING_RUNS_PER_DAY = parseInt(process.env.SCALE_TRACKING_RUNS_PER_DAY || '4', 10);

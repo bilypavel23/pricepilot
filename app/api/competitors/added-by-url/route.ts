@@ -56,9 +56,9 @@ export async function GET(req: Request) {
         // Get competitor products for this domain
         const { data: competitorProducts, error: cpError } = await supabase
           .from("competitor_products")
-          .select("id, name, url, price, updated_at")
+          .select("id, title, url, price, last_seen_at")
           .eq("competitor_id", competitor.id)
-          .order("updated_at", { ascending: false });
+          .order("last_seen_at", { ascending: false });
 
         if (cpError) {
           console.error("[added-by-url] Error loading competitor products:", cpError);
@@ -66,20 +66,20 @@ export async function GET(req: Request) {
 
         const cpIds = (competitorProducts || []).map((cp) => cp.id);
 
-        // Get linked products count for each competitor product
+        // Get linked products count for each competitor product (using confirmed matches only)
         const productsWithLinkedCount = await Promise.all(
           (competitorProducts || []).map(async (cp) => {
             const { count: linkedCount } = await supabase
-              .from("product_matches")
+              .from("competitor_product_matches")
               .select("*", { count: "exact", head: true })
               .eq("competitor_product_id", cp.id);
 
             return {
               id: cp.id,
-              name: cp.name,
+              name: cp.title ?? "", // Use 'title' column
               url: cp.url,
               price: cp.price,
-              updatedAt: cp.updated_at,
+              updatedAt: cp.last_seen_at,
               linkedProductsCount: linkedCount || 0,
             };
           })
@@ -105,4 +105,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
@@ -18,6 +19,8 @@ import {
 import { RecommendationCard } from "./recommendation-card";
 import { cn } from "@/lib/utils";
 import type { ProductRecommendation } from "@/lib/recommendations/types";
+import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 
 type StoreInfo = {
   platform: string | null;
@@ -29,11 +32,18 @@ type Props = {
   recommendations: ProductRecommendation[];
   hasProducts: boolean;
   plan: string;
+  hasProductsWithoutCompetitors?: boolean;
 };
 
-export function RecommendationsClient({ store, recommendations, hasProducts, plan }: Props) {
+export function RecommendationsClient({ store, recommendations, hasProducts, plan, hasProductsWithoutCompetitors = false }: Props) {
+  const router = useRouter();
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
+  
+  // Reset visible count when filters change
+  useEffect(() => {
+    setVisibleCount(INITIAL_LIMIT);
+  }, [typeFilter, sortBy]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [updatedPrices, setUpdatedPrices] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -41,7 +51,13 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
   const [decreaseOffset, setDecreaseOffset] = useState<number>(0);
   const [increaseOffset, setIncreaseOffset] = useState<number>(0);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
-  const [visibleCount, setVisibleCount] = useState<number>(10);
+  
+  // Pagination constants
+  const INITIAL_LIMIT = 12;
+  const TOP_LIMIT = 5;
+  const BATCH_SIZE = 12;
+  
+  const [visibleCount, setVisibleCount] = useState<number>(INITIAL_LIMIT);
 
   const isShopify = store.platform === "shopify" && !!store.shopify_access_token;
 
@@ -102,7 +118,10 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
     filtered = [...filtered].sort((a, b) => {
       switch (sortBy) {
         case "biggest-impact":
-          return Math.abs(b.changePercent) - Math.abs(a.changePercent);
+          // Calculate impact score: abs(price change) * price (bigger prices = bigger impact)
+          const impactA = Math.abs(a.changePercent) * (a.productPrice ?? 0);
+          const impactB = Math.abs(b.changePercent) * (b.productPrice ?? 0);
+          return impactB - impactA;
         case "highest-margin":
           const marginA = (a.recommendedPrice ?? 0) - (a.productPrice ?? 0);
           const marginB = (b.recommendedPrice ?? 0) - (b.productPrice ?? 0);
@@ -120,6 +139,16 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
 
     return filtered;
   }, [displayRecommendations, typeFilter, sortBy]);
+
+  // Top opportunities: products with competitors, sorted by biggest impact
+  const topOpportunities = useMemo(() => {
+    return filteredRecommendations
+      .filter((rec) => rec.competitorCount > 0)
+      .slice(0, TOP_LIMIT);
+  }, [filteredRecommendations]);
+
+  // Use prop value or compute from displayRecommendations
+  const hasProductsWithoutCompetitorsValue = hasProductsWithoutCompetitors || displayRecommendations.some((rec) => rec.competitorCount === 0);
 
   const removeToast = (id: string) => {
     setToasts(toasts.filter((t) => t.id !== id));
@@ -296,6 +325,97 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
         </div>
       )}
 
+      {/* Start Here Guidance */}
+      {hasProducts && hasProductsWithoutCompetitorsValue && (
+        <Card className="rounded-2xl border-blue-200 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/40">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  Start here: Add at least 1 competitor to unlock recommendations for more products.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push("/app/competitors")}
+                className="shrink-0"
+              >
+                Add competitor
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top Opportunities Section */}
+      {hasProducts && topOpportunities.length > 0 && (
+        <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+          <CardContent className="p-6">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold tracking-tight">Top opportunities</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Start here — these changes have the biggest estimated impact.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {topOpportunities.map((rec, index) => {
+                const priceChange = rec.recommendedPrice && rec.productPrice
+                  ? rec.recommendedPrice - rec.productPrice
+                  : 0;
+                const priceChangePercent = rec.changePercent;
+                
+                return (
+                  <div
+                    key={rec.productId}
+                    id={`rec-${rec.productId}`}
+                    className="flex items-center justify-between gap-4 p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{rec.productName}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          ${rec.productPrice?.toFixed(2) ?? "0.00"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">→</span>
+                        <span className="text-xs font-medium">
+                          ${rec.recommendedPrice?.toFixed(2) ?? "0.00"}
+                        </span>
+                        <Badge
+                          variant={priceChangePercent > 0 ? "default" : priceChangePercent < 0 ? "secondary" : "outline"}
+                          className="text-xs"
+                        >
+                          {priceChangePercent > 0 ? "+" : ""}
+                          {priceChangePercent.toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        // Scroll to the full card in the list below
+                        const element = document.getElementById(`rec-card-${rec.productId}`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: "smooth", block: "center" });
+                          // Highlight briefly
+                          element.classList.add("ring-2", "ring-blue-500");
+                          setTimeout(() => {
+                            element.classList.remove("ring-2", "ring-blue-500");
+                          }, 2000);
+                        }
+                      }}
+                    >
+                      Review
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters Bar */}
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
         <CardContent className="p-4">
@@ -377,37 +497,11 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
           </div>
         ) : (
           <>
-            {/* Top Opportunities Section */}
-            {filteredRecommendations.length > 0 && (
-              <div className="space-y-4">
-                <div className="mb-4">
-                  <h2 className="text-lg font-semibold tracking-tight">Top opportunities today</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Start here — these changes have the biggest estimated impact.
-                  </p>
-                </div>
-                <div className="space-y-4">
-                  {filteredRecommendations.slice(0, 5).map((rec) => (
-                    <RecommendationCard
-                      key={rec.productId}
-                      recommendation={rec}
-                      store={store}
-                      plan={plan}
-                      onPriceUpdated={handlePriceUpdated}
-                      isSelected={selectedIds.includes(rec.productId)}
-                      onToggleSelect={toggleSelect}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Remaining Recommendations */}
-            {filteredRecommendations.length > 5 && visibleCount > 5 && (
-              <div className="space-y-4">
-                {filteredRecommendations.slice(5, visibleCount).map((rec) => (
+            {/* Recommendations List (excluding top opportunities already shown) */}
+            <div className="space-y-4">
+              {filteredRecommendations.slice(0, visibleCount).map((rec) => (
+                <div key={rec.productId} id={`rec-card-${rec.productId}`}>
                   <RecommendationCard
-                    key={rec.productId}
                     recommendation={rec}
                     store={store}
                     plan={plan}
@@ -415,27 +509,36 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
                     isSelected={selectedIds.includes(rec.productId)}
                     onToggleSelect={toggleSelect}
                   />
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
 
-            {/* Show More Button */}
+            {/* Load More Button */}
             {visibleCount < filteredRecommendations.length && (
               <div className="flex justify-center pt-4">
                 <Button
                   variant="outline"
                   onClick={() => {
                     const scrollPosition = window.scrollY;
-                    setVisibleCount((prev) => Math.min(prev + 10, filteredRecommendations.length));
+                    const nextBatch = Math.min(visibleCount + BATCH_SIZE, filteredRecommendations.length);
+                    setVisibleCount(nextBatch);
                     // Restore scroll position after state update
                     setTimeout(() => {
                       window.scrollTo(0, scrollPosition);
                     }, 0);
                   }}
                   className="w-full sm:w-auto"
+                  aria-label={`Show next ${Math.min(BATCH_SIZE, filteredRecommendations.length - visibleCount)} recommendations`}
                 >
-                  Show next 10 recommendations
+                  Show next {Math.min(BATCH_SIZE, filteredRecommendations.length - visibleCount)} recommendations
                 </Button>
+              </div>
+            )}
+
+            {/* All Loaded Message */}
+            {visibleCount >= filteredRecommendations.length && filteredRecommendations.length > INITIAL_LIMIT && (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">All recommendations loaded</p>
               </div>
             )}
           </>

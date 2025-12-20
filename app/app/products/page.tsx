@@ -46,5 +46,7 @@ export default async function ProductsPage() {
     products = userProducts ?? [];
   }
 
-  return <ProductsClient initialProducts={products} isDemo={isDemo} store={store} />;
+  const productCount = products.length;
+
+  return <ProductsClient initialProducts={products} isDemo={isDemo} store={store} productCount={productCount} />;
 }

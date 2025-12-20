@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { PLAN_PRODUCT_LIMITS } from "@/lib/planLimits";
 
 export default function LandingPage() {
   const [activeImageSrc, setActiveImageSrc] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-lg sm:text-xl text-gray-300 leading-relaxed mb-8">
-            Track competitors, understand your margins, and apply data-backed price recommendations — without losing customers.
+            Track competitors, understand your margins, and apply data-backed price recommendations — without losing customers. Built for e-commerce stores that want to maximize profit, not just revenue.
           </p>
           
           {/* Benefit Pill Cards */}
@@ -139,15 +140,26 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-col items-center justify-center gap-2.5">
-            <Button
-              asChild
-              className="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 shadow-md transition"
-            >
-              <Link href="/register">
-                Get started
-                <span>→</span>
-              </Link>
-            </Button>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <Button
+                asChild
+                className="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 shadow-md transition"
+              >
+                <Link href="/register">
+                  Get started
+                  <span>→</span>
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                className="px-6 py-3 rounded-full border-slate-700 bg-slate-900/50 hover:bg-slate-800 text-white font-medium flex items-center gap-2"
+              >
+                <Link href="#preview">
+                  See live demo
+                </Link>
+              </Button>
+            </div>
             <p className="text-xs text-gray-400 text-center">
               No credit card required
             </p>
@@ -158,8 +170,9 @@ export default function LandingPage() {
       {/* Live Product Preview Section */}
       <section id="preview" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
         <div className="text-center mb-12">
+          <p className="text-sm text-slate-400 mb-2">Real in-app screenshots (no mockups).</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            Live product preview (real screenshots)
+            Live product preview
           </h2>
           <p className="text-lg text-slate-400">
             See the dashboard, product catalog, and AI recommendations in action.
@@ -248,13 +261,31 @@ export default function LandingPage() {
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
             Works with your stack
           </h2>
+          <p className="text-sm text-slate-400 mt-2">
+            Works best with standard storefronts.
+          </p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 max-w-5xl mx-auto">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 max-w-6xl mx-auto">
           {[
             {
               icon: Store,
               label: "Shopify",
               description: "Two-way sync (apply changes to your store)",
+            },
+            {
+              icon: Store,
+              label: "WooCommerce",
+              description: "Import products and sync prices",
+            },
+            {
+              icon: Store,
+              label: "Shoptet",
+              description: "Connect your Shoptet store",
+            },
+            {
+              icon: Store,
+              label: "Magento",
+              description: "Import from Magento stores",
             },
             {
               icon: FileSpreadsheet,
@@ -268,9 +299,9 @@ export default function LandingPage() {
               helper: "Ideal for suppliers & large catalogs",
             },
             {
-              icon: Layers,
-              label: "Bulk Actions",
-              description: "Apply safe changes across products",
+              icon: Store,
+              label: "Custom",
+              description: "Any storefront with product feeds",
             },
           ].map((item, idx) => {
             const Icon = item.icon;
@@ -446,6 +477,7 @@ export default function LandingPage() {
         <div className="text-center mb-16">
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Simple, transparent pricing</h2>
           <p className="text-lg text-slate-400">Choose the plan that fits your store – and upgrade only when you grow.</p>
+          <p className="text-sm text-slate-500 mt-2">Start small, upgrade when you grow.</p>
         </div>
         <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
           {[
@@ -453,11 +485,11 @@ export default function LandingPage() {
               name: "Starter",
               price: "$29",
               period: "/mo",
-              description: "Perfect for small stores",
+              description: `Perfect for small stores — track up to ${PLAN_PRODUCT_LIMITS.starter} products`,
               clarifier: "Best for testing PricePilot on a small catalog.",
               features: [
                 "Shopify & CSV import",
-                "Up to 50 products",
+                `Up to ${PLAN_PRODUCT_LIMITS.starter} products`,
                 "2 competitors per product",
                 "Sync frequency: 1× per day",
                 "Alerts: Basic (price changes only)",
@@ -471,11 +503,11 @@ export default function LandingPage() {
               name: "Pro",
               price: "$79",
               period: "/mo",
-              description: "For growing businesses",
+              description: `Best for growing businesses — manage up to ${PLAN_PRODUCT_LIMITS.pro} products`,
               clarifier: "Most stores upgrade to Pro within 7 days.",
               features: [
                 "Shopify & CSV import",
-                "Up to 200 products",
+                `Up to ${PLAN_PRODUCT_LIMITS.pro} products`,
                 "5 competitors per product",
                 "Sync frequency: 2× per day",
                 "Alerts: Priority (price + stock changes)",
@@ -490,10 +522,10 @@ export default function LandingPage() {
               name: "Scale",
               price: "$199",
               period: "/mo",
-              description: "For large operations",
+              description: `Built for scale — ${PLAN_PRODUCT_LIMITS.scale}+ products, advanced automation`,
               features: [
                 "Shopify & CSV import",
-                "Up to 400+ products",
+                `300+ products`,
                 "10 competitors per product",
                 "Sync frequency: 4× per day",
                 "Alerts: Fast / Premium",
@@ -563,7 +595,7 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="text-center text-sm text-slate-500 mt-8">
-          Need more than 400 products?{" "}
+          Need more than {PLAN_PRODUCT_LIMITS.scale} products?{" "}
           <Link href="#" className="text-blue-400 hover:text-blue-300">
             Contact us for a custom plan.
           </Link>
@@ -599,19 +631,19 @@ export default function LandingPage() {
         <Accordion>
           <AccordionItem
             question="Do I need a developer to set this up?"
-            answer="No. You can get started in minutes. Connect Shopify for automatic two-way sync, or import products via CSV or a feed URL and start tracking competitors right away."
+            answer="No. Connect Shopify for automatic sync, or import products via CSV or feed URL. Get started in minutes."
           />
           <AccordionItem
             question="Will PricePilot update my Shopify prices automatically?"
-            answer="Yes — if you connect Shopify. When you apply changes in PricePilot, we push updated prices back to your Shopify store automatically. You stay in control — nothing changes until you click apply."
+            answer="Yes, if you connect Shopify. When you apply changes in PricePilot, we push updated prices back to your store automatically. You stay in control — nothing changes until you click apply."
           />
           <AccordionItem
             question="What if I use CSV import or a Feed URL instead of Shopify?"
-            answer="PricePilot still works for analysis, competitor tracking, and recommendations. But price changes won't sync back automatically. If you want the updated prices in your store, you'll need to export/apply them manually."
+            answer="PricePilot works for analysis and recommendations. Price changes won't sync back automatically — you'll need to export and apply them manually."
           />
           <AccordionItem
             question="If I change prices in my store, will PricePilot stay up to date?"
-            answer="Shopify: Yes — your catalog stays synced automatically. CSV / Feed URL: You'll need to re-upload your CSV or refresh the feed link so PricePilot can pull the latest changes."
+            answer="Shopify: Yes, your catalog stays synced automatically. CSV / Feed URL: Re-upload your CSV or refresh the feed link to pull the latest changes."
           />
           <AccordionItem
             question="Will PricePilot change prices automatically?"
@@ -619,11 +651,15 @@ export default function LandingPage() {
           />
           <AccordionItem
             question="Which platforms do you support?"
-            answer="Shopify is supported with two-way sync (apply changes directly to your store). We also support any store that can export a CSV or provide a product feed URL. Platform-specific integrations will expand over time."
+            answer="Shopify has two-way sync. We also support any store that can export CSV or provide a product feed URL. Platform-specific integrations will expand over time."
           />
           <AccordionItem
             question="Can I cancel anytime?"
-            answer="Yes. There are no long-term contracts and you can cancel your subscription at any time."
+            answer="Yes. No long-term contracts. Cancel your subscription at any time."
+          />
+          <AccordionItem
+            question="Do you support Amazon/Walmart?"
+            answer="Large marketplaces may be unreliable due to anti-scraping protections. Best results come from Shopify, WooCommerce, Shoptet, Magento, or custom stores."
           />
         </Accordion>
       </section>

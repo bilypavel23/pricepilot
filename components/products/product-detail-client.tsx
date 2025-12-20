@@ -449,7 +449,11 @@ export function ProductDetailClient({
         <CardContent>
           {competitors.length > 0 ? (
             <div className="space-y-4">
-              {competitorsWithDiff.map((comp, idx) => (
+              {competitorsWithDiff.map((comp, idx) => {
+                // Check if this is a URL competitor (competitorId starts with "url-")
+                const isUrlCompetitor = comp.competitorId?.startsWith("url-");
+                
+                return (
                 <div
                   key={idx}
                   className="flex items-center justify-between p-3 rounded-lg border border-border bg-slate-50/50 dark:bg-slate-800/50"
@@ -457,6 +461,11 @@ export function ProductDetailClient({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="text-sm font-medium">{comp.competitorName}</p>
+                      {isUrlCompetitor && (
+                        <Badge variant="secondary" className="text-[10px] px-2 py-0">
+                          Added by URL
+                        </Badge>
+                      )}
                       {comp.competitorProductUrl && (
                         <a
                           href={comp.competitorProductUrl}
@@ -510,7 +519,8 @@ export function ProductDetailClient({
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="py-8 text-center">

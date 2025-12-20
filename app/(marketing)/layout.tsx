@@ -137,6 +137,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               Privacy
             </Link>
             <Link href="#" className="hover:text-slate-300 transition-colors">
+              Terms
+            </Link>
+            <Link href="#" className="hover:text-slate-300 transition-colors">
               Contact
             </Link>
           </div>

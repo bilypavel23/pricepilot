@@ -11,6 +11,11 @@ interface TooltipContextValue {
 
 const TooltipContext = React.createContext<TooltipContextValue | null>(null);
 
+// TooltipProvider - wrapper component for shadcn/ui compatibility
+export function TooltipProvider({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 interface TooltipProps {
   children: React.ReactNode;
   side?: "top" | "bottom" | "left" | "right";

@@ -1,22 +1,23 @@
 import { getProfile } from "@/lib/getProfile";
-import { getMatchCountForCompetitor } from "@/lib/competitors";
-import { getOrCreateStore } from "@/lib/store";
+import { getMatchCountForCompetitor, getActiveStore } from "@/lib/competitors";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Globe, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Globe, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CompetitorsClient } from "@/components/competitors/competitors-client";
 import { DeleteCompetitorButton } from "@/components/competitors/delete-competitor-button";
 import { getCompetitorLimit } from "@/lib/planLimits";
+import { getDiscoveryQuota } from "@/lib/discovery-quota";
 import {
   getOrCreateStoreSyncSettings,
   computeNextSyncDate,
   formatNextSyncDistance,
   formatTimeHM,
 } from "@/lib/competitors/syncSettings";
+import { getUrlCompetitorProductsCount } from "@/lib/competitors/url-count";
 
 function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
@@ -47,8 +48,26 @@ export default async function CompetitorsPage() {
 
   const isDemo = profile?.plan === "free_demo";
 
-  // Get or create store (automatically creates one if none exists)
-  const store = await getOrCreateStore();
+  // Get userId and active store
+  const userId = user.id;
+  const store = await getActiveStore(userId);
+
+  // Ensure store.id exists before proceeding
+  if (!store?.id) {
+    // Render loading state if store is not loaded yet
+    return (
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-10 lg:py-12">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading store...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Create Supabase client for server-side queries
   const supabase = await createClient();
@@ -58,56 +77,93 @@ export default async function CompetitorsPage() {
   const limit = getCompetitorLimit(plan);
 
   // Load tracked competitors (counts toward limit)
-  const { data: trackedCompetitors = [], error: trackedError } = await supabase
+  // Note: error_message column doesn't exist, so we don't select it
+  const { data: trackedCompetitorsData, error: trackedError } = await supabase
     .from("competitors")
-    .select("id, name, url, created_at, source, is_tracked, domain")
+    .select("id, name, url, created_at, source, is_tracked, domain, status")
     .eq("store_id", store.id)
     .eq("is_tracked", true)
     .order("created_at", { ascending: true });
 
+  // Ensure trackedCompetitors is ALWAYS an array, even if Supabase returns null or error
+  const trackedCompetitors = Array.isArray(trackedCompetitorsData) ? trackedCompetitorsData : [];
+
+  if (trackedError) {
+    // Structured error logging for tracked competitors
+    const errorDetails = {
+      context: "CompetitorsPage: loading tracked competitors",
+      message: trackedError?.message || "Unknown error",
+      code: trackedError?.code || "NO_CODE",
+      details: trackedError?.details || null,
+      hint: trackedError?.hint || null,
+      status: trackedError?.status || null,
+      raw: trackedError,
+    };
+    console.error("[CompetitorsPage]", JSON.stringify(errorDetails, null, 2));
+    // Continue with empty array - page should still render
+  }
+
   // Count URL-added competitor products (URLs) - doesn't count toward limit
-  // Step 1: Get competitor IDs where is_tracked=false
-  const { data: urlCompetitors, error: urlCompetitorsError } = await supabase
-    .from("competitors")
-    .select("id")
-    .eq("store_id", store.id)
-    .eq("is_tracked", false);
-
+  // Only call if store.id exists (already checked above, but double-check for safety)
   let urlCount = 0;
-  if (urlCompetitorsError) {
-    console.error("Error loading URL competitors:", urlCompetitorsError);
-  } else if (urlCompetitors && urlCompetitors.length > 0) {
-    // Step 2: Count competitor_products for these competitors
-    const competitorIds = urlCompetitors.map((c) => c.id);
-    const { count: urlProductsCount, error: urlProductsError } = await supabase
-      .from("competitor_products")
-      .select("*", { count: "exact", head: true })
-      .in("competitor_id", competitorIds);
-
-    if (urlProductsError) {
-      console.error("Error counting URL competitor products:", urlProductsError);
-    } else {
-      urlCount = urlProductsCount || 0;
+  if (store.id) {
+    const urlCountResult = await getUrlCompetitorProductsCount(supabase, store.id);
+    urlCount = urlCountResult.count;
+    // Log error if present, but don't break the page
+    if (urlCountResult.error) {
+      console.error("[CompetitorsPage] URL count error:", urlCountResult.error);
     }
   }
 
   // Only count tracked competitors toward limit
-  const used = trackedCompetitors?.length ?? 0;
+  const used = (trackedCompetitors ?? []).length;
 
-  if (trackedError) {
-    console.error("Error loading tracked competitors:", trackedError);
+  // Get discovery quota (safely handle missing quota)
+  let discoveryQuota = null;
+  if (store?.id) {
+    try {
+      discoveryQuota = await getDiscoveryQuota(store.id);
+    } catch (error: any) {
+      // Structured error logging for discovery quota
+      const errorDetails = {
+        context: "CompetitorsPage: loading discovery quota",
+        message: error?.message || "Unknown error",
+        code: error?.code || "NO_CODE",
+        details: error?.details || null,
+        hint: error?.hint || null,
+        status: error?.status || null,
+        raw: error,
+      };
+      console.error("[CompetitorsPage]", JSON.stringify(errorDetails, null, 2));
+      // Continue without quota display - page should still work
+    }
   }
 
   // Get match counts for tracked competitors
-  const trackedWithMatches = await Promise.all(
-    trackedCompetitors.map(async (competitor) => {
-      const matchCount = await getMatchCountForCompetitor(competitor.id);
-      return {
-        ...competitor,
-        matchCount,
-      };
-    })
-  );
+  // Safe guard: ensure we have an array before calling Promise.all
+  const trackedWithMatches = (trackedCompetitors ?? []).length > 0
+    ? await Promise.all(
+        (trackedCompetitors ?? []).map(async (competitor) => {
+          try {
+            const matchCount = await getMatchCountForCompetitor(store.id, competitor.id);
+            return {
+              ...competitor,
+              matchCount: matchCount ?? 0,
+            };
+          } catch (error: any) {
+            // Log error but continue with 0 match count
+            console.error(
+              `[CompetitorsPage] Error getting match count for competitor ${competitor.id}:`,
+              error
+            );
+            return {
+              ...competitor,
+              matchCount: 0,
+            };
+          }
+        })
+      )
+    : []; // Return empty array if no competitors
 
   // LAST SYNC – max(last_sync_at) from tracked competitors only
   const { data: lastSyncRow } = await supabase
@@ -180,6 +236,42 @@ export default async function CompetitorsPage() {
           For best results, we recommend adding competitor stores running on Shopify, WooCommerce, Shoptet, Magento, or custom storefronts.
         </p>
       </div>
+
+      {/* Discovery Quota */}
+      {discoveryQuota && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-medium">Competitor discovery</h3>
+                <p className="text-xs text-muted-foreground">
+                  6,000 products / month
+                </p>
+                <div className="mt-2">
+                  <p className="text-sm font-semibold">
+                    Discovery remaining: {discoveryQuota.remaining.toLocaleString()} / {discoveryQuota.limit_amount.toLocaleString()} this month
+                  </p>
+                  <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 mt-2">
+                    <div
+                      className={cn(
+                        "h-2 rounded-full transition-all",
+                        discoveryQuota.remaining < 1000
+                          ? "bg-yellow-500"
+                          : discoveryQuota.remaining < 500
+                          ? "bg-red-500"
+                          : "bg-blue-500"
+                      )}
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (discoveryQuota.remaining / discoveryQuota.limit_amount) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Global Sync Box */}
       <Card>
@@ -255,7 +347,31 @@ export default async function CompetitorsPage() {
                         <span className="text-white font-semibold text-lg">{firstLetter}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-foreground truncate">{competitor.name}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-semibold text-foreground truncate">{competitor.name}</p>
+                          {competitor.status === "pending" && (
+                            <Badge variant="default" className="text-[10px] px-2 py-0.5">
+                              Pending
+                            </Badge>
+                          )}
+                          {competitor.status === "paused" && (
+                            <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+                              Paused
+                            </Badge>
+                          )}
+                          {competitor.status === "error" && (
+                            <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                              <AlertCircle className="h-3 w-3 mr-1 inline" />
+                              Error
+                            </Badge>
+                          )}
+                          {competitor.status === "active" && (
+                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 border-green-500 text-green-600 dark:text-green-400">
+                              <CheckCircle2 className="h-3 w-3 mr-1 inline" />
+                              Active
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground truncate">{competitor.url}</p>
                         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           <span>
@@ -270,13 +386,21 @@ export default async function CompetitorsPage() {
 
                     {/* Right: Actions */}
                     <div className="flex flex-col gap-2 flex-shrink-0">
-                      <Link
-                        href={`/app/competitors/${competitor.id}`}
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs"
-                      >
-                        <ExternalLink className="mr-2 h-3 w-3" />
-                        Matches
-                      </Link>
+                      {(competitor.status === "pending" || competitor.status === "active") && (
+                        <Link
+                          href={`/app/competitors/${competitor.id}/matches`}
+                          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs"
+                        >
+                          <ExternalLink className="mr-2 h-3 w-3" />
+                          {competitor.status === "pending" ? "Review Matches" : "Matches"}
+                        </Link>
+                      )}
+                      {competitor.status === "pending" && (
+                        <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+                          <Loader2 className="h-3 w-3 mr-1 inline animate-spin" />
+                          Processing...
+                        </Badge>
+                      )}
                       <DeleteCompetitorButton
                         competitorId={competitor.id}
                         competitorName={competitor.name}

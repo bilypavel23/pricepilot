@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import util from "node:util";
 
 /**
  * Get the active store for a user (or first store if no active one)
@@ -40,43 +41,66 @@ export async function getActiveStore(userId: string) {
 }
 
 /**
- * Get match count for a competitor
+ * Get match count for a competitor store
+ * Uses RPC function count_matches_for_competitor_store (2-parameter version only)
+ * 
+ * @param storeId - The store ID (required)
+ * @param competitorId - The competitor store ID to count matches for
+ * @returns Number of confirmed matches (0 if none or on error)
  */
-export async function getMatchCountForCompetitor(competitorId: string): Promise<number> {
-  const supabase = await createClient();
-
-  // Try to count matches directly if product_matches has competitor_id
-  const { count: directCount, error: directError } = await supabase
-    .from("product_matches")
-    .select("*", { count: "exact", head: true })
-    .eq("competitor_id", competitorId);
-
-  if (!directError && directCount !== null) {
-    return directCount;
-  }
-
-  // Fallback: count via competitor_products
-  const { data: competitorProducts, error: productsError } = await supabase
-    .from("competitor_products")
-    .select("id")
-    .eq("competitor_id", competitorId);
-
-  if (productsError || !competitorProducts || competitorProducts.length === 0) {
+export async function getMatchCountForCompetitor(
+  storeId: string,
+  competitorId: string
+): Promise<number> {
+  // If storeId is missing, don't call RPC and return 0
+  if (!storeId) {
     return 0;
   }
 
-  const competitorProductIds = competitorProducts.map((cp) => cp.id);
-
-  const { count: matchCount, error: matchError } = await supabase
-    .from("product_matches")
-    .select("*", { count: "exact", head: true })
-    .in("competitor_product_id", competitorProductIds);
-
-  if (matchError) {
-    console.error("Error counting matches:", matchError);
+  if (!competitorId) {
     return 0;
   }
 
-  return matchCount || 0;
+  // Validate UUID format (basic check)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(competitorId)) {
+    console.error("[getMatchCountForCompetitor] Invalid UUID format for competitorId:", {
+      competitorId,
+      type: typeof competitorId,
+    });
+    return 0;
+  }
+
+  try {
+    const supabase = await createClient();
+
+    // Always use 2-parameter version only - no fallback to 1-param overload
+    const { data, error } = await supabase.rpc("count_matches_for_competitor_store", {
+      p_store_id: storeId,
+      p_competitor_store_id: competitorId,
+    });
+
+    if (error) {
+      console.error("[RPC] count_matches_for_competitor_store FAILED", error);
+      return 0;
+    }
+
+    return data ?? 0;
+  } catch (error: any) {
+    // Catch any unexpected errors (network, etc.)
+    console.error("[getMatchCountForCompetitor] Unexpected error:", {
+      context: `[getMatchCountForCompetitor] Unexpected error for competitor ${competitorId}`,
+      competitorId,
+      storeId,
+      message: error?.message || "Unknown error",
+      code: error?.code || "NO_CODE",
+      details: error?.details || null,
+      hint: error?.hint || null,
+      status: error?.status || null,
+    });
+    
+    // Fallback: return 0 without crashing
+    return 0;
+  }
 }
 

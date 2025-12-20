@@ -31,27 +31,27 @@ export async function GET(req: Request) {
       );
     }
 
-    // Query matches for URL-added competitors
-    // Step 1: Get all product_matches for this store
-    const { data: allMatches, error: allMatchesError } = await supabaseAdmin
-      .from("product_matches")
-      .select("id, product_id, competitor_product_id, store_id")
+    // Query URL competitors directly from competitor_url_products table
+    // Step 1: Load all URL competitors for this store
+    const { data: urlCompetitors, error: urlCompetitorsError } = await supabaseAdmin
+      .from("competitor_url_products")
+      .select("id, store_id, product_id, competitor_url, competitor_name, last_price, currency, last_checked_at")
       .eq("store_id", store.id);
 
-    if (allMatchesError) {
-      console.error("[added-by-url-matches] Error loading matches:", allMatchesError);
+    if (urlCompetitorsError) {
+      console.error("[added-by-url-matches] Error loading URL competitors:", urlCompetitorsError);
       return NextResponse.json(
-        { error: "Failed to load matches", code: "SERVER_ERROR", details: allMatchesError.message },
+        { error: "Failed to load URL competitors", code: "SERVER_ERROR", details: urlCompetitorsError.message },
         { status: 500 }
       );
     }
 
-    if (!allMatches || allMatches.length === 0) {
+    if (!urlCompetitors || urlCompetitors.length === 0) {
       return NextResponse.json({ matches: [] });
     }
 
     // Step 2: Get product IDs and fetch products
-    const productIds = [...new Set(allMatches.map((m: any) => m.product_id).filter((id: any) => id))];
+    const productIds = [...new Set(urlCompetitors.map((uc: any) => uc.product_id).filter((id: any) => id))];
     const { data: products, error: productsError } = await supabaseAdmin
       .from("products")
       .select("id, name, sku, store_id")
@@ -68,98 +68,40 @@ export async function GET(req: Request) {
 
     const productMap = new Map((products || []).map((p: any) => [p.id, p]));
 
-    // Step 3: Get competitor_product IDs and fetch competitor_products
-    const competitorProductIds = [
-      ...new Set(allMatches.map((m: any) => m.competitor_product_id).filter((id: any) => id)),
-    ];
-    const { data: competitorProducts, error: cpError } = await supabaseAdmin
-      .from("competitor_products")
-      .select("id, name, url, price, competitor_id")
-      .in("id", competitorProductIds);
+    // Step 3: Transform to response format
+    // Map competitor_name to name for frontend compatibility
+    const formattedMatches = urlCompetitors
+      .map((urlComp: any) => {
+        const product = productMap.get(urlComp.product_id);
+        
+        if (!product) {
+          return null; // Skip if product not found
+        }
 
-    if (cpError) {
-      console.error("[added-by-url-matches] Error loading competitor products:", cpError);
-      return NextResponse.json(
-        { error: "Failed to load competitor products", code: "SERVER_ERROR", details: cpError.message },
-        { status: 500 }
-      );
-    }
-
-    const competitorProductMap = new Map((competitorProducts || []).map((cp: any) => [cp.id, cp]));
-
-    // Step 4: Get competitor IDs and fetch competitors (filter for URL-added only)
-    const competitorIds = [
-      ...new Set(
-        (competitorProducts || [])
-          .map((cp: any) => cp.competitor_id)
-          .filter((id: any) => id)
-      ),
-    ];
-
-    if (competitorIds.length === 0) {
-      return NextResponse.json({ matches: [] });
-    }
-
-    const { data: competitors, error: competitorsError } = await supabaseAdmin
-      .from("competitors")
-      .select("id, domain, is_tracked, source, name")
-      .in("id", competitorIds)
-      .or("is_tracked.eq.false,source.eq.product_url");
-
-    if (competitorsError) {
-      console.error("[added-by-url-matches] Error loading competitors:", competitorsError);
-      return NextResponse.json(
-        { error: "Failed to load competitors", code: "SERVER_ERROR", details: competitorsError.message },
-        { status: 500 }
-      );
-    }
-
-    // Create a map of competitor_id -> competitor for quick lookup
-    const competitorMap = new Map((competitors || []).map((c: any) => [c.id, c]));
-
-    // Step 5: Filter matches to only include URL-added competitors and merge data
-    const urlCompetitorIds = new Set((competitors || []).map((c: any) => c.id));
-
-    const matches = allMatches
-      .filter((m: any) => {
-        const cp = competitorProductMap.get(m.competitor_product_id);
-        return cp && urlCompetitorIds.has(cp.competitor_id);
-      })
-      .map((m: any) => {
-        const product = productMap.get(m.product_id);
-        const competitorProduct = competitorProductMap.get(m.competitor_product_id);
-        const competitor = competitorMap.get(competitorProduct?.competitor_id);
+        // Extract domain from URL for competitorDomain
+        let competitorDomain = "Unknown";
+        try {
+          const urlObj = new URL(urlComp.competitor_url);
+          const hostname = urlObj.hostname.replace(/^www\./, "");
+          competitorDomain = hostname.split(".").slice(0, -1).join(".") || hostname;
+        } catch {
+          // Use competitor_name if URL parsing fails
+          competitorDomain = urlComp.competitor_name || "Unknown";
+        }
 
         return {
-          match: m,
-          product,
-          competitorProduct,
-          competitor,
+          matchId: urlComp.id, // Use competitor_url_products.id as matchId
+          productId: product.id,
+          productName: product.name || "Unnamed product",
+          productSku: product.sku || null,
+          competitorProductId: urlComp.id, // Use same ID for compatibility
+          competitorUrl: urlComp.competitor_url,
+          competitorName: urlComp.competitor_name || "Unnamed product", // Map competitor_name to name
+          competitorDomain: competitorDomain,
+          competitorPrice: urlComp.last_price || null,
         };
       })
-      .filter((m: any) => m.product && m.competitorProduct); // Ensure we have all required data
-
-    if (matches.length === 0) {
-      return NextResponse.json({ matches: [] });
-    }
-
-    // Transform to response format
-    const formattedMatches = matches
-      .map((item: any) => {
-        const { match, product, competitorProduct, competitor } = item;
-
-        return {
-          matchId: match.id,
-          productId: product?.id,
-          productName: product?.name || "Unnamed product",
-          productSku: product?.sku || null,
-          competitorProductId: competitorProduct?.id,
-          competitorUrl: competitorProduct?.url,
-          competitorName: competitorProduct?.name || "Unnamed product",
-          competitorDomain: competitor?.domain || competitor?.name || "Unknown",
-          competitorPrice: competitorProduct?.price || null,
-        };
-      })
+      .filter((m: any) => m !== null) // Remove null entries
       .sort((a: any, b: any) => {
         // Sort by productName asc, then domain asc
         const nameCompare = (a.productName || "").localeCompare(b.productName || "");

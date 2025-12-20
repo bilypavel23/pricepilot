@@ -8,3 +8,4 @@ ON public.competitor_products (competitor_id, url);
 CREATE UNIQUE INDEX IF NOT EXISTS product_matches_product_competitor_unique
 ON public.product_matches (product_id, competitor_product_id);
 
+

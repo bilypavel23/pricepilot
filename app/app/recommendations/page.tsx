@@ -50,6 +50,9 @@ export default async function RecommendationsPage() {
 
   const plan = (profile?.plan as string) ?? "STARTER";
 
+  // Check if user has products without competitors
+  const productsWithoutCompetitors = recommendations.filter((r) => r.competitorCount === 0);
+
   return (
     <RecommendationsClient
       store={{
@@ -59,6 +62,7 @@ export default async function RecommendationsPage() {
       recommendations={recommendations}
       hasProducts={hasProducts}
       plan={plan}
+      hasProductsWithoutCompetitors={productsWithoutCompetitors.length > 0}
     />
   );
 }

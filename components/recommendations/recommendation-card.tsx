@@ -23,6 +23,7 @@ import {
 import { Package, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import type { ProductRecommendation, CompetitorSlot } from "@/lib/recommendations/types";
 import { useRouter } from "next/navigation";
 import { getCompetitorLimit } from "@/lib/planLimits";
@@ -409,6 +410,12 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                                 >
                                   {c.name}
                                 </span>
+                              )}
+
+                              {c.isUrlCompetitor && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  URL
+                                </Badge>
                               )}
 
                               <span className="shrink-0 text-sm text-muted-foreground">

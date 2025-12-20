@@ -5,6 +5,7 @@ export type CompetitorSlot = {
   oldPrice?: number | null; // previous competitor price (for now can be null)
   newPrice?: number | null; // current competitor price
   changePercent?: number | null;
+  isUrlCompetitor?: boolean; // true if this is from competitor_url_products
 };
 
 export type ProductRecommendation = {

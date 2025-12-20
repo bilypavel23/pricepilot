@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       .eq("store_id", store.id);
 
     if (countErr) {
-      console.error("competitors count error:", countErr);
+      console.error("competitors count error:", JSON.stringify(countErr, null, 2));
       return NextResponse.json(
         { error: "Failed to count competitors" },
         { status: 500 }
@@ -81,24 +81,49 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Vlož nového competitor store
+    // 3) Insert new competitor store with status 'pending' until matches are confirmed
     const { data: inserted, error: insertErr } = await supabase
       .from("competitors")
       .insert({
         store_id: store.id,
         url: url.trim(),
         name: name?.trim() ?? null,
+        status: "pending",
+        is_tracked: true,
       })
       .select("*")
       .single();
 
     if (insertErr) {
-      console.error("competitor insert error:", insertErr);
+      console.error("competitor insert error:", JSON.stringify(insertErr, null, 2));
       return NextResponse.json(
         { error: "Failed to create competitor" },
         { status: 500 }
       );
     }
+
+    // 4) Trigger discovery scrape asynchronously (don't wait)
+    // The UI will poll for status updates
+    const discoverUrl = process.env.NEXT_PUBLIC_APP_URL 
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/competitors/${inserted.id}/discover`
+      : `http://localhost:3000/api/competitors/${inserted.id}/discover`;
+    
+    fetch(discoverUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      // Don't wait for response
+    }).catch((err) => {
+      console.error("Failed to trigger discovery scrape:", JSON.stringify(err, null, 2));
+      // Update status to error if trigger fails
+      supabase
+        .from("competitors")
+        .update({
+          status: "error",
+        })
+        .eq("id", inserted.id);
+    });
 
     return NextResponse.json(
       {

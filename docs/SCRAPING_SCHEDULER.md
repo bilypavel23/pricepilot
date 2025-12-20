@@ -194,3 +194,4 @@ Or use a queue system like BullMQ/Inngest for more sophisticated scheduling.
 - Updated sync route: `hoursBetweenSync` for PRO changed from 6 to 12 hours
 
 
+

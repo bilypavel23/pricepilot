@@ -40,3 +40,4 @@ export function formatMoney(amount: number | null | undefined, currency: string 
   return `${symbol}${amount.toFixed(2)}`;
 }
 
+

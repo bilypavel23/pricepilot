@@ -27,36 +27,39 @@ export interface PlanConfig {
 // PLAN CONFIGURATION
 // ============================================================================
 
+// Import central product limits
+import { PLAN_PRODUCT_LIMITS, getProductLimit } from "./planLimits";
+
 export const PLANS: Record<PlanName, PlanConfig> = {
   free_demo: {
-    maxProducts: 50,
+    maxProducts: PLAN_PRODUCT_LIMITS.starter, // 50
     syncsPerDay: 0,
     competitorsPerProduct: 1,
-    productsLabel: '50',
+    productsLabel: String(PLAN_PRODUCT_LIMITS.starter),
     syncLabel: 'No sync',
     syncLabelShort: '—',
   },
   STARTER: {
-    maxProducts: 50,
+    maxProducts: PLAN_PRODUCT_LIMITS.starter, // 50
     syncsPerDay: 1,
     competitorsPerProduct: 2,
-    productsLabel: '50',
+    productsLabel: String(PLAN_PRODUCT_LIMITS.starter),
     syncLabel: '1× per day',
     syncLabelShort: '1×/day',
   },
   PRO: {
-    maxProducts: 200,
+    maxProducts: PLAN_PRODUCT_LIMITS.pro, // 150
     syncsPerDay: 2,
     competitorsPerProduct: 5,
-    productsLabel: '200',
+    productsLabel: String(PLAN_PRODUCT_LIMITS.pro),
     syncLabel: '2× per day',
     syncLabelShort: '2×/day',
   },
   SCALE: {
-    maxProducts: 400,
+    maxProducts: PLAN_PRODUCT_LIMITS.scale, // 300
     syncsPerDay: 4,
     competitorsPerProduct: 10,
-    productsLabel: '400+',
+    productsLabel: `${PLAN_PRODUCT_LIMITS.scale}+`,
     syncLabel: '4× per day',
     syncLabelShort: '4×/day',
   },
@@ -114,9 +117,11 @@ export function getPlanConfig(plan: string | null | undefined): PlanConfig {
 
 /**
  * Get maximum products allowed for a plan
+ * Uses central PLAN_PRODUCT_LIMITS configuration
  */
 export function getMaxProducts(plan: string | null | undefined): number {
-  return getPlanConfig(plan).maxProducts;
+  // Use central product limits from planLimits.ts
+  return getProductLimit(plan);
 }
 
 /**
@@ -186,5 +191,6 @@ export function getHoursBetweenSyncs(plan: string | null | undefined): number {
   if (syncsPerDay <= 0) return 24 * 365; // effectively never
   return Math.floor(24 / syncsPerDay);
 }
+
 
 

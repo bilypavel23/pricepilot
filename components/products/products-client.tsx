@@ -34,12 +34,13 @@ import {
 import { Pencil, Trash2 } from "lucide-react";
 import { UpgradeModal } from "@/components/ui/upgrade-modal";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
-import { isPlanLimitExceeded, type Plan } from "@/lib/planLimits";
+import { isPlanLimitExceeded, type Plan, getProductLimit, isLimitReached } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 import { CsvImportDialog } from "@/components/products/csv-import-dialog";
 import { usePlan } from "@/components/providers/plan-provider";
 import { ProductTable } from "@/components/products/product-table";
 import { StoreConnectionCard } from "@/components/store/store-connection-card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Product = {
   id: string;
@@ -74,9 +75,10 @@ interface ProductsClientProps {
     platform?: string;
     shop_domain?: string;
   };
+  productCount?: number;
 }
 
-export function ProductsClient({ initialProducts, isDemo, store }: ProductsClientProps) {
+export function ProductsClient({ initialProducts, isDemo, store, productCount: initialProductCount }: ProductsClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +87,17 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
   useEffect(() => {
     setProducts(initialProducts);
   }, [initialProducts]);
+
+  // Get plan from provider (single source of truth)
+  const plan = usePlan();
+
+  // Calculate product limit info
+  const productCount = initialProductCount ?? products.length;
+  const productLimit = getProductLimit(plan);
+  const limitReached = isLimitReached(plan, productCount);
+  const limitDisplay = plan.toUpperCase() === "SCALE" || plan.toLowerCase() === "scale" || plan.toLowerCase() === "ultra" 
+    ? `${productLimit}+` 
+    : String(productLimit);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -125,8 +138,6 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
     cost: "",
     inventory: "",
   });
-
-  const currentPlan = usePlan();
 
   // TODO: Replace with real Supabase data_sources table queries
   // Mock state for product feed URLs
@@ -179,6 +190,25 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
       return;
     }
 
+    // Frontend validation: check limit before submitting
+    if (limitReached) {
+      setToasts([
+        ...toasts,
+        {
+          id: Date.now().toString(),
+          message: `Product limit reached. Upgrade your plan to add more products.`,
+          type: "error",
+        },
+      ]);
+      setUpgradeModalData({
+        limitType: "products",
+        current: productCount,
+        limit: productLimit,
+      });
+      setShowUpgradeModal(true);
+      return;
+    }
+
     const trimmedName = newProduct.name.trim();
     const trimmedSku = newProduct.sku.trim();
 
@@ -193,9 +223,9 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
       return;
     }
 
-    // Check plan limits before adding
+    // Check plan limits before adding (backup check)
     const competitorStores = 0; // Mock value
-    const limitCheck = isPlanLimitExceeded(currentPlan, {
+    const limitCheck = isPlanLimitExceeded(plan, {
       totalProducts: products.length,
       competitorStores,
     });
@@ -425,7 +455,21 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Products</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight">Products</h1>
+              {!isDemo && (
+                <Badge 
+                  variant={limitReached ? "destructive" : "outline"}
+                  className={cn(
+                    "text-sm font-medium",
+                    limitReached && "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800"
+                  )}
+                >
+                  {productCount} / {limitDisplay} {plan !== "SCALE" && plan.toUpperCase() !== "SCALE" && plan.toLowerCase() !== "scale" && plan.toLowerCase() !== "ultra" ? `(${plan})` : ""}
+                  {limitReached && " — Reached"}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               Manage your product catalog and pricing
             </p>
@@ -475,20 +519,39 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
             </div>
           </div>
           <div className="flex gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button>
-                  Add Products
-                  <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button disabled={!isDemo && limitReached}>
+                          Add Products
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
               <DropdownMenuContent 
                 align="end" 
                 className="min-w-[210px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-card shadow-[0_18px_45px_rgba(15,23,42,0.14)] p-1 z-50"
               >
                 <DropdownMenuItem 
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors"
-                  onClick={() => setShowAddDialog(true)}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors",
+                    (!isDemo && limitReached) && "opacity-50 cursor-not-allowed"
+                  )}
+                  onClick={() => {
+                    if (!isDemo && limitReached) {
+                      setUpgradeModalData({
+                        limitType: "products",
+                        current: productCount,
+                        limit: productLimit,
+                      });
+                      setShowUpgradeModal(true);
+                      return;
+                    }
+                    setShowAddDialog(true);
+                  }}
+                  disabled={!isDemo && limitReached}
                 >
                   <Plus className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                   <span>Add single product</span>
@@ -509,6 +572,21 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+                  </div>
+                </TooltipTrigger>
+                {!isDemo && limitReached && (
+                  <TooltipContent>
+                    <p className="text-sm">
+                      You've reached the {limitDisplay} product limit for the {plan} plan.{" "}
+                      <Link href="/app/pricing" className="underline font-medium">
+                        Upgrade
+                      </Link>{" "}
+                      to add more products.
+                    </p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </div>
@@ -852,7 +930,7 @@ export function ProductsClient({ initialProducts, isDemo, store }: ProductsClien
           limitType={upgradeModalData.limitType}
           current={upgradeModalData.current}
           limit={upgradeModalData.limit}
-          currentPlan={currentPlan}
+          currentPlan={plan}
         />
       )}
     </div>

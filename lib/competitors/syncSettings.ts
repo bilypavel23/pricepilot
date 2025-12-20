@@ -60,24 +60,35 @@ export async function getOrCreateStoreSyncSettings(
     daily_sync_times: getDefaultSyncTimes(plan),
   };
 
-  const { data: inserted, error } = await supabase
+  // Use upsert instead of insert to handle duplicate store_id gracefully
+  const { data: upserted, error } = await supabase
     .from("store_sync_settings")
-    .insert({
-      store_id: defaults.store_id,
-      timezone: defaults.timezone,
-      daily_sync_times: defaults.daily_sync_times,
-    })
+    .upsert(
+      {
+        store_id: defaults.store_id,
+        timezone: defaults.timezone,
+        daily_sync_times: defaults.daily_sync_times,
+      },
+      { onConflict: "store_id" }
+    )
     .select("store_id, timezone, daily_sync_times")
     .single();
 
-  if (error || !inserted) {
-    // If insert fails (e.g., RLS policy, table doesn't exist), just return defaults
+  if (error || !upserted) {
+    // If upsert fails (e.g., RLS policy, table doesn't exist), just return defaults
     // This allows the app to continue working even if sync settings table isn't set up yet
-    console.warn("Failed to insert store_sync_settings, using defaults:", error?.message || error);
+    console.warn("Failed to upsert store_sync_settings, using defaults:", {
+      storeId,
+      message: error?.message || "Unknown error",
+      code: error?.code || "NO_CODE",
+      details: error?.details || null,
+      hint: error?.hint || null,
+      status: error?.status || null,
+    });
     return defaults;
   }
 
-  return inserted as StoreSyncSettings;
+  return upserted as StoreSyncSettings;
 }
 
 /**

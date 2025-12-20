@@ -45,89 +45,61 @@ export async function getProductWithCompetitors(
     return null;
   }
 
-  // 2) Load product matches - query product_matches directly
-  // Filter by product_id and store_id (we set both on insert)
-  // Join competitor_products via competitor_product_id foreign key
+  // 2) Load confirmed matches from competitor_product_matches (for competitor store catalog)
   const { data: matches, error: matchesError } = await supabase
-    .from("product_matches")
-    .select("id, status, competitor_product_id")
-    .eq("product_id", productId)
-    .eq("store_id", storeId);
+    .from("competitor_product_matches")
+    .select("id, competitor_product_id")
+    .eq("product_id", productId);
 
   if (matchesError) {
     console.error("[getProductWithCompetitors] Error loading matches:", matchesError);
-    console.error("[getProductWithCompetitors] Error details:", {
-      productId,
-      storeId,
-      error: matchesError
-    });
-    return {
-      product,
-      competitors: [],
-      competitorAvg: 0,
-    };
   }
 
-  if (!matches || matches.length === 0) {
-    console.log("[getProductWithCompetitors] No matches found", { productId, storeId });
-    return {
-      product,
-      competitors: [],
-      competitorAvg: 0,
-    };
+  // 3) Load URL competitors from competitor_url_products (for "Added by URL")
+  const { data: urlCompetitors, error: urlCompetitorsError } = await supabase
+    .from("competitor_url_products")
+    .select("id, competitor_url, competitor_name, last_price, currency, last_checked_at")
+    .eq("product_id", productId)
+    .eq("store_id", storeId);
+
+  if (urlCompetitorsError) {
+    console.error("[getProductWithCompetitors] Error loading URL competitors:", urlCompetitorsError);
   }
 
-  console.log("[getProductWithCompetitors] Found matches:", matches.length, { productId, storeId });
-
-  // 3) Load competitor_products using the competitor_product_ids from matches
-  const competitorProductIds = matches
-    .map((m) => m.competitor_product_id)
-    .filter(Boolean);
-  
-  if (competitorProductIds.length === 0) {
-    console.warn("[getProductWithCompetitors] No competitor_product_ids found in matches");
-    return {
-      product,
-      competitors: [],
-      competitorAvg: 0,
-    };
-  }
-
-  const { data: competitorProducts, error: cpError } = await supabase
-    .from("competitor_products")
-    .select("id, name, url, price, competitor_id")
-    .in("id", competitorProductIds);
-
-  if (cpError) {
-    console.error("[getProductWithCompetitors] Error loading competitor_products:", cpError);
-    return {
-      product,
-      competitors: [],
-      competitorAvg: 0,
-    };
-  }
-
-  if (!competitorProducts || competitorProducts.length === 0) {
-    console.warn("[getProductWithCompetitors] No competitor_products found for ids:", competitorProductIds);
-    return {
-      product,
-      competitors: [],
-      competitorAvg: 0,
-    };
-  }
-
-  // 4) Load competitor store info separately
-  const competitorIds = [...new Set(competitorProducts.map((cp) => cp.competitor_id).filter(Boolean))];
-
+  // 4) Load competitor_products using the competitor_product_ids from matches (if any)
+  let competitorProducts: any[] = [];
   let competitorsMap = new Map();
-  if (competitorIds.length > 0) {
-    const { data: competitors } = await supabase
-      .from("competitors")
-      .select("id, name, url, last_sync_at")
-      .in("id", competitorIds);
+
+  if (matches && matches.length > 0) {
+    const competitorProductIds = matches
+      .map((m) => m.competitor_product_id)
+      .filter(Boolean);
     
-    if (competitors) {
-      competitorsMap = new Map(competitors.map((c) => [c.id, c]));
+    if (competitorProductIds.length > 0) {
+      const { data: cpData, error: cpError } = await supabase
+        .from("competitor_products")
+        .select("id, title, url, price, competitor_id")
+        .in("id", competitorProductIds);
+
+      if (cpError) {
+        console.error("[getProductWithCompetitors] Error loading competitor_products:", cpError);
+      } else {
+        competitorProducts = cpData ?? [];
+      }
+
+      // Load competitor store info separately
+      const competitorIds = [...new Set(competitorProducts.map((cp) => cp.competitor_id).filter(Boolean))];
+
+      if (competitorIds.length > 0) {
+        const { data: competitors } = await supabase
+          .from("competitors")
+          .select("id, name, url, last_sync_at")
+          .in("id", competitorIds);
+        
+        if (competitors) {
+          competitorsMap = new Map(competitors.map((c) => [c.id, c]));
+        }
+      }
     }
   }
 
@@ -135,40 +107,75 @@ export async function getProductWithCompetitors(
   const competitorList: ProductWithCompetitors["competitors"] = [];
   const prices: number[] = [];
 
-  // Create a map of competitor_product_id -> competitor_product for quick lookup
-  const cpMap = new Map(competitorProducts.map((cp) => [cp.id, cp]));
+  // Add competitor store catalog matches
+  if (matches && matches.length > 0) {
+    const cpMap = new Map(competitorProducts.map((cp) => [cp.id, cp]));
 
-  for (const match of matches) {
-    const cp = cpMap.get(match.competitor_product_id);
-    if (!cp) {
-      console.warn("[getProductWithCompetitors] Competitor product not found for id:", match.competitor_product_id);
-      continue;
+    for (const match of matches) {
+      const cp = cpMap.get(match.competitor_product_id);
+      if (!cp) {
+        console.warn("[getProductWithCompetitors] Competitor product not found for id:", match.competitor_product_id);
+        continue;
+      }
+
+      const competitor = competitorsMap.get(cp.competitor_id);
+      if (!competitor) {
+        console.warn("[getProductWithCompetitors] Competitor not found for id:", cp.competitor_id);
+        continue;
+      }
+
+      if (cp.price != null && cp.price > 0) {
+        prices.push(Number(cp.price));
+      }
+
+      competitorList.push({
+        matchId: match.id,
+        competitorId: competitor.id,
+        competitorName: competitor.name,
+        competitorUrl: competitor.url,
+        competitorProductId: cp.id,
+        competitorProductName: cp.title ?? null,
+        competitorProductUrl: cp.url,
+        competitorPrice: cp.price != null ? Number(cp.price) : null,
+        lastSyncAt: competitor.last_sync_at,
+      });
+    }
+  }
+
+  // Add URL competitors (from competitor_url_products)
+  const urlCompetitorsList = urlCompetitors ?? [];
+  for (const urlComp of urlCompetitorsList) {
+    if (urlComp.last_price != null && urlComp.last_price > 0) {
+      prices.push(Number(urlComp.last_price));
     }
 
-    const competitor = competitorsMap.get(cp.competitor_id);
-    if (!competitor) {
-      console.warn("[getProductWithCompetitors] Competitor not found for id:", cp.competitor_id);
-      continue;
-    }
-
-    if (cp.price != null && cp.price > 0) {
-      prices.push(Number(cp.price));
+    // Extract domain from URL for competitor name
+    let competitorName = urlComp.competitor_name || "Unknown";
+    try {
+      const urlObj = new URL(urlComp.competitor_url);
+      const domain = urlObj.hostname.replace(/^www\./, "");
+      competitorName = domain.split(".").slice(0, -1).join(".") || domain;
+    } catch {
+      // Use competitor_name if URL parsing fails
     }
 
     competitorList.push({
-      matchId: match.id, // Include product_matches.id for delete operations
-      competitorId: competitor.id,
-      competitorName: competitor.name,
-      competitorUrl: competitor.url,
-      competitorProductId: cp.id,
-      competitorProductName: cp.name,
-      competitorProductUrl: cp.url,
-      competitorPrice: cp.price != null ? Number(cp.price) : null,
-      lastSyncAt: competitor.last_sync_at,
+      matchId: urlComp.id, // Use competitor_url_products.id
+      competitorId: `url-${urlComp.id}`, // Virtual ID for URL competitors
+      competitorName: competitorName,
+      competitorUrl: urlComp.competitor_url,
+      competitorProductId: urlComp.id,
+      competitorProductName: urlComp.competitor_name,
+      competitorProductUrl: urlComp.competitor_url,
+      competitorPrice: urlComp.last_price != null ? Number(urlComp.last_price) : null,
+      lastSyncAt: urlComp.last_checked_at,
     });
   }
 
-  console.log("[getProductWithCompetitors] Built competitor list:", competitorList.length);
+  console.log("[getProductWithCompetitors] Built competitor list:", competitorList.length, {
+    storeMatches: matches?.length || 0,
+    urlCompetitors: urlCompetitorsList.length,
+  });
 
   // 6) Calculate competitor average
   const competitorAvg = prices.length > 0

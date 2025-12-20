@@ -43,24 +43,24 @@ export async function DELETE(
       );
     }
 
-    // Verify the match exists and belongs to this store
-    const { data: match, error: matchError } = await supabaseAdmin
-      .from("product_matches")
+    // Verify the URL competitor exists and belongs to this store
+    const { data: urlCompetitor, error: urlCompetitorError } = await supabaseAdmin
+      .from("competitor_url_products")
       .select("id, store_id")
       .eq("id", matchId)
       .eq("store_id", store.id)
       .single();
 
-    if (matchError || !match) {
+    if (urlCompetitorError || !urlCompetitor) {
       return NextResponse.json(
-        { error: "Match not found", code: "NOT_FOUND" },
+        { error: "URL competitor not found", code: "NOT_FOUND" },
         { status: 404 }
       );
     }
 
-    // Delete the match
+    // Delete the URL competitor
     const { error: deleteError } = await supabaseAdmin
-      .from("product_matches")
+      .from("competitor_url_products")
       .delete()
       .eq("id", matchId)
       .eq("store_id", store.id);
@@ -84,4 +84,5 @@ export async function DELETE(
     );
   }
 }
+
 

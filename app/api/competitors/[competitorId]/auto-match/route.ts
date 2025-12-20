@@ -35,28 +35,28 @@ export async function POST(
     // Get competitor products
     const { data: competitorProducts } = await supabase
       .from("competitor_products")
-      .select("id, name")
+      .select("id, title")
       .eq("competitor_id", competitorId);
 
-    if (!myProducts || !competitorProducts) {
+    if (!myProducts || !competitorProducts || myProducts.length === 0 || competitorProducts.length === 0) {
       return NextResponse.json({ success: true, created: 0 });
     }
 
-    const matchesToInsert: any[] = [];
+    const candidatesToInsert: any[] = [];
 
     for (const p of myProducts) {
-      const pName = p.name.toLowerCase();
+      const pName = (p.name ?? "").toLowerCase();
 
-      // Find competitor product with highest similarity by name (simple includes)
+      // Find competitor product with highest similarity by title (simple includes)
       let best: { cp: any; score: number } | null = null;
 
       for (const cp of competitorProducts) {
-        const cpName = cp.name.toLowerCase();
+        const cpTitle = (cp.title ?? "").toLowerCase();
         let score = 0;
 
-        if (pName === cpName) score = 100;
-        else if (pName.includes(cpName) || cpName.includes(pName)) score = 85;
-        else if (pName.split(" ").some((word: string) => word.length > 3 && cpName.includes(word)))
+        if (pName === cpTitle) score = 100;
+        else if (pName.includes(cpTitle) || cpTitle.includes(pName)) score = 85;
+        else if (pName.split(" ").some((word: string) => word.length > 3 && cpTitle.includes(word)))
           score = 70;
 
         if (!best || score > best.score) {
@@ -65,20 +65,24 @@ export async function POST(
       }
 
       if (best && best.score >= 70) {
-        matchesToInsert.push({
-          store_id: store.id,
-          product_id: p.id,
+        candidatesToInsert.push({
+          competitor_id: competitorId,
+          my_product_id: p.id,
           competitor_product_id: best.cp.id,
-          match_score: best.score,
-          status: "pending",
+          score: best.score,
         });
       }
     }
 
-    if (matchesToInsert.length > 0) {
-      const { error } = await supabase.from("product_matches").insert(matchesToInsert);
+    if (candidatesToInsert.length > 0) {
+      const { error } = await supabase
+        .from("competitor_match_candidates")
+        .upsert(candidatesToInsert, {
+          onConflict: "competitor_id,my_product_id,competitor_product_id",
+          ignoreDuplicates: false,
+        });
       if (error) {
-        console.error("Error inserting matches:", error);
+        console.error("Error inserting match candidates:", JSON.stringify(error, null, 2));
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
     }

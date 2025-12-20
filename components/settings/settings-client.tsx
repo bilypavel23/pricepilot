@@ -65,10 +65,26 @@ export function SettingsClient({
         type: "success",
       },
     ]);
-    // Auto-dismiss after 2.5 seconds
+    // Auto-dismiss after 2 seconds
     setTimeout(() => {
       removeToast(id);
-    }, 2500);
+    }, 2000);
+  };
+
+  const showErrorToast = (message: string) => {
+    const id = Date.now().toString();
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        message,
+        type: "error",
+      },
+    ]);
+    // Auto-dismiss after 3 seconds for errors
+    setTimeout(() => {
+      removeToast(id);
+    }, 3000);
   };
 
   const [storeName, setStoreName] = useState(initialStoreName);
@@ -103,6 +119,7 @@ export function SettingsClient({
       // Trigger custom event to update topbar (same-tab update)
       window.dispatchEvent(new CustomEvent("storeNameUpdated"));
     }
+    showSuccessToast();
   };
 
   const handleCancelEdit = () => {
@@ -291,6 +308,7 @@ export function SettingsClient({
         initialTimes={initialTimes}
         storeId={store?.id}
         onSaveSuccess={showSuccessToast}
+        onSaveError={(error) => showErrorToast(error)}
       />
 
       {/* Appearance Section */}

@@ -16,6 +16,7 @@ type Props = {
   initialTimes: string[] | null;
   storeId?: string;
   onSaveSuccess?: () => void;
+  onSaveError?: (error: string) => void;
 };
 
 const COMMON_TIMEZONES = [
@@ -34,6 +35,7 @@ export function CompetitorSyncCard({
   initialTimes,
   storeId,
   onSaveSuccess,
+  onSaveError,
 }: Props) {
   const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone || "Europe/Prague");
@@ -88,15 +90,17 @@ export function CompetitorSyncCard({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         console.error("Failed to save:", data);
-        alert("Failed to save competitor sync settings");
+        const errorMsg = data.error || "Failed to save competitor sync settings";
+        onSaveError?.(errorMsg);
+        setIsSaving(false);
         return;
       }
 
       router.refresh();
       onSaveSuccess?.();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error saving competitor sync settings:", err);
-      alert("Failed to save competitor sync settings");
+      onSaveError?.(err.message || "Failed to save competitor sync settings");
     } finally {
       setIsSaving(false);
     }

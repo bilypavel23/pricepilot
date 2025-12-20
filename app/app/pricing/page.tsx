@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PLAN_LIMITS, PLAN_BADGES, type Plan } from "@/lib/planLimits";
+import { PLAN_LIMITS, PLAN_BADGES, type Plan, PLAN_PRODUCT_LIMITS } from "@/lib/planLimits";
 import { usePlan } from "@/components/providers/plan-provider";
 import { cn } from "@/lib/utils";
 
@@ -149,7 +149,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 50 products</span>
+                          <span>Up to {PLAN_PRODUCT_LIMITS.starter} products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -189,7 +189,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 200 products</span>
+                          <span>Up to {PLAN_PRODUCT_LIMITS.pro} products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -229,7 +229,7 @@ export default function PricingPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
-                          <span>Up to 400+ products</span>
+                          <span>{PLAN_PRODUCT_LIMITS.scale}+ products</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="h-4 w-4 text-blue-500" />
@@ -307,9 +307,9 @@ export default function PricingPage() {
             <TableBody>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Products limit</TableCell>
-                <TableCell className="text-center">50</TableCell>
-                <TableCell className="text-center">200</TableCell>
-                <TableCell className="text-center">400+</TableCell>
+                <TableCell className="text-center">{PLAN_PRODUCT_LIMITS.starter}</TableCell>
+                <TableCell className="text-center">{PLAN_PRODUCT_LIMITS.pro}</TableCell>
+                <TableCell className="text-center">{PLAN_PRODUCT_LIMITS.scale}+</TableCell>
               </TableRow>
               <TableRow className="hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors cursor-pointer">
                 <TableCell className="font-medium">Competitors per product</TableCell>
