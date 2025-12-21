@@ -71,10 +71,11 @@ export async function POST(
     // Verify all competitor products belong to this competitor
     const competitorProductIds = matches.map((m) => m.competitor_product_id);
     const { data: competitorProducts, error: competitorProductsError } = await supabase
-      .from("competitor_products")
-      .select("id, competitor_id, url, price, currency")
+      .from("competitor_url_products")
+      .select("id, competitor_id, competitor_url, last_price, currency")
       .in("id", competitorProductIds)
-      .eq("competitor_id", competitorId);
+      .eq("competitor_id", competitorId)
+      .eq("store_id", store.id);
 
     if (competitorProductsError || !competitorProducts || competitorProducts.length !== matches.length) {
       return NextResponse.json(
@@ -85,6 +86,7 @@ export async function POST(
 
     // Create competitor_product_matches records
     const matchesToInsert = matches.map((match) => ({
+      store_id: store.id,
       competitor_id: competitorId,
       product_id: match.product_id,
       competitor_product_id: match.competitor_product_id,
@@ -94,7 +96,7 @@ export async function POST(
     const { error: insertError } = await supabase
       .from("competitor_product_matches")
       .upsert(matchesToInsert, {
-        onConflict: "competitor_id,product_id",
+        onConflict: "store_id,product_id,competitor_product_id",
         ignoreDuplicates: false,
       });
 
@@ -106,38 +108,21 @@ export async function POST(
       );
     }
 
-    // Update competitor products with latest price info and hash
-    const { computePriceHash } = await import("@/lib/competitors/price-hash");
-    for (const competitorProduct of competitorProducts) {
-      const priceHash = computePriceHash(
-        competitorProduct.price,
-        competitorProduct.currency || "USD"
-      );
-
-      await supabase
-        .from("competitor_products")
-        .update({
-          last_price_hash: priceHash,
-          last_checked_at: new Date().toISOString(),
-        })
-        .eq("id", competitorProduct.id);
-    }
-
-    // Remove confirmed candidates from competitor_match_candidates
-    const confirmedCandidateIds = matches.map((m) => {
-      // Find the candidate ID that matches this confirmation
-      // We need to query candidates to get their IDs
-      return null; // Will be handled below
-    });
-
-    // Delete match candidates for confirmed matches
-    const competitorProductIdsToRemove = matches.map((m) => m.competitor_product_id);
-    if (competitorProductIdsToRemove.length > 0) {
-      await supabase
+    // Delete match candidates for confirmed product_ids (for this competitor)
+    // Delete all candidates for these product_ids, not just the selected competitor_product_id
+    const productIdsToRemove = matches.map((m) => m.product_id);
+    if (productIdsToRemove.length > 0) {
+      const { error: deleteError } = await supabase
         .from("competitor_match_candidates")
         .delete()
+        .eq("store_id", store.id)
         .eq("competitor_id", competitorId)
-        .in("competitor_product_id", competitorProductIdsToRemove);
+        .in("suggested_product_id", productIdsToRemove);
+
+      if (deleteError) {
+        console.error("Error deleting match candidates:", JSON.stringify(deleteError, null, 2));
+        // Continue anyway - matches were already confirmed
+      }
     }
 
     // Update competitor status to active

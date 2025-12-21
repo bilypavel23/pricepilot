@@ -73,23 +73,23 @@ export default async function MatchesReviewPage({
     // Continue anyway - maybe candidates already exist
   }
 
-  // Step 2: Load match candidates using RPC
+  // Step 2: Load grouped match candidates using RPC
   const loadPayload = {
     p_store_id: store.id,
     p_competitor_id: competitorId,
   };
-  console.log("[matches-review] Loading match candidates with payload:", {
-    function: "get_match_candidates_for_competitor_store",
+  console.log("[matches-review] Loading grouped match candidates with payload:", {
+    function: "get_grouped_match_candidates",
     payload: loadPayload,
   });
 
-  const { data: matchCandidates, error: candidatesError } = await supabase.rpc(
-    "get_match_candidates_for_competitor_store",
+  const { data: groupedCandidates, error: candidatesError } = await supabase.rpc(
+    "get_grouped_match_candidates",
     loadPayload
   );
 
   if (candidatesError) {
-    console.error("[matches-review] Error loading match candidates:", {
+    console.error("[matches-review] Error loading grouped match candidates:", {
       competitorId,
       storeId: store.id,
       payload: loadPayload,
@@ -121,22 +121,25 @@ export default async function MatchesReviewPage({
     });
   }
 
-  // Transform match candidates for client
-  // RPC get_match_candidates_for_competitor_store returns:
-  // candidate_id, competitor_product_id, competitor_url, competitor_name, competitor_last_price, competitor_currency,
-  // suggested_product_id, suggested_product_name, suggested_product_sku, suggested_product_price, similarity_score
-  const matches = Array.isArray(matchCandidates) ? matchCandidates.map((mc: any) => ({
-    candidate_id: mc.candidate_id,
-    competitor_product_id: mc.competitor_product_id,
-    competitor_url: mc.competitor_url || "",
-    competitor_name: mc.competitor_name || "",
-    competitor_last_price: mc.competitor_last_price ?? null,
-    competitor_currency: mc.competitor_currency || "USD",
-    suggested_product_id: mc.suggested_product_id || "",
-    suggested_product_name: mc.suggested_product_name || "",
-    suggested_product_sku: mc.suggested_product_sku || null,
-    suggested_product_price: mc.suggested_product_price ?? null,
-    similarity_score: mc.similarity_score || 0,
+  // Transform grouped candidates for client
+  // RPC get_grouped_match_candidates returns array of:
+  // { product_id, product_name, product_sku, product_price, candidates: [...] }
+  // where candidates array contains:
+  // { candidate_id, competitor_product_id, competitor_url, competitor_name, competitor_last_price, competitor_currency, similarity_score }
+  const groupedMatches = Array.isArray(groupedCandidates) ? groupedCandidates.map((group: any) => ({
+    product_id: group.product_id || "",
+    product_name: group.product_name || "",
+    product_sku: group.product_sku || null,
+    product_price: group.product_price ?? null,
+    candidates: Array.isArray(group.candidates) ? group.candidates.map((c: any) => ({
+      candidate_id: c.candidate_id,
+      competitor_product_id: c.competitor_product_id || "",
+      competitor_url: c.competitor_url || "",
+      competitor_name: c.competitor_name || "",
+      competitor_last_price: c.competitor_last_price ?? null,
+      competitor_currency: c.competitor_currency || "USD",
+      similarity_score: c.similarity_score || 0,
+    })) : [],
   })) : [];
 
   // Derive error message from status if needed
@@ -150,7 +153,7 @@ export default async function MatchesReviewPage({
       competitorName={competitor.name || competitor.url}
       competitorStatus={competitor.status}
       errorMessage={errorMessage}
-      matches={matches}
+      groupedMatches={groupedMatches}
       myProducts={myProducts || []}
     />
   );

@@ -17,18 +17,22 @@ type MyProduct = {
   price: number | null;
 };
 
-type MatchCandidate = {
+type Candidate = {
   candidate_id: string;
   competitor_product_id: string;
   competitor_url: string;
   competitor_name: string;
   competitor_last_price: number | null;
   competitor_currency: string;
-  suggested_product_id: string;
-  suggested_product_name: string;
-  suggested_product_sku: string | null;
-  suggested_product_price: number | null;
   similarity_score: number;
+};
+
+type GroupedMatch = {
+  product_id: string;
+  product_name: string;
+  product_sku: string | null;
+  product_price: number | null;
+  candidates: Candidate[];
 };
 
 type MatchesReviewClientProps = {
@@ -36,7 +40,7 @@ type MatchesReviewClientProps = {
   competitorName: string;
   competitorStatus?: string;
   errorMessage?: string | null;
-  matches: MatchCandidate[];
+  groupedMatches: GroupedMatch[];
   myProducts: MyProduct[];
 };
 
@@ -45,41 +49,34 @@ export function MatchesReviewClient({
   competitorName,
   competitorStatus,
   errorMessage,
-  matches,
+  groupedMatches,
   myProducts,
 }: MatchesReviewClientProps) {
   const router = useRouter();
-  const [selections, setSelections] = useState<Record<string, string>>(() => {
+  const [selectedByProduct, setSelectedByProduct] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    matches.forEach((match) => {
-      if (match.similarity_score >= 60 && match.suggested_product_id) {
-        initial[match.suggested_product_id] = match.competitor_product_id;
+    groupedMatches.forEach((group) => {
+      // Initialize default selection: first candidate if available, else "__none__"
+      if (group.product_id) {
+        if (group.candidates.length > 0 && group.candidates[0]?.competitor_product_id) {
+          initial[group.product_id] = group.candidates[0].competitor_product_id;
+        } else {
+          initial[group.product_id] = "__none__";
+        }
       }
     });
     return initial;
   });
   const [loading, setLoading] = useState(false);
 
-  // Filter products that have selections
+  // Filter products that have selections (excluding "__none__")
   const matchedProducts = useMemo(() => {
-    return myProducts.filter((p) => selections[p.id]);
-  }, [myProducts, selections]);
+    return groupedMatches.filter((group) => {
+      const selectedId = selectedByProduct[group.product_id];
+      return selectedId && selectedId !== "__none__";
+    });
+  }, [groupedMatches, selectedByProduct]);
 
-  const handleCompetitorSelect = (myProductId: string, competitorProductId: string) => {
-    // Handle sentinel value for "None" selection
-    if (competitorProductId === "__NONE__") {
-      setSelections((prev) => {
-        const next = { ...prev };
-        delete next[myProductId];
-        return next;
-      });
-    } else if (competitorProductId) {
-      setSelections((prev) => ({
-        ...prev,
-        [myProductId]: competitorProductId,
-      }));
-    }
-  };
 
   const handleConfirmMatches = async () => {
     if (matchedProducts.length === 0) {
@@ -88,10 +85,25 @@ export function MatchesReviewClient({
 
     setLoading(true);
     try {
-      const matches = matchedProducts.map((p) => ({
-        product_id: p.id,
-        competitor_product_id: selections[p.id],
-      }));
+      // Build matches payload - only include rows where selectedId !== "__none__"
+      const matches = matchedProducts
+        .map((group) => {
+          const selectedId = selectedByProduct[group.product_id];
+          if (selectedId && selectedId !== "__none__") {
+            return {
+              product_id: group.product_id,
+              competitor_product_id: selectedId,
+            };
+          }
+          return null;
+        })
+        .filter((m): m is { product_id: string; competitor_product_id: string } => m !== null);
+
+      if (matches.length === 0) {
+        alert("Please select at least one match to confirm.");
+        setLoading(false);
+        return;
+      }
 
       const response = await fetch(`/api/competitors/${competitorId}/matches/confirm`, {
         method: "POST",
@@ -178,93 +190,126 @@ export function MatchesReviewClient({
             </div>
           ) : (
             <div className="space-y-4">
-              {matches.map((match) => {
-                const myProduct = myProducts.find((p) => p.id === match.suggested_product_id);
-                const selectedCompetitorId = selections[match.suggested_product_id];
+              {groupedMatches.map((group) => {
+                const myProduct = myProducts.find((p) => p.id === group.product_id);
 
                 if (!myProduct) {
                   return null; // Skip if my product not found
                 }
 
-                // Ensure competitor_product_id is a valid non-empty string
-                const competitorProductId = match.competitor_product_id ? String(match.competitor_product_id) : null;
-                if (!competitorProductId) {
-                  return null; // Skip if competitor product ID is invalid
-                }
-
-                // Select value: use selectedCompetitorId if it exists, otherwise use competitorProductId as default, or undefined to show placeholder
-                const selectValue = selectedCompetitorId || competitorProductId || undefined;
+                // Get selected ID for this product
+                const selectedId = selectedByProduct[group.product_id] ?? 
+                  (group.candidates?.[0]?.competitor_product_id ?? "__none__");
+                
+                // Find the selected candidate
+                const selectedCandidate = selectedId === "__none__" 
+                  ? null 
+                  : group.candidates.find(c => c.competitor_product_id === selectedId) ?? null;
 
                 return (
                   <div
-                    key={match.candidate_id}
+                    key={group.product_id}
                     className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                   >
                     {/* Left: My Product (fixed) */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <Label className="font-medium">{match.suggested_product_name || myProduct.name}</Label>
-                        {(match.suggested_product_sku || myProduct.sku) && (
+                        <Label className="font-medium">{group.product_name || myProduct.name}</Label>
+                        {(group.product_sku || myProduct.sku) && (
                           <Badge variant="outline" className="text-xs">
-                            SKU: {match.suggested_product_sku || myProduct.sku}
+                            SKU: {group.product_sku || myProduct.sku}
                           </Badge>
                         )}
                       </div>
-                      {(match.suggested_product_price !== null || myProduct.price) && (
+                      {(group.product_price !== null || myProduct.price) && (
                         <p className="text-sm text-muted-foreground">
-                          ${(match.suggested_product_price ?? myProduct.price ?? 0).toFixed(2)}
+                          ${(group.product_price ?? myProduct.price ?? 0).toFixed(2)}
                         </p>
                       )}
                     </div>
 
                     {/* Right: Competitor Product (with similarity badge) */}
                     <div className="w-80 flex-shrink-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge
-                          variant={getScoreBadgeVariant(match.similarity_score)}
-                          className="text-xs"
-                        >
-                          {getScoreLabel(match.similarity_score)} match ({match.similarity_score.toFixed(0)}%)
-                        </Badge>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium truncate">{match.competitor_name}</p>
-                        {match.competitor_last_price !== null && (
-                          <p className="text-xs text-muted-foreground">
-                            ${match.competitor_last_price.toFixed(2)} {match.competitor_currency || "USD"}
-                          </p>
-                        )}
-                        {match.competitor_url && (
-                          <a
-                            href={match.competitor_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      <div className="flex flex-col gap-2">
+                        {/* Top row: Competitor name on left, badge on right */}
+                        <div className="flex items-center justify-between gap-2">
+                          {selectedCandidate ? (
+                            <p className="text-sm font-medium truncate flex-1 min-w-0">
+                              {selectedCandidate.competitor_name}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground flex-1 min-w-0">
+                              No competitor selected
+                            </p>
+                          )}
+                          {selectedCandidate ? (
+                            <Badge
+                              variant={getScoreBadgeVariant(selectedCandidate.similarity_score)}
+                              className="text-xs flex-shrink-0"
+                            >
+                              {selectedCandidate.similarity_score.toFixed(0)}% match
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                              Skipped
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* View competitor product button */}
+                        {selectedCandidate?.competitor_url ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            className="w-full"
                           >
-                            View product →
-                          </a>
+                            <a
+                              href={selectedCandidate.competitor_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View competitor product
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            className="w-full"
+                          >
+                            View competitor product
+                          </Button>
                         )}
+
+                        {/* Dropdown */}
+                        <Select
+                          value={selectedId}
+                          onValueChange={(value) => setSelectedByProduct(prev => ({ ...prev, [group.product_id]: value }))}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select competitor product..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Skip (none)</SelectItem>
+                            {group.candidates.map((candidate) => {
+                              const candidateId = candidate.competitor_product_id ? String(candidate.competitor_product_id) : null;
+                              if (!candidateId) return null;
+                              return (
+                                <SelectItem key={candidate.candidate_id} value={candidateId}>
+                                  {candidate.competitor_name} ({candidate.similarity_score.toFixed(0)}%)
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Select
-                        value={selectValue}
-                        onValueChange={(value) => handleCompetitorSelect(match.suggested_product_id, value)}
-                        className="mt-2"
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select competitor product..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__NONE__">None (skip)</SelectItem>
-                          <SelectItem value={competitorProductId}>
-                            {match.competitor_name} (suggested)
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
                 );
               })}
-              {matches.length === 0 && (
+              {groupedMatches.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <p>No match candidates found. Discovery scan may still be in progress.</p>
                 </div>
