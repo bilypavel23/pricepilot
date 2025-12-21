@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Insert new competitor store with status 'pending' until matches are confirmed
+    // 3) Insert new competitor store with status 'pending' and source='store'
     const { data: inserted, error: insertErr } = await supabase
       .from("competitors")
       .insert({
@@ -89,6 +89,7 @@ export async function POST(req: Request) {
         url: url.trim(),
         name: name?.trim() ?? null,
         status: "pending",
+        source: "store",
         is_tracked: true,
       })
       .select("*")
@@ -103,27 +104,38 @@ export async function POST(req: Request) {
     }
 
     // 4) Trigger discovery scrape asynchronously (don't wait)
-    // The UI will poll for status updates
-    const discoverUrl = process.env.NEXT_PUBLIC_APP_URL 
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/competitors/${inserted.id}/discover`
-      : `http://localhost:3000/api/competitors/${inserted.id}/discover`;
-    
-    fetch(discoverUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      // Don't wait for response
-    }).catch((err) => {
-      console.error("Failed to trigger discovery scrape:", JSON.stringify(err, null, 2));
-      // Update status to error if trigger fails
-      supabase
-        .from("competitors")
-        .update({
-          status: "error",
-        })
-        .eq("id", inserted.id);
+    // Use internal function to avoid HTTP overhead
+    console.log("[POST /api/competitors] Starting discovery scrape", {
+      competitorId: inserted.id,
+      storeId: store.id,
+      url: url.trim(),
     });
+
+    // Run discovery in background (don't await)
+    import("@/lib/competitors/discovery")
+      .then(({ runCompetitorDiscovery }) => {
+        return runCompetitorDiscovery({
+          storeId: store.id,
+          competitorId: inserted.id,
+          competitorUrl: url.trim(),
+          plan: plan,
+        });
+      })
+      .then((result) => {
+        console.log("[POST /api/competitors] Discovery completed", {
+          competitorId: inserted.id,
+          success: result.success,
+          productsScraped: result.productsScraped,
+          error: result.error,
+        });
+      })
+      .catch((err) => {
+        console.error("[POST /api/competitors] Failed to trigger discovery scrape:", {
+          competitorId: inserted.id,
+          error: err.message || "Unknown error",
+          stack: err.stack,
+        });
+      });
 
     return NextResponse.json(
       {

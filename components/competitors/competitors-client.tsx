@@ -36,7 +36,7 @@ export function CompetitorsClient({
         className={cn("shadow-md", (isDemo || isFull) && "opacity-50 cursor-not-allowed")}
       >
         <Plus className="mr-2 h-4 w-4" />
-        Add competitor
+        Add competitor store
       </Button>
 
       {showAddModal && (

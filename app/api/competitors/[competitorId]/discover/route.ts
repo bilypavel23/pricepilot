@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
 import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
-import { normalizeTitle } from "@/lib/competitors/title-normalization";
 import { consumeDiscoveryQuota } from "@/lib/discovery-quota";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * POST /api/competitors/[competitorId]/discover
@@ -11,8 +11,9 @@ import { consumeDiscoveryQuota } from "@/lib/discovery-quota";
  * Runs discovery scan for a competitor store:
  * 1. Scrapes competitor product list
  * 2. Consumes discovery quota
- * 3. Saves competitor products with name_norm
- * 4. Creates match candidates using trigram similarity
+ * 3. Saves competitor products to competitor_url_products with store_id and competitor_id
+ * 4. Calls RPC build_match_candidates_for_competitor_store
+ * 5. Updates competitor status to 'active' and last_sync_at
  */
 export async function POST(
   req: Request,
@@ -34,7 +35,7 @@ export async function POST(
     const store = await getOrCreateStore();
 
     // Load competitor
-    const { data: competitor, error: competitorError } = await supabase
+    const { data: competitor, error: competitorError } = await supabaseAdmin
       .from("competitors")
       .select("id, name, url, store_id, status")
       .eq("id", competitorId)
@@ -49,8 +50,8 @@ export async function POST(
       );
     }
 
-    // Update status to pending (discovery in progress)
-    await supabase
+    // Update status to 'pending' (discovery in progress) - use only allowed DB values
+    await supabaseAdmin
       .from("competitors")
       .update({ status: "pending" })
       .eq("id", competitorId);
@@ -60,10 +61,11 @@ export async function POST(
       const scrapedProducts = await scrapeCompetitorProducts(competitor.url);
 
       if (scrapedProducts.length === 0) {
-        await supabase
+        await supabaseAdmin
           .from("competitors")
           .update({
             status: "error",
+            last_sync_at: new Date().toISOString(),
           })
           .eq("id", competitorId);
         return NextResponse.json({
@@ -76,10 +78,11 @@ export async function POST(
 
       if (!quotaResult || !quotaResult.allowed) {
         const remaining = quotaResult?.remaining_products ?? 0;
-        await supabase
+        await supabaseAdmin
           .from("competitors")
           .update({
             status: "error",
+            last_sync_at: new Date().toISOString(),
           })
           .eq("id", competitorId);
         return NextResponse.json({
@@ -88,32 +91,35 @@ export async function POST(
         }, { status: 403 });
       }
 
-      // Step 3: Save competitor products with title_norm
+      // Step 3: Save competitor products to competitor_url_products
+      // CRITICAL: Must set store_id and competitor_id
+      const now = new Date().toISOString();
       const competitorProductsToInsert = scrapedProducts.map((p) => ({
-        competitor_id: competitorId,
-        title: p.name, // Use 'title' column, not 'name'
-        title_norm: normalizeTitle(p.name),
-        url: p.url,
-        price: p.price,
-        currency: "USD", // TODO: detect currency from scraped data
-        external_id: p.external_id || null,
-        last_seen_at: new Date().toISOString(),
+        store_id: store.id, // CRITICAL: Must be set
+        competitor_id: competitorId, // CRITICAL: Must be set
+        competitor_name: p.name,
+        competitor_url: p.url,
+        last_price: p.price,
+        currency: "USD", // Default to USD (can be enhanced to detect from scraped data)
+        last_checked_at: now,
+        source: "store", // Mark as store-scraped
       }));
 
-      const { data: insertedProducts, error: insertError } = await supabase
-        .from("competitor_products")
+      const { data: insertedProducts, error: insertError } = await supabaseAdmin
+        .from("competitor_url_products")
         .upsert(competitorProductsToInsert, {
-          onConflict: "competitor_id,url",
+          onConflict: "store_id,competitor_id,competitor_url",
           ignoreDuplicates: false,
         })
-        .select("id, title, title_norm");
+        .select("id");
 
       if (insertError) {
         console.error("Error inserting competitor products:", JSON.stringify(insertError, null, 2));
-        await supabase
+        await supabaseAdmin
           .from("competitors")
           .update({
             status: "error",
+            last_sync_at: now,
           })
           .eq("id", competitorId);
         return NextResponse.json(
@@ -122,93 +128,42 @@ export async function POST(
         );
       }
 
-      // Step 4: Build match candidates using trigram similarity
-      const { data: myProducts, error: productsError } = await supabase
-        .from("products")
-        .select("id, name, name_norm")
-        .eq("store_id", store.id)
-        .eq("is_demo", false)
-        .not("name_norm", "is", null);
+      // Step 4: Call RPC build_match_candidates_for_competitor_store
+      const { data: rpcResult, error: rpcError } = await supabase.rpc(
+        "build_match_candidates_for_competitor_store",
+        {
+          p_store_id: store.id,
+          p_competitor_id: competitorId,
+        }
+      );
 
-      if (productsError) {
-        console.error("Error loading products:", JSON.stringify(productsError, null, 2));
+      if (rpcError) {
+        console.error("Error calling build_match_candidates_for_competitor_store:", JSON.stringify(rpcError, null, 2));
+        // Continue anyway - match candidates can be built later
       }
 
-      const myProductsList = myProducts || [];
-      const competitorProductsList = insertedProducts || [];
-
-      // For each competitor product, find top matches using DB function
-      const candidatesToInsert: Array<{
-        competitor_id: string;
-        my_product_id: string;
-        competitor_product_id: string;
-        score: number;
-      }> = [];
-
-      for (const compProduct of competitorProductsList) {
-        if (!compProduct.title_norm) continue;
-
-        // Use DB function for similarity search
-        const { data: matches, error: matchError } = await supabase.rpc(
-          "find_similar_products",
-          {
-            p_competitor_name_norm: compProduct.title_norm,
-            p_store_id: store.id,
-            p_limit: 3,
-          }
-        );
-
-        if (matchError) {
-          console.error("Error finding similar products:", JSON.stringify(matchError, null, 2));
-          // Fallback to simple matching
-          continue;
-        }
-
-        if (matches && matches.length > 0) {
-          for (const match of matches) {
-            if (match.similarity >= 60) {
-              candidatesToInsert.push({
-                competitor_id: competitorId,
-                my_product_id: match.product_id,
-                competitor_product_id: compProduct.id,
-                score: Math.round(match.similarity * 100) / 100,
-              });
-            }
-          }
-        }
-      }
-
-      // Insert match candidates (upsert to avoid duplicates)
-      if (candidatesToInsert.length > 0) {
-        const { error: candidatesError } = await supabase
-          .from("competitor_match_candidates")
-          .upsert(candidatesToInsert, {
-            onConflict: "competitor_id,my_product_id,competitor_product_id",
-            ignoreDuplicates: false,
-          });
-
-        if (candidatesError) {
-          console.error("Error inserting match candidates:", JSON.stringify(candidatesError, null, 2));
-        }
-      }
-
-      // Step 5: Keep status as 'pending' until matches are confirmed
-      // Status will be set to 'active' when matches are confirmed
-      // No status update needed here
+      // Step 5: Update competitor status to 'active' and set last_sync_at
+      await supabaseAdmin
+        .from("competitors")
+        .update({
+          status: "active", // Use only allowed DB values ('pending' or 'active')
+          last_sync_at: now,
+        })
+        .eq("id", competitorId);
 
       return NextResponse.json({
         success: true,
         productsFound: scrapedProducts.length,
         productsSaved: insertedProducts?.length || 0,
-        matchesCreated: candidatesToInsert.length,
         quotaRemaining: quotaResult.remaining_products,
       });
     } catch (error: any) {
       console.error("Error in discovery scrape:", JSON.stringify(error, null, 2));
-      await supabase
+      await supabaseAdmin
         .from("competitors")
         .update({
           status: "error",
+          last_sync_at: new Date().toISOString(),
         })
         .eq("id", competitorId);
       return NextResponse.json(

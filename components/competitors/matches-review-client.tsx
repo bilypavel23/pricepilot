@@ -17,19 +17,18 @@ type MyProduct = {
   price: number | null;
 };
 
-type CompetitorProduct = {
-  id: string;
-  name: string;
-  url: string;
-  price: number | null;
-  currency: string | null;
-};
-
 type MatchCandidate = {
-  id: string;
-  competitorProduct: CompetitorProduct;
-  suggestedMyProductId: string;
-  similarityScore: number;
+  candidate_id: string;
+  competitor_product_id: string;
+  competitor_url: string;
+  competitor_name: string;
+  competitor_last_price: number | null;
+  competitor_currency: string;
+  suggested_product_id: string;
+  suggested_product_name: string;
+  suggested_product_sku: string | null;
+  suggested_product_price: number | null;
+  similarity_score: number;
 };
 
 type MatchesReviewClientProps = {
@@ -53,8 +52,8 @@ export function MatchesReviewClient({
   const [selections, setSelections] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     matches.forEach((match) => {
-      if (match.similarityScore >= 60 && match.suggestedMyProductId) {
-        initial[match.suggestedMyProductId] = match.competitorProduct.id;
+      if (match.similarity_score >= 60 && match.suggested_product_id) {
+        initial[match.suggested_product_id] = match.competitor_product_id;
       }
     });
     return initial;
@@ -67,10 +66,19 @@ export function MatchesReviewClient({
   }, [myProducts, selections]);
 
   const handleCompetitorSelect = (myProductId: string, competitorProductId: string) => {
-    setSelections((prev) => ({
-      ...prev,
-      [myProductId]: competitorProductId || "",
-    }));
+    // Handle sentinel value for "None" selection
+    if (competitorProductId === "__NONE__") {
+      setSelections((prev) => {
+        const next = { ...prev };
+        delete next[myProductId];
+        return next;
+      });
+    } else if (competitorProductId) {
+      setSelections((prev) => ({
+        ...prev,
+        [myProductId]: competitorProductId,
+      }));
+    }
   };
 
   const handleConfirmMatches = async () => {
@@ -171,31 +179,40 @@ export function MatchesReviewClient({
           ) : (
             <div className="space-y-4">
               {matches.map((match) => {
-                const myProduct = myProducts.find((p) => p.id === match.suggestedMyProductId);
-                const selectedCompetitorId = selections[match.suggestedMyProductId] || "";
+                const myProduct = myProducts.find((p) => p.id === match.suggested_product_id);
+                const selectedCompetitorId = selections[match.suggested_product_id];
 
                 if (!myProduct) {
                   return null; // Skip if my product not found
                 }
 
+                // Ensure competitor_product_id is a valid non-empty string
+                const competitorProductId = match.competitor_product_id ? String(match.competitor_product_id) : null;
+                if (!competitorProductId) {
+                  return null; // Skip if competitor product ID is invalid
+                }
+
+                // Select value: use selectedCompetitorId if it exists, otherwise use competitorProductId as default, or undefined to show placeholder
+                const selectValue = selectedCompetitorId || competitorProductId || undefined;
+
                 return (
                   <div
-                    key={match.id}
+                    key={match.candidate_id}
                     className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                   >
                     {/* Left: My Product (fixed) */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <Label className="font-medium">{myProduct.name}</Label>
-                        {myProduct.sku && (
+                        <Label className="font-medium">{match.suggested_product_name || myProduct.name}</Label>
+                        {(match.suggested_product_sku || myProduct.sku) && (
                           <Badge variant="outline" className="text-xs">
-                            SKU: {myProduct.sku}
+                            SKU: {match.suggested_product_sku || myProduct.sku}
                           </Badge>
                         )}
                       </div>
-                      {myProduct.price && (
+                      {(match.suggested_product_price !== null || myProduct.price) && (
                         <p className="text-sm text-muted-foreground">
-                          ${myProduct.price.toFixed(2)}
+                          ${(match.suggested_product_price ?? myProduct.price ?? 0).toFixed(2)}
                         </p>
                       )}
                     </div>
@@ -204,22 +221,22 @@ export function MatchesReviewClient({
                     <div className="w-80 flex-shrink-0">
                       <div className="flex items-center gap-2 mb-2">
                         <Badge
-                          variant={getScoreBadgeVariant(match.similarityScore)}
+                          variant={getScoreBadgeVariant(match.similarity_score)}
                           className="text-xs"
                         >
-                          {getScoreLabel(match.similarityScore)} match ({match.similarityScore.toFixed(0)}%)
+                          {getScoreLabel(match.similarity_score)} match ({match.similarity_score.toFixed(0)}%)
                         </Badge>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm font-medium truncate">{match.competitorProduct.title}</p>
-                        {match.competitorProduct.price && (
+                        <p className="text-sm font-medium truncate">{match.competitor_name}</p>
+                        {match.competitor_last_price !== null && (
                           <p className="text-xs text-muted-foreground">
-                            ${match.competitorProduct.price.toFixed(2)} {match.competitorProduct.currency || "USD"}
+                            ${match.competitor_last_price.toFixed(2)} {match.competitor_currency || "USD"}
                           </p>
                         )}
-                        {match.competitorProduct.url && (
+                        {match.competitor_url && (
                           <a
-                            href={match.competitorProduct.url}
+                            href={match.competitor_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
@@ -229,17 +246,17 @@ export function MatchesReviewClient({
                         )}
                       </div>
                       <Select
-                        value={selectedCompetitorId || match.competitorProduct.id}
-                        onValueChange={(value) => handleCompetitorSelect(match.suggestedMyProductId, value)}
+                        value={selectValue}
+                        onValueChange={(value) => handleCompetitorSelect(match.suggested_product_id, value)}
                         className="mt-2"
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select competitor product..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">None (skip)</SelectItem>
-                          <SelectItem value={match.competitorProduct.id}>
-                            {match.competitorProduct.title} (suggested)
+                          <SelectItem value="__NONE__">None (skip)</SelectItem>
+                          <SelectItem value={competitorProductId}>
+                            {match.competitor_name} (suggested)
                           </SelectItem>
                         </SelectContent>
                       </Select>

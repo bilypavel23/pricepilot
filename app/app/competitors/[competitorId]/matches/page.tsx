@@ -76,14 +76,15 @@ export default async function MatchesReviewPage({
   // Step 2: Load match candidates using RPC
   const loadPayload = {
     p_store_id: store.id,
+    p_competitor_id: competitorId,
   };
   console.log("[matches-review] Loading match candidates with payload:", {
-    function: "get_competitor_products_for_store_matches",
+    function: "get_match_candidates_for_competitor_store",
     payload: loadPayload,
   });
 
   const { data: matchCandidates, error: candidatesError } = await supabase.rpc(
-    "get_competitor_products_for_store_matches",
+    "get_match_candidates_for_competitor_store",
     loadPayload
   );
 
@@ -121,22 +122,22 @@ export default async function MatchesReviewPage({
   }
 
   // Transform match candidates for client
-  // RPC get_competitor_products_for_store_matches returns different structure
-  // Expected format: array with { id, competitor_product_id, my_product_id, score, title, url, price, currency, ... }
-  const matches = Array.isArray(matchCandidates) ? matchCandidates
-    .filter((mc: any) => mc.competitor_id === competitorId) // Filter by competitor
-    .map((mc: any) => ({
-      id: mc.id || mc.candidate_id,
-      competitorProduct: {
-        id: mc.competitor_product_id || mc.id,
-        title: mc.title || "",
-        url: mc.url || "",
-        price: mc.price ?? null,
-        currency: mc.currency || "USD",
-      },
-      suggestedMyProductId: mc.my_product_id || mc.product_id,
-      similarityScore: mc.score || 0,
-    })) : [];
+  // RPC get_match_candidates_for_competitor_store returns:
+  // candidate_id, competitor_product_id, competitor_url, competitor_name, competitor_last_price, competitor_currency,
+  // suggested_product_id, suggested_product_name, suggested_product_sku, suggested_product_price, similarity_score
+  const matches = Array.isArray(matchCandidates) ? matchCandidates.map((mc: any) => ({
+    candidate_id: mc.candidate_id,
+    competitor_product_id: mc.competitor_product_id,
+    competitor_url: mc.competitor_url || "",
+    competitor_name: mc.competitor_name || "",
+    competitor_last_price: mc.competitor_last_price ?? null,
+    competitor_currency: mc.competitor_currency || "USD",
+    suggested_product_id: mc.suggested_product_id || "",
+    suggested_product_name: mc.suggested_product_name || "",
+    suggested_product_sku: mc.suggested_product_sku || null,
+    suggested_product_price: mc.suggested_product_price ?? null,
+    similarity_score: mc.similarity_score || 0,
+  })) : [];
 
   // Derive error message from status if needed
   const errorMessage = competitor.status === "error" 

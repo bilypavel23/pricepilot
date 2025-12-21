@@ -179,16 +179,50 @@ export default async function CompetitorsPage() {
     }
   }
 
-  // Get match counts for tracked competitors
+  // Get match counts and candidate counts for tracked competitors
   // Safe guard: ensure we have an array before calling Promise.all
   const trackedWithMatches = (trackedCompetitors ?? []).length > 0
     ? await Promise.all(
         (trackedCompetitors ?? []).map(async (competitor) => {
           try {
             const matchCount = await getMatchCountForCompetitor(store.id, competitor.id);
+            
+            // Get candidate count
+            let candidateCount = 0;
+            try {
+              const { data: candidateData, error: candidateError } = await supabase.rpc(
+                "count_candidates_for_competitor_store",
+                {
+                  p_store_id: store.id,
+                  p_competitor_id: competitor.id,
+                }
+              );
+              
+              if (candidateError) {
+                console.error(
+                  `[CompetitorsPage] Error getting candidate count for competitor ${competitor.id}:`,
+                  {
+                    message: candidateError?.message || "Unknown error",
+                    code: candidateError?.code || "NO_CODE",
+                    details: candidateError?.details || null,
+                    hint: candidateError?.hint || null,
+                    status: candidateError?.status || null,
+                  }
+                );
+              } else {
+                candidateCount = candidateData ?? 0;
+              }
+            } catch (candidateErr: any) {
+              console.error(
+                `[CompetitorsPage] Unexpected error getting candidate count for competitor ${competitor.id}:`,
+                candidateErr
+              );
+            }
+            
             return {
               ...competitor,
               matchCount: matchCount ?? 0,
+              candidateCount: candidateCount ?? 0,
             };
           } catch (error: any) {
             // Log error but continue with 0 match count
@@ -199,6 +233,7 @@ export default async function CompetitorsPage() {
             return {
               ...competitor,
               matchCount: 0,
+              candidateCount: 0,
             };
           }
         })
@@ -392,7 +427,7 @@ export default async function CompetitorsPage() {
         <CardContent>
           {trackedWithMatches.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <p>No tracked competitor stores added yet. Click "Add competitor" to get started.</p>
+              <p>No tracked competitor stores added yet. Click "Add competitor store" to get started.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -437,13 +472,26 @@ export default async function CompetitorsPage() {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground truncate">{competitor.url}</p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                          <span>
-                            Matched products:{" "}
-                            <Badge variant="outline" className="ml-1 text-xs font-medium">
-                              {competitor.matchCount}
-                            </Badge>
-                          </span>
+                        <div className="flex flex-col gap-1 mt-2">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>
+                              Confirmed matches:{" "}
+                              <Badge variant="outline" className="ml-1 text-xs font-medium">
+                                {competitor.matchCount}
+                              </Badge>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>
+                              Candidates:{" "}
+                              <Badge variant="outline" className="ml-1 text-xs font-medium">
+                                {competitor.candidateCount ?? 0}
+                              </Badge>
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Candidates are shown in Review Matches until you confirm.
+                          </p>
                         </div>
                       </div>
                     </div>
