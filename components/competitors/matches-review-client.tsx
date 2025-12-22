@@ -91,21 +91,42 @@ export function MatchesReviewClient({
 
     setLoading(true);
     try {
-      // Build matches payload - only include rows where selectedId is not NONE_VALUE
-      const matches = groupedMatches
-        .map((group) => {
-          const selectedId = selectedByProduct[group.product_id];
-          if (selectedId && selectedId !== NONE_VALUE) {
-            return {
-              product_id: group.product_id,
-              competitor_product_id: selectedId,
-            };
-          }
-          return null;
-        })
-        .filter((m): m is { product_id: string; competitor_product_id: string } => m !== null);
+      // UUID regex for validation
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-      if (matches.length === 0) {
+      // Build selections payload - only include rows where selectedId is not NONE_VALUE
+      // Payload shape: [{ competitor_product_id: string, product_id: string }]
+      const selections = groupedMatches
+        .map((group) => {
+          const selectedCompetitorProductId = selectedByProduct[group.product_id];
+          // Skip if NONE_VALUE or empty
+          if (!selectedCompetitorProductId || selectedCompetitorProductId === NONE_VALUE) {
+            return null;
+          }
+
+          // Ensure we're using the actual competitor_product_id from the candidate
+          // Find the candidate to verify the ID exists
+          const selectedCandidate = group.candidates.find(
+            c => c.competitor_product_id === selectedCompetitorProductId
+          );
+
+          if (!selectedCandidate) {
+            // Candidate not found - skip this row
+            return null;
+          }
+
+          return {
+            competitor_product_id: selectedCandidate.competitor_product_id,
+            product_id: group.product_id,
+          };
+        })
+        .filter((s): s is { competitor_product_id: string; product_id: string } => {
+          // Defensive filter: include only items where both ids match UUID regex
+          if (!s) return false;
+          return UUID_REGEX.test(s.competitor_product_id) && UUID_REGEX.test(s.product_id);
+        });
+
+      if (selections.length === 0) {
         alert("Please select at least one match to confirm.");
         setLoading(false);
         return;
@@ -117,7 +138,7 @@ export function MatchesReviewClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          matches,
+          selections,
         }),
       });
 
@@ -128,7 +149,7 @@ export function MatchesReviewClient({
       }
 
       // Show success toast (simple alert for now)
-      alert(`Successfully confirmed ${matches.length} matches!`);
+      alert(`Successfully confirmed ${selections.length} matches!`);
       
       router.push("/app/competitors");
       router.refresh();

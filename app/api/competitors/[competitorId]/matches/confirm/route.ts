@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateStore } from "@/lib/store";
 
 /**
@@ -14,9 +15,35 @@ export async function POST(
   try {
     const { competitorId } = await params;
     const body = await req.json();
-    const { matches } = body as {
-      matches: Array<{ product_id: string; competitor_product_id: string }>;
+    
+    // Support both camelCase and snake_case payload formats
+    let { selections, storeId } = body as {
+      selections?: Array<{ 
+        competitor_product_id?: string; 
+        product_id?: string;
+        competitorProductId?: string;
+        productId?: string | null;
+      }>;
+      storeId?: string;
     };
+
+    // Normalize to snake_case
+    const normalizedSelections = (selections || []).map((s) => ({
+      competitor_product_id: s.competitor_product_id || s.competitorProductId,
+      product_id: s.product_id || s.productId,
+    }));
+
+    // UUID regex for validation
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Filter out rows where user selected "None (skip)"
+    // Filter: competitor_product_id and product_id must be valid UUIDs
+    // Do NOT reject request if some rows are skipped; only require at least 1 valid row
+    const confirmed = normalizedSelections.filter((s) => {
+      const hasValidCompetitorId = s.competitor_product_id && UUID_REGEX.test(s.competitor_product_id);
+      const hasValidProductId = s.product_id && s.product_id !== null && s.product_id !== "" && s.product_id !== "none" && s.product_id !== "__NONE__" && UUID_REGEX.test(s.product_id);
+      return hasValidCompetitorId && hasValidProductId;
+    });
 
     const supabase = await createClient();
 
@@ -30,13 +57,14 @@ export async function POST(
     }
 
     const store = await getOrCreateStore();
+    const finalStoreId = storeId || store.id;
 
     // Verify competitor belongs to user's store
     const { data: competitor, error: competitorError } = await supabase
       .from("competitors")
       .select("id, store_id")
       .eq("id", competitorId)
-      .eq("store_id", store.id)
+      .eq("store_id", finalStoreId)
       .single();
 
     if (competitorError || !competitor) {
@@ -46,105 +74,128 @@ export async function POST(
       );
     }
 
-    if (!matches || matches.length === 0) {
-      return NextResponse.json(
-        { error: "No matches provided" },
-        { status: 400 }
-      );
+    // Do NOT reject request if some rows are skipped; only require at least 1 valid row to confirm
+    if (confirmed.length === 0) {
+      return NextResponse.json({ ok: true, inserted: 0 });
     }
 
     // Verify all products belong to user's store
-    const myProductIds = matches.map((m) => m.product_id);
+    const myProductIds = confirmed.map((s) => s.product_id);
     const { data: myProducts, error: productsError } = await supabase
       .from("products")
       .select("id")
-      .eq("store_id", store.id)
+      .eq("store_id", finalStoreId)
       .in("id", myProductIds);
 
-    if (productsError || !myProducts || myProducts.length !== matches.length) {
+    if (productsError || !myProducts || myProducts.length !== confirmed.length) {
       return NextResponse.json(
         { error: "Invalid product IDs" },
         { status: 400 }
       );
     }
 
-    // Verify all competitor products belong to this competitor (from competitor_store_products)
-    const competitorProductIds = matches.map((m) => m.competitor_product_id);
-    const { data: competitorProducts, error: competitorProductsError } = await supabase
+    // Validation query must check competitor_product_id against competitor_store_products
+    // Filter by store_id and competitor_id, and id IN (sentIds)
+    const competitorProductIds = confirmed.map((s) => s.competitor_product_id);
+    
+    // Use service role client to bypass RLS
+    const { data: existing, error: validationError } = await supabaseAdmin
       .from("competitor_store_products")
-      .select("id, competitor_id, competitor_url, last_price, currency")
-      .in("id", competitorProductIds)
+      .select("id")
+      .eq("store_id", finalStoreId)
       .eq("competitor_id", competitorId)
-      .eq("store_id", store.id);
+      .in("id", competitorProductIds);
 
-    if (competitorProductsError || !competitorProducts || competitorProducts.length !== matches.length) {
+    if (validationError) {
+      console.error("Error validating competitor products:", {
+        error: validationError,
+        competitorId,
+        storeId: finalStoreId,
+        competitorProductIds: competitorProductIds,
+      });
+      return NextResponse.json(
+        { error: "Failed to validate competitor products" },
+        { status: 500 }
+      );
+    }
+
+    // If existing.length !== confirmed.length => 400 with message "Invalid competitor product IDs"
+    const receivedIds = existing?.map((p) => p.id) || [];
+    const sentIds = competitorProductIds;
+    const missingIds = sentIds.filter((id) => !receivedIds.includes(id));
+
+    if (!existing || existing.length !== confirmed.length) {
+      console.error("Invalid competitor product IDs validation failed:", {
+        sentCount: confirmed.length,
+        receivedCount: existing?.length || 0,
+        missingIds: missingIds,
+        competitorId,
+        storeId: finalStoreId,
+      });
       return NextResponse.json(
         { error: "Invalid competitor product IDs" },
         { status: 400 }
       );
     }
 
-    // Create competitor_product_matches records
-    // Table structure: store_id, product_id, competitor_product_id
-    const matchesToInsert = matches.map((match) => ({
-      store_id: store.id,
-      product_id: match.product_id,
-      competitor_product_id: match.competitor_product_id,
+    // Insert confirmed matches into public.competitor_product_matches
+    // columns: store_id, competitor_id, product_id, competitor_product_id
+    const rows = confirmed.map((s) => ({
+      store_id: finalStoreId,
+      competitor_id: competitorId,
+      competitor_product_id: s.competitor_product_id,
+      product_id: s.product_id,
     }));
 
-    // Insert competitor_product_matches (upsert to handle duplicates)
-    const { error: insertError } = await supabase
+    // Upsert using unique index: (store_id, competitor_id, competitor_product_id)
+    // Use the exact constraint name format: store_id,competitor_id,competitor_product_id
+    const { data: insertedData, error: insertError } = await supabaseAdmin
       .from("competitor_product_matches")
-      .upsert(matchesToInsert, {
-        onConflict: "store_id,product_id,competitor_product_id",
-        ignoreDuplicates: false,
-      });
+      .upsert(rows, {
+        onConflict: "store_id,competitor_id,competitor_product_id",
+      })
+      .select("id");
 
     if (insertError) {
-      console.error("Error inserting competitor_product_matches:", JSON.stringify(insertError, null, 2));
+      console.error("Error upserting competitor_product_matches:", JSON.stringify(insertError, null, 2));
       return NextResponse.json(
         { error: "Failed to save matches" },
         { status: 500 }
       );
     }
 
-    // Delete match candidates for confirmed matches
-    // Since competitor_match_candidates doesn't have competitor_id, we filter via competitor_product_id
-    // which we've already verified belongs to this competitor
-    const competitorProductIdsToDelete = matches.map((m) => m.competitor_product_id);
-    const productIdsToDelete = matches.map((m) => m.product_id);
+    const finalInsertedCount = insertedData?.length || 0;
+
+    // Optionally delete confirmed candidates for those competitor_product_id from competitor_match_candidates
+    // Delete by store_id + competitor_product_id (not by suggested_product_id)
+    const competitorProductIdsToDelete = confirmed.map((s) => s.competitor_product_id);
     
-    if (competitorProductIdsToDelete.length > 0 && productIdsToDelete.length > 0) {
-      // Delete candidates where suggested_product_id AND competitor_product_id match
-      // We need to delete each combination individually since Supabase doesn't support
-      // deleting with multiple IN conditions easily
-      const deletePromises = matches.map((match) =>
-        supabase
-          .from("competitor_match_candidates")
-          .delete()
-          .eq("store_id", store.id)
-          .eq("suggested_product_id", match.product_id)
-          .eq("competitor_product_id", match.competitor_product_id)
-      );
-      
-      const deleteResults = await Promise.all(deletePromises);
-      const deleteErrors = deleteResults.filter((r) => r.error);
-      
-      if (deleteErrors.length > 0) {
-        console.error("Error deleting some match candidates:", JSON.stringify(deleteErrors, null, 2));
+    if (competitorProductIdsToDelete.length > 0) {
+      const { error: deleteError } = await supabaseAdmin
+        .from("competitor_match_candidates")
+        .delete()
+        .eq("store_id", finalStoreId)
+        .in("competitor_product_id", competitorProductIdsToDelete);
+
+      if (deleteError) {
+        console.error("Error deleting match candidates (non-fatal):", JSON.stringify(deleteError, null, 2));
         // Continue anyway - matches were already confirmed
       }
     }
 
-    // Update competitor status to active
-    await supabase
+    // Optionally set competitors.last_sync_at and status='active'
+    await supabaseAdmin
       .from("competitors")
-      .update({ status: "active" })
-      .eq("id", competitorId);
+      .update({ 
+        status: "active",
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq("id", competitorId)
+      .eq("store_id", finalStoreId);
 
     return NextResponse.json({
-      success: true,
-      matches_confirmed: matchesToInsert.length,
+      ok: true,
+      inserted: finalInsertedCount,
     });
   } catch (err: any) {
     console.error("Error in POST /api/competitors/[competitorId]/matches/confirm:", JSON.stringify(err, null, 2));

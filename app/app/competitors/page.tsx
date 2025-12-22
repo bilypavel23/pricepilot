@@ -187,36 +187,39 @@ export default async function CompetitorsPage() {
           try {
             const matchCount = await getMatchCountForCompetitor(store.id, competitor.id);
             
-            // Get candidate count
+            // Get candidate count ONLY when confirmedCount === 0
+            // After confirmation, candidates may still exist in DB, but UI must hide them
             let candidateCount = 0;
-            try {
-              const { data: candidateData, error: candidateError } = await supabase.rpc(
-                "count_candidates_for_competitor_store",
-                {
-                  p_competitor_id: competitor.id,
-                  p_store_id: store.id,
-                }
-              );
-              
-              if (candidateError) {
-                console.error(
-                  `[CompetitorsPage] Error getting candidate count for competitor ${competitor.id}:`,
+            if (matchCount === 0) {
+              try {
+                const { data: candidateData, error: candidateError } = await supabase.rpc(
+                  "count_candidates_for_competitor_store",
                   {
-                    message: candidateError?.message || "Unknown error",
-                    code: candidateError?.code || "NO_CODE",
-                    details: candidateError?.details || null,
-                    hint: candidateError?.hint || null,
-                    status: candidateError?.status || null,
+                    p_competitor_id: competitor.id,
+                    p_store_id: store.id,
                   }
                 );
-              } else {
-                candidateCount = candidateData ?? 0;
+                
+                if (candidateError) {
+                  console.error(
+                    `[CompetitorsPage] Error getting candidate count for competitor ${competitor.id}:`,
+                    {
+                      message: candidateError?.message || "Unknown error",
+                      code: candidateError?.code || "NO_CODE",
+                      details: candidateError?.details || null,
+                      hint: candidateError?.hint || null,
+                      status: candidateError?.status || null,
+                    }
+                  );
+                } else {
+                  candidateCount = candidateData ?? 0;
+                }
+              } catch (candidateErr: any) {
+                console.error(
+                  `[CompetitorsPage] Unexpected error getting candidate count for competitor ${competitor.id}:`,
+                  candidateErr
+                );
               }
-            } catch (candidateErr: any) {
-              console.error(
-                `[CompetitorsPage] Unexpected error getting candidate count for competitor ${competitor.id}:`,
-                candidateErr
-              );
             }
             
             return {
@@ -473,25 +476,40 @@ export default async function CompetitorsPage() {
                         </div>
                         <p className="text-sm text-muted-foreground truncate">{competitor.url}</p>
                         <div className="flex flex-col gap-1 mt-2">
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span>
-                              Confirmed matches:{" "}
-                              <Badge variant="outline" className="ml-1 text-xs font-medium">
-                                {competitor.matchCount}
-                              </Badge>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span>
-                              Candidates:{" "}
-                              <Badge variant="outline" className="ml-1 text-xs font-medium">
-                                {competitor.candidateCount ?? 0}
-                              </Badge>
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Candidates are shown in Review Matches until you confirm.
-                          </p>
+                          {competitor.matchCount > 0 ? (
+                            // TRACKING MODE: Show tracking products count, hide candidates
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span>
+                                Tracking products:{" "}
+                                <Badge variant="outline" className="ml-1 text-xs font-medium">
+                                  {competitor.matchCount}
+                                </Badge>
+                              </span>
+                            </div>
+                          ) : (
+                            // REVIEW MODE: Show confirmed matches (0) and candidates
+                            <>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span>
+                                  Confirmed matches:{" "}
+                                  <Badge variant="outline" className="ml-1 text-xs font-medium">
+                                    {competitor.matchCount}
+                                  </Badge>
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span>
+                                  Candidates:{" "}
+                                  <Badge variant="outline" className="ml-1 text-xs font-medium">
+                                    {competitor.candidateCount ?? 0}
+                                  </Badge>
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Candidates are shown in Review Matches until you confirm.
+                              </p>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -504,7 +522,11 @@ export default async function CompetitorsPage() {
                           className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs"
                         >
                           <ExternalLink className="mr-2 h-3 w-3" />
-                          {(competitor.status === "pending" || competitor.status === "processing") ? "Review Matches" : "Matches"}
+                          {competitor.matchCount > 0 
+                            ? "Products" 
+                            : (competitor.status === "pending" || competitor.status === "processing") 
+                              ? "Review Matches" 
+                              : "Matches"}
                         </Link>
                       )}
                       {(competitor.status === "pending" || competitor.status === "processing") && (
