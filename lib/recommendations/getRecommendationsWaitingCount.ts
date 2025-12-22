@@ -38,45 +38,47 @@ export async function getRecommendationsWaitingCount(storeId: string): Promise<n
     return 0;
   }
 
-  // 3) Load competitor_product_matches for these products (ONLY confirmed matches) - store competitors
-  const { data: matches } = await supabase
-    .from("competitor_product_matches")
-    .select("product_id, competitor_product_id")
-    .in("product_id", productIds);
+  // 3) Load tracked competitors using RPC get_recommendation_competitors (same as Recommendations)
+  // This RPC returns confirmed matches from competitor_product_matches
+  // joined with competitor_store_products and competitors
+  const productCompetitorPrices = new Map<string, number[]>();
 
-  // 4) Load URL competitors from competitor_url_products
+  if (productIds.length > 0) {
+    try {
+      const { data: competitorRows, error: rpcError } = await supabase.rpc(
+        "get_recommendation_competitors",
+        { p_store_id: storeId }
+      );
+
+      if (rpcError) {
+        console.error("getRecommendationsWaitingCount: RPC error", JSON.stringify(rpcError, null, 2));
+      } else {
+        const rows = competitorRows ?? [];
+        
+        // Add tracked competitor prices from confirmed matches
+        for (const row of rows) {
+          const productId = row.product_id as string;
+          const competitorPrice = row.competitor_price != null ? Number(row.competitor_price) : null;
+          
+          if (productId && competitorPrice != null && competitorPrice > 0) {
+            const prices = productCompetitorPrices.get(productId) || [];
+            prices.push(competitorPrice);
+            productCompetitorPrices.set(productId, prices);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("getRecommendationsWaitingCount: RPC exception", err);
+      // Continue execution even if RPC fails
+    }
+  }
+
+  // 4) Load URL competitors from competitor_url_products (fallback, same as Recommendations)
   const { data: urlCompetitors } = await supabase
     .from("competitor_url_products")
     .select("product_id, last_price")
     .in("product_id", productIds)
     .eq("store_id", storeId);
-
-  // 5) Build a map of product_id -> competitor prices (store + URL combined)
-  const productCompetitorPrices = new Map<string, number[]>();
-
-  // Add store competitor prices
-  if (matches && matches.length > 0) {
-    const competitorProductIds = matches.map((m) => m.competitor_product_id).filter(Boolean);
-
-    if (competitorProductIds.length > 0) {
-      // Load competitor_products prices
-      const { data: competitorProducts } = await supabase
-        .from("competitor_products")
-        .select("id, price")
-        .in("id", competitorProductIds);
-
-      if (competitorProducts && competitorProducts.length > 0) {
-        for (const match of matches) {
-          const cp = competitorProducts.find((cp) => cp.id === match.competitor_product_id);
-          if (cp && cp.price != null) {
-            const prices = productCompetitorPrices.get(match.product_id) || [];
-            prices.push(Number(cp.price));
-            productCompetitorPrices.set(match.product_id, prices);
-          }
-        }
-      }
-    }
-  }
 
   // Add URL competitor prices
   if (urlCompetitors && urlCompetitors.length > 0) {

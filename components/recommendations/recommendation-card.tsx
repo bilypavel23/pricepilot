@@ -393,37 +393,32 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                                 {c.label}
                               </span>
 
-                              {c.url ? (
+                              <span
+                                className="truncate text-sm font-medium"
+                                title={c.name}
+                              >
+                                {c.name}
+                              </span>
+
+                              {c.url && (
                                 <a
                                   href={c.url}
                                   target="_blank"
-                                  rel="noreferrer"
-                                  className="truncate text-sm font-medium text-primary hover:underline"
-                                  title={c.name}
+                                  rel="noopener noreferrer"
+                                  className="shrink-0"
                                 >
-                                  {c.name}
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 hover:bg-secondary/80">
+                                    URL
+                                  </Badge>
                                 </a>
-                              ) : (
-                                <span
-                                  className="truncate text-sm font-medium"
-                                  title={c.name}
-                                >
-                                  {c.name}
-                                </span>
-                              )}
-
-                              {c.isUrlCompetitor && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                  URL
-                                </Badge>
                               )}
 
                               <span className="shrink-0 text-sm text-muted-foreground">
-                                {formatMoney(recommendation.productPrice, currency)} → {formatMoney(c.newPrice, currency)}
+                                {formatMoney(recommendation.productPrice, currency)} → {c.newPrice != null ? formatMoney(c.newPrice, currency) : "—"}
                               </span>
                             </div>
 
-                            {c.changePercent != null && (
+                            {c.changePercent != null && recommendation.productPrice != null && recommendation.productPrice > 0 && (
                               <span
                                 className={cn(
                                   "ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",

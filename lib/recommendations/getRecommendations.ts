@@ -25,91 +25,43 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
 
   const productIds = products.map((p) => p.id).filter(Boolean);
 
-  // 2) Load competitor_product_matches for these products (ONLY confirmed matches)
-  // NO JOINS - only select product_id and competitor_product_id
-  let matches: any[] = [];
+  // 2) Load tracked competitors using RPC get_recommendation_competitors
+  // This RPC returns confirmed matches from competitor_product_matches
+  // joined with competitor_store_products and competitors
+  let competitorsByProduct = new Map<string, any[]>();
 
   if (productIds.length > 0) {
     try {
-      // Load confirmed matches from competitor_product_matches
-      // Schema: columns are product_id and competitor_product_id (NOT my_product_id)
-      // All rows in competitor_product_matches are confirmed by definition
-      // DO NOT join to competitors - will filter by store_id in JS after loading competitor_products
-      const { data: matchesData, error: matchesErr } = await supabase
-        .from("competitor_product_matches")
-        .select("product_id, competitor_product_id")
-        .in("product_id", productIds);
+      const { data: competitorRows, error: rpcError } = await supabase.rpc(
+        "get_recommendation_competitors",
+        { p_store_id: storeId }
+      );
 
-      if (matchesErr) {
-        console.error("getRecommendationsForStore: matches error", JSON.stringify(matchesErr, null, 2));
-        matches = [];
+      // Debug logs
+      console.log("[reco] competitor rows", competitorRows?.length, competitorRows?.[0]);
+
+      if (rpcError) {
+        console.error("getRecommendationsForStore: RPC error", JSON.stringify(rpcError, null, 2));
       } else {
-        matches = matchesData ?? [];
+        const rows = competitorRows ?? [];
+        
+        // Group by product_id
+        rows.forEach((row: any) => {
+          const pid = row.product_id as string;
+          if (!competitorsByProduct.has(pid)) {
+            competitorsByProduct.set(pid, []);
+          }
+          competitorsByProduct.get(pid)!.push(row);
+        });
       }
     } catch (err) {
-      console.error("getRecommendationsForStore: matches exception", err);
-      // Continue execution even if matches query fails - we'll just have no competitors
-      matches = [];
+      console.error("getRecommendationsForStore: RPC exception", err);
+      // Continue execution even if RPC fails - we'll just have no competitors
     }
   }
 
-  const competitorProductIds = (matches ?? [])
-    .map((m) => m.competitor_product_id)
-    .filter(Boolean);
-
-  // 3) Load competitor_products ONLY for matched competitor_product_ids
-  // This includes competitor_id which we'll use to filter by store_id
-  let competitorProductsMap = new Map<string, any>();
-  let competitorIds = new Set<string>();
-  
-  if (competitorProductIds.length > 0) {
-    const { data: competitorProducts, error: cpError } = await supabase
-      .from("competitor_products")
-      .select("id, title, price, url, competitor_id")
-      .in("id", competitorProductIds);
-
-    if (cpError) {
-      console.error("getRecommendationsForStore: competitor_products error", JSON.stringify(cpError, null, 2));
-    } else {
-      const competitorProductsList = competitorProducts ?? [];
-      // Build map and collect competitor_ids for filtering
-      competitorProductsList.forEach((cp) => {
-        competitorProductsMap.set(cp.id as string, cp);
-        if (cp.competitor_id) {
-          competitorIds.add(cp.competitor_id as string);
-        }
-      });
-    }
-  }
-
-  // 4) Load competitors to filter by store_id
-  // Build a map of competitor_id -> store_id, then filter matches in JS
-  let validCompetitorIds = new Set<string>();
-  if (competitorIds.size > 0) {
-    const { data: competitors, error: compError } = await supabase
-      .from("competitors")
-      .select("id, store_id")
-      .in("id", Array.from(competitorIds))
-      .eq("store_id", storeId);
-
-    if (compError) {
-      console.error("getRecommendationsForStore: competitors error", JSON.stringify(compError, null, 2));
-    } else {
-      const competitorsList = competitors ?? [];
-      competitorsList.forEach((c) => {
-        validCompetitorIds.add(c.id as string);
-      });
-    }
-  }
-
-  // 5) Filter matches to only include those with valid competitor_ids (matching store_id)
-  matches = (matches ?? []).filter((m) => {
-    const cp = competitorProductsMap.get(m.competitor_product_id);
-    if (!cp || !cp.competitor_id) return false;
-    return validCompetitorIds.has(cp.competitor_id as string);
-  });
-
-  // 6) Load URL competitors from competitor_url_products for all products
+  // 3) Load URL competitors from competitor_url_products for all products (fallback)
+  // Recommendations should prefer confirmed matches, but keep URL competitors as fallback
   let urlCompetitorsMap = new Map<string, any[]>();
   if (productIds.length > 0) {
     const { data: urlCompetitors, error: urlError } = await supabase
@@ -140,28 +92,32 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
     const productName = (p.name as string) ?? "Product name";
     const productPrice = (p.price ?? null) as number | null;
 
-    // Filter matches by product_id (NOT my_product_id)
-    const productMatches = (matches ?? []).filter(
-      (m) => m.product_id === productId
-    );
-
-    // Get URL competitors for this product
+    // Get tracked competitors from RPC (confirmed matches)
+    const trackedCompetitors = competitorsByProduct.get(productId) ?? [];
+    
+    // Get URL competitors for this product (fallback, only if no tracked competitors)
     const productUrlCompetitors = urlCompetitorsMap.get(productId) ?? [];
+
+    // Debug log
+    console.log("[reco] for product", productId, trackedCompetitors.length);
 
     let competitorAvg = 0;
     let competitorCount = 0;
     const competitorSlots: CompetitorSlot[] = [];
     const prices: number[] = [];
 
-    // Add store competitors
-    for (const m of productMatches) {
-      const cp = competitorProductsMap.get(m.competitor_product_id);
-      if (!cp || cp.price == null) continue;
-      prices.push(Number(cp.price));
+    // Add tracked competitors (from confirmed matches)
+    for (const tc of trackedCompetitors) {
+      const competitorPrice = tc.competitor_price != null ? Number(tc.competitor_price) : null;
+      if (competitorPrice != null && competitorPrice > 0) {
+        prices.push(competitorPrice);
+      }
     }
 
-    // Add URL competitors
-    for (const uc of productUrlCompetitors) {
+    // Add URL competitors only if we have fewer than 5 tracked competitors
+    // Recommendations should prefer confirmed matches
+    const remainingSlots = Math.max(0, 5 - trackedCompetitors.length);
+    for (const uc of productUrlCompetitors.slice(0, remainingSlots)) {
       if (uc.last_price != null && uc.last_price > 0) {
         prices.push(Number(uc.last_price));
       }
@@ -172,29 +128,20 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
       competitorAvg = prices.reduce((sum, v) => sum + v, 0) / prices.length;
     }
 
-    // Build up to 5 competitor slots (store + URL combined)
-    const storeCompetitors = (matches ?? [])
-      .filter((m) => m.product_id === productId)
-      .slice(0, 5);
+    // Build up to 5 competitor slots (tracked first, then URL as fallback)
+    const allCompetitors: Array<{ type: "tracked" | "url"; data: any; index: number }> = [];
     
-    const allCompetitors: Array<{ type: "store" | "url"; data: any; index: number }> = [];
-    
-    // Add store competitors
-    storeCompetitors.forEach((match, idx) => {
-      const cp = competitorProductsMap.get(match.competitor_product_id);
-      if (cp) {
-        allCompetitors.push({ type: "store", data: { match, cp }, index: idx });
-      }
+    // Add tracked competitors (from confirmed matches)
+    trackedCompetitors.slice(0, 5).forEach((tc, idx) => {
+      allCompetitors.push({ type: "tracked", data: tc, index: idx });
     });
     
-    // Add URL competitors
+    // Add URL competitors only if we have fewer than 5 tracked
     productUrlCompetitors.slice(0, 5 - allCompetitors.length).forEach((uc, idx) => {
       allCompetitors.push({ type: "url", data: uc, index: allCompetitors.length + idx });
     });
 
-    // Sort by index and build slots
-    allCompetitors.sort((a, b) => a.index - b.index);
-
+    // Build slots
     for (let i = 0; i < 5; i++) {
       const competitor = allCompetitors[i];
       if (!competitor) {
@@ -204,33 +151,35 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
         continue;
       }
 
-      if (competitor.type === "store") {
-        const { match, cp } = competitor.data;
-        const newPrice = cp.price != null ? Number(cp.price) : null;
+      if (competitor.type === "tracked") {
+        // Tracked competitor from confirmed matches
+        const tc = competitor.data;
+        const competitorPrice = tc.competitor_price != null ? Number(tc.competitor_price) : null;
         const oldPrice = null; // not tracked for now
         let changePercent: number | null = null;
 
-        if (productPrice != null && newPrice != null && productPrice > 0) {
-          changePercent = ((newPrice - productPrice) / productPrice) * 100;
+        // Calculate percent change: ((competitorPrice - ourPrice) / ourPrice) * 100
+        if (productPrice != null && productPrice > 0 && competitorPrice != null) {
+          changePercent = ((competitorPrice - productPrice) / productPrice) * 100;
         }
 
         competitorSlots.push({
           label: `Competitor ${i + 1}`,
-          name: cp.title ?? null,
-          url: cp.url ?? null,
+          name: tc.competitor_store_name ?? null, // Use competitor store name
+          url: tc.competitor_url ?? null,
           oldPrice,
-          newPrice,
+          newPrice: competitorPrice,
           changePercent,
           isUrlCompetitor: false,
         });
       } else {
-        // URL competitor
+        // URL competitor (fallback)
         const uc = competitor.data;
         const newPrice = uc.last_price != null ? Number(uc.last_price) : null;
         const oldPrice = null;
         let changePercent: number | null = null;
 
-        if (productPrice != null && newPrice != null && productPrice > 0) {
+        if (productPrice != null && productPrice > 0 && newPrice != null) {
           changePercent = ((newPrice - productPrice) / productPrice) * 100;
         }
 
