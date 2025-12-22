@@ -73,23 +73,23 @@ export default async function MatchesReviewPage({
     // Continue anyway - maybe candidates already exist
   }
 
-  // Step 2: Load grouped match candidates using RPC
+  // Step 2: Load match candidates using RPC get_competitor_products_for_store_matches
+  // RPC only takes p_store_id, we filter by competitor_id in the client
   const loadPayload = {
     p_store_id: store.id,
-    p_competitor_id: competitorId,
   };
-  console.log("[matches-review] Loading grouped match candidates with payload:", {
-    function: "get_grouped_match_candidates",
+  console.log("[matches-review] Loading match candidates with payload:", {
+    function: "get_competitor_products_for_store_matches",
     payload: loadPayload,
   });
 
-  const { data: groupedCandidates, error: candidatesError } = await supabase.rpc(
-    "get_grouped_match_candidates",
+  const { data: matchCandidates, error: candidatesError } = await supabase.rpc(
+    "get_competitor_products_for_store_matches",
     loadPayload
   );
 
   if (candidatesError) {
-    console.error("[matches-review] Error loading grouped match candidates:", {
+    console.error("[matches-review] Error loading match candidates:", {
       competitorId,
       storeId: store.id,
       payload: loadPayload,
@@ -121,29 +121,80 @@ export default async function MatchesReviewPage({
     });
   }
 
-  // Transform grouped candidates for client
-  // RPC get_grouped_match_candidates returns array of:
-  // { product_id, product_name, product_sku, product_price, candidates: [...] }
-  // where candidates array contains:
-  // { candidate_id, competitor_product_id, competitor_url, competitor_name, competitor_last_price, competitor_currency, similarity_score }
-  const groupedMatches = Array.isArray(groupedCandidates) ? groupedCandidates.map((group: any) => ({
-    product_id: group.product_id || "",
-    product_name: group.product_name || "",
-    product_sku: group.product_sku || null,
-    product_price: group.product_price ?? null,
-    candidates: Array.isArray(group.candidates) ? group.candidates.map((c: any) => ({
-      candidate_id: c.candidate_id,
-      competitor_product_id: c.competitor_product_id || "",
-      competitor_url: c.competitor_url || "",
-      competitor_name: c.competitor_name || "",
-      competitor_last_price: c.competitor_last_price ?? null,
-      competitor_currency: c.competitor_currency || "USD",
-      similarity_score: c.similarity_score || 0,
-    })) : [],
-  })) : [];
+  // Transform match candidates for client
+  // RPC get_competitor_products_for_store_matches returns flat rows with:
+  // { competitor_id, product_id, product_name, product_sku, product_price, 
+  //   competitor_product_id, competitor_product_name, competitor_product_url, 
+  //   competitor_price, currency, similarity_score }
+  // We need to:
+  // 1. Filter by competitor_id === competitorId
+  // 2. Group by product_id
+  // 3. Create options array for each product group
+  
+  const filteredCandidates = Array.isArray(matchCandidates) 
+    ? matchCandidates.filter((row: any) => row.competitor_id === competitorId)
+    : [];
+
+  // Group by product_id
+  const productGroups = new Map<string, {
+    product_id: string;
+    product_name: string;
+    product_sku: string | null;
+    product_price: number | null;
+    options: Array<{
+      competitor_product_id: string;
+      competitor_product_name: string;
+      competitor_product_url: string;
+      competitor_price: number | null;
+      currency: string;
+      similarity_score: number;
+    }>;
+  }>();
+
+  filteredCandidates.forEach((row: any) => {
+    const productId = row.product_id;
+    if (!productId) return;
+
+    if (!productGroups.has(productId)) {
+      productGroups.set(productId, {
+        product_id: productId,
+        product_name: row.product_name || "",
+        product_sku: row.product_sku || null,
+        product_price: row.product_price ?? null,
+        options: [],
+      });
+    }
+
+    const group = productGroups.get(productId)!;
+    group.options.push({
+      competitor_product_id: row.competitor_product_id || "",
+      competitor_product_name: row.competitor_product_name || "",
+      competitor_product_url: row.competitor_product_url || "",
+      competitor_price: row.competitor_price ?? null,
+      currency: row.currency || "USD",
+      similarity_score: row.similarity_score || 0,
+    });
+  });
+
+  // Convert to array and sort options by similarity_score descending
+  const groupedMatches = Array.from(productGroups.values()).map((group) => ({
+    product_id: group.product_id,
+    product_name: group.product_name,
+    product_sku: group.product_sku,
+    product_price: group.product_price,
+    candidates: group.options.sort((a, b) => b.similarity_score - a.similarity_score).map((opt) => ({
+      candidate_id: opt.competitor_product_id,
+      competitor_product_id: opt.competitor_product_id,
+      competitor_url: opt.competitor_product_url,
+      competitor_name: opt.competitor_product_name,
+      competitor_last_price: opt.competitor_price,
+      competitor_currency: opt.currency,
+      similarity_score: opt.similarity_score,
+    })),
+  }));
 
   // Derive error message from status if needed
-  const errorMessage = competitor.status === "error" 
+  const errorMessage = (competitor.status === "error" || competitor.status === "failed")
     ? "An error occurred during competitor setup. Please try adding the competitor again." 
     : null;
 

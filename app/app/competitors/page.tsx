@@ -193,8 +193,8 @@ export default async function CompetitorsPage() {
               const { data: candidateData, error: candidateError } = await supabase.rpc(
                 "count_candidates_for_competitor_store",
                 {
-                  p_store_id: store.id,
                   p_competitor_id: competitor.id,
+                  p_store_id: store.id,
                 }
               );
               
@@ -448,9 +448,9 @@ export default async function CompetitorsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-semibold text-foreground truncate">{competitor.name}</p>
-                          {competitor.status === "pending" && (
+                          {(competitor.status === "pending" || competitor.status === "processing") && (
                             <Badge variant="default" className="text-[10px] px-2 py-0.5">
-                              Pending
+                              {competitor.status === "processing" ? "Processing" : "Pending"}
                             </Badge>
                           )}
                           {competitor.status === "paused" && (
@@ -458,7 +458,7 @@ export default async function CompetitorsPage() {
                               Paused
                             </Badge>
                           )}
-                          {competitor.status === "error" && (
+                          {(competitor.status === "error" || competitor.status === "failed") && (
                             <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
                               <AlertCircle className="h-3 w-3 mr-1 inline" />
                               Error
@@ -498,16 +498,16 @@ export default async function CompetitorsPage() {
 
                     {/* Right: Actions */}
                     <div className="flex flex-col gap-2 flex-shrink-0">
-                      {(competitor.status === "pending" || competitor.status === "active") && (
+                      {(competitor.status === "pending" || competitor.status === "processing" || competitor.status === "active") && (
                         <Link
                           href={`/app/competitors/${competitor.id}/matches`}
                           className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs"
                         >
                           <ExternalLink className="mr-2 h-3 w-3" />
-                          {competitor.status === "pending" ? "Review Matches" : "Matches"}
+                          {(competitor.status === "pending" || competitor.status === "processing") ? "Review Matches" : "Matches"}
                         </Link>
                       )}
-                      {competitor.status === "pending" && (
+                      {(competitor.status === "pending" || competitor.status === "processing") && (
                         <Badge variant="outline" className="text-[10px] px-2 py-0.5">
                           <Loader2 className="h-3 w-3 mr-1 inline animate-spin" />
                           Processing...

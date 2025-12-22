@@ -81,14 +81,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Insert new competitor store with status 'pending' and source='store'
+    // 3) Insert new competitor store with status 'processing' and source='store'
     const { data: inserted, error: insertErr } = await supabase
       .from("competitors")
       .insert({
         store_id: store.id,
         url: url.trim(),
         name: name?.trim() ?? null,
-        status: "pending",
+        status: "processing",
         source: "store",
         is_tracked: true,
       })

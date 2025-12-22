@@ -280,13 +280,13 @@ export async function runCompetitorDiscovery({
   console.log("[discovery] START", { competitorId, storeId, competitorUrl });
 
   try {
-    // 1. Update competitor: set domain, keep status="pending", set updated_at
+    // 1. Update competitor: set domain, set status="processing", set updated_at
     const domain = extractDomain(competitorUrl);
     await supabaseAdmin
       .from("competitors")
       .update({
         domain: domain || null,
-        status: "pending",
+        status: "processing",
         updated_at: new Date().toISOString(),
       })
       .eq("id", competitorId);
@@ -340,9 +340,9 @@ export async function runCompetitorDiscovery({
           continue;
         }
 
-        // Upsert into competitor_url_products
+        // Upsert into competitor_store_products (NOT competitor_url_products)
         const { error: upsertError } = await supabaseAdmin
-          .from("competitor_url_products")
+          .from("competitor_store_products")
           .upsert(
             {
               store_id: storeId,
@@ -352,10 +352,9 @@ export async function runCompetitorDiscovery({
               last_price: details.price,
               currency: details.currency,
               last_checked_at: now,
-              source: "store",
             },
             {
-              onConflict: "store_id,competitor_id,competitor_url",
+              onConflict: "competitor_id,competitor_url",
             }
           );
 
@@ -374,11 +373,10 @@ export async function runCompetitorDiscovery({
     if (successCount === 0) {
       const error = "No products successfully scraped";
       console.error("[discovery] no products scraped");
-      // Keep status as "pending" if "error" not allowed by constraint
-      // Log error but don't change status to avoid constraint violation
       await supabaseAdmin
         .from("competitors")
         .update({
+          status: "failed",
           last_sync_at: now,
           updated_at: now,
         })
@@ -437,11 +435,11 @@ export async function runCompetitorDiscovery({
       stack: error.stack,
     });
 
-    // Update competitor - keep status as "pending" if "error" not allowed by constraint
-    // Log error but don't change status to avoid constraint violation
+    // Update competitor status to "failed" on error
     await supabaseAdmin
       .from("competitors")
       .update({
+        status: "failed",
         last_sync_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

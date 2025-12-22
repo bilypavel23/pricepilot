@@ -74,10 +74,10 @@ export async function getMatchCountForCompetitor(
   try {
     const supabase = await createClient();
 
-    // Always use 2-parameter version only - no fallback to 1-param overload
+    // Always use 2-parameter version with correct parameter names
     const { data, error } = await supabase.rpc("count_matches_for_competitor_store", {
+      p_competitor_id: competitorId,
       p_store_id: storeId,
-      p_competitor_store_id: competitorId,
     });
 
     if (error) {

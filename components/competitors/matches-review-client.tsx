@@ -53,15 +53,18 @@ export function MatchesReviewClient({
   myProducts,
 }: MatchesReviewClientProps) {
   const router = useRouter();
-  const [selectedByProduct, setSelectedByProduct] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
+  
+  // Candidates are already sorted by similarity_score descending from the server
+  // Initialize state with best candidate (highest similarity) as default
+  const [selectedByProduct, setSelectedByProduct] = useState<Record<string, string | null>>(() => {
+    const initial: Record<string, string | null> = {};
     groupedMatches.forEach((group) => {
-      // Initialize default selection: first candidate if available, else "__none__"
+      // Initialize default selection: highest similarity candidate if available, else null
       if (group.product_id) {
         if (group.candidates.length > 0 && group.candidates[0]?.competitor_product_id) {
           initial[group.product_id] = group.candidates[0].competitor_product_id;
         } else {
-          initial[group.product_id] = "__none__";
+          initial[group.product_id] = null;
         }
       }
     });
@@ -69,11 +72,11 @@ export function MatchesReviewClient({
   });
   const [loading, setLoading] = useState(false);
 
-  // Filter products that have selections (excluding "__none__")
+  // Filter products that have selections (excluding null/__none__)
   const matchedProducts = useMemo(() => {
     return groupedMatches.filter((group) => {
       const selectedId = selectedByProduct[group.product_id];
-      return selectedId && selectedId !== "__none__";
+      return selectedId && selectedId !== "__none__" && selectedId !== null;
     });
   }, [groupedMatches, selectedByProduct]);
 
@@ -85,11 +88,11 @@ export function MatchesReviewClient({
 
     setLoading(true);
     try {
-      // Build matches payload - only include rows where selectedId !== "__none__"
-      const matches = matchedProducts
+      // Build matches payload - only include rows where selectedId is not null/__none__
+      const matches = groupedMatches
         .map((group) => {
           const selectedId = selectedByProduct[group.product_id];
-          if (selectedId && selectedId !== "__none__") {
+          if (selectedId && selectedId !== "__none__" && selectedId !== null) {
             return {
               product_id: group.product_id,
               competitor_product_id: selectedId,
@@ -197,14 +200,14 @@ export function MatchesReviewClient({
                   return null; // Skip if my product not found
                 }
 
-                // Get selected ID for this product
+                // Get selected ID for this product (default to highest similarity if not set)
                 const selectedId = selectedByProduct[group.product_id] ?? 
-                  (group.candidates?.[0]?.competitor_product_id ?? "__none__");
+                  (group.candidates?.[0]?.competitor_product_id ?? null);
                 
                 // Find the selected candidate
-                const selectedCandidate = selectedId === "__none__" 
-                  ? null 
-                  : group.candidates.find(c => c.competitor_product_id === selectedId) ?? null;
+                const selectedCandidate = (selectedId && selectedId !== "__none__" && selectedId !== null)
+                  ? group.candidates.find(c => c.competitor_product_id === selectedId) ?? null
+                  : null;
 
                 return (
                   <div
@@ -285,19 +288,26 @@ export function MatchesReviewClient({
 
                         {/* Dropdown */}
                         <Select
-                          value={selectedId}
-                          onValueChange={(value) => setSelectedByProduct(prev => ({ ...prev, [group.product_id]: value }))}
+                          value={selectedId && selectedId !== "__none__" && selectedId !== null ? selectedId : undefined}
+                          onValueChange={(value) => {
+                            setSelectedByProduct(prev => {
+                              if (value === "__none__") {
+                                return { ...prev, [group.product_id]: null };
+                              }
+                              return { ...prev, [group.product_id]: value };
+                            });
+                          }}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select competitor product..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__none__">Skip (none)</SelectItem>
+                            <SelectItem value="__none__">None (skip)</SelectItem>
                             {group.candidates.map((candidate) => {
                               const candidateId = candidate.competitor_product_id ? String(candidate.competitor_product_id) : null;
                               if (!candidateId) return null;
                               return (
-                                <SelectItem key={candidate.candidate_id} value={candidateId}>
+                                <SelectItem key={candidate.candidate_id || candidate.competitor_product_id} value={candidateId}>
                                   {candidate.competitor_name} ({candidate.similarity_score.toFixed(0)}%)
                                 </SelectItem>
                               );

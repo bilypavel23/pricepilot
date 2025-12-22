@@ -68,10 +68,10 @@ export async function POST(
       );
     }
 
-    // Verify all competitor products belong to this competitor
+    // Verify all competitor products belong to this competitor (from competitor_store_products)
     const competitorProductIds = matches.map((m) => m.competitor_product_id);
     const { data: competitorProducts, error: competitorProductsError } = await supabase
-      .from("competitor_url_products")
+      .from("competitor_store_products")
       .select("id, competitor_id, competitor_url, last_price, currency")
       .in("id", competitorProductIds)
       .eq("competitor_id", competitorId)
@@ -85,9 +85,9 @@ export async function POST(
     }
 
     // Create competitor_product_matches records
+    // Table structure: store_id, product_id, competitor_product_id
     const matchesToInsert = matches.map((match) => ({
       store_id: store.id,
-      competitor_id: competitorId,
       product_id: match.product_id,
       competitor_product_id: match.competitor_product_id,
     }));
@@ -108,19 +108,30 @@ export async function POST(
       );
     }
 
-    // Delete match candidates for confirmed product_ids (for this competitor)
-    // Delete all candidates for these product_ids, not just the selected competitor_product_id
-    const productIdsToRemove = matches.map((m) => m.product_id);
-    if (productIdsToRemove.length > 0) {
-      const { error: deleteError } = await supabase
-        .from("competitor_match_candidates")
-        .delete()
-        .eq("store_id", store.id)
-        .eq("competitor_id", competitorId)
-        .in("suggested_product_id", productIdsToRemove);
-
-      if (deleteError) {
-        console.error("Error deleting match candidates:", JSON.stringify(deleteError, null, 2));
+    // Delete match candidates for confirmed matches
+    // Since competitor_match_candidates doesn't have competitor_id, we filter via competitor_product_id
+    // which we've already verified belongs to this competitor
+    const competitorProductIdsToDelete = matches.map((m) => m.competitor_product_id);
+    const productIdsToDelete = matches.map((m) => m.product_id);
+    
+    if (competitorProductIdsToDelete.length > 0 && productIdsToDelete.length > 0) {
+      // Delete candidates where suggested_product_id AND competitor_product_id match
+      // We need to delete each combination individually since Supabase doesn't support
+      // deleting with multiple IN conditions easily
+      const deletePromises = matches.map((match) =>
+        supabase
+          .from("competitor_match_candidates")
+          .delete()
+          .eq("store_id", store.id)
+          .eq("suggested_product_id", match.product_id)
+          .eq("competitor_product_id", match.competitor_product_id)
+      );
+      
+      const deleteResults = await Promise.all(deletePromises);
+      const deleteErrors = deleteResults.filter((r) => r.error);
+      
+      if (deleteErrors.length > 0) {
+        console.error("Error deleting some match candidates:", JSON.stringify(deleteErrors, null, 2));
         // Continue anyway - matches were already confirmed
       }
     }

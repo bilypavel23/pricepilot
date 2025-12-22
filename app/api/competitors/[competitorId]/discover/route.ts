@@ -50,10 +50,10 @@ export async function POST(
       );
     }
 
-    // Update status to 'pending' (discovery in progress) - use only allowed DB values
+    // Update status to 'processing' (discovery in progress)
     await supabaseAdmin
       .from("competitors")
-      .update({ status: "pending" })
+      .update({ status: "processing" })
       .eq("id", competitorId);
 
     try {
@@ -64,7 +64,7 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "error",
+            status: "failed",
             last_sync_at: new Date().toISOString(),
           })
           .eq("id", competitorId);
@@ -81,7 +81,7 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "error",
+            status: "failed",
             last_sync_at: new Date().toISOString(),
           })
           .eq("id", competitorId);
@@ -91,34 +91,49 @@ export async function POST(
         }, { status: 403 });
       }
 
-      // Step 3: Save competitor products to competitor_url_products
+      // Step 3: Save competitor products to competitor_store_products (NOT competitor_url_products)
       // CRITICAL: Must set store_id and competitor_id
       const now = new Date().toISOString();
+      
+      // Helper to detect currency from price/name
+      const detectCurrency = (product: { name: string; price: number | null; url: string }): string => {
+        // Check if price was scraped with currency symbol (would be in raw data)
+        const priceStr = product.price?.toString() || "";
+        const nameStr = product.name || "";
+        const combined = `${priceStr} ${nameStr}`;
+        
+        if (combined.includes("$") || combined.includes("USD")) return "USD";
+        if (combined.includes("£") || combined.includes("GBP")) return "GBP";
+        if (combined.includes("€") || combined.includes("EUR")) return "EUR";
+        if (combined.includes("Kč") || combined.includes("CZK")) return "CZK";
+        
+        return "USD"; // Default
+      };
+      
       const competitorProductsToInsert = scrapedProducts.map((p) => ({
         store_id: store.id, // CRITICAL: Must be set
         competitor_id: competitorId, // CRITICAL: Must be set
         competitor_name: p.name,
         competitor_url: p.url,
         last_price: p.price,
-        currency: "USD", // Default to USD (can be enhanced to detect from scraped data)
+        currency: detectCurrency(p),
         last_checked_at: now,
-        source: "store", // Mark as store-scraped
       }));
 
       const { data: insertedProducts, error: insertError } = await supabaseAdmin
-        .from("competitor_url_products")
+        .from("competitor_store_products")
         .upsert(competitorProductsToInsert, {
-          onConflict: "store_id,competitor_id,competitor_url",
+          onConflict: "competitor_id,competitor_url",
           ignoreDuplicates: false,
         })
         .select("id");
 
       if (insertError) {
-        console.error("Error inserting competitor products:", JSON.stringify(insertError, null, 2));
+        console.error("Error inserting competitor store products:", JSON.stringify(insertError, null, 2));
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "error",
+            status: "failed",
             last_sync_at: now,
           })
           .eq("id", competitorId);
@@ -146,7 +161,7 @@ export async function POST(
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "active", // Use only allowed DB values ('pending' or 'active')
+          status: "active",
           last_sync_at: now,
         })
         .eq("id", competitorId);
@@ -158,11 +173,18 @@ export async function POST(
         quotaRemaining: quotaResult.remaining_products,
       });
     } catch (error: any) {
-      console.error("Error in discovery scrape:", JSON.stringify(error, null, 2));
+      console.error("Error in discovery scrape:", JSON.stringify({
+        message: error?.message || "Unknown error",
+        code: error?.code || "NO_CODE",
+        details: error?.details || null,
+        hint: error?.hint || null,
+        status: error?.status || null,
+        stack: error?.stack || null,
+      }, null, 2));
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "error",
+          status: "failed",
           last_sync_at: new Date().toISOString(),
         })
         .eq("id", competitorId);
