@@ -44,6 +44,8 @@ type MatchesReviewClientProps = {
   myProducts: MyProduct[];
 };
 
+const NONE_VALUE = "__NONE__";
+
 export function MatchesReviewClient({
   competitorId,
   competitorName,
@@ -54,17 +56,18 @@ export function MatchesReviewClient({
 }: MatchesReviewClientProps) {
   const router = useRouter();
   
-  // Candidates are already sorted by similarity_score descending from the server
-  // Initialize state with best candidate (highest similarity) as default
-  const [selectedByProduct, setSelectedByProduct] = useState<Record<string, string | null>>(() => {
-    const initial: Record<string, string | null> = {};
+  // Store selection as STRING (competitor_product_id or NONE_VALUE), NOT null
+  // Key: product_id (my product) -> Value: competitor_product_id or NONE_VALUE
+  type SelectionMap = Record<string, string>; // key: product_id -> value: competitor_product_id or NONE_VALUE
+  const [selectedByProduct, setSelectedByProduct] = useState<SelectionMap>(() => {
+    const initial: SelectionMap = {};
     groupedMatches.forEach((group) => {
-      // Initialize default selection: highest similarity candidate if available, else null
+      // Initialize default selection: highest similarity candidate if available, else NONE_VALUE
       if (group.product_id) {
         if (group.candidates.length > 0 && group.candidates[0]?.competitor_product_id) {
           initial[group.product_id] = group.candidates[0].competitor_product_id;
         } else {
-          initial[group.product_id] = null;
+          initial[group.product_id] = NONE_VALUE;
         }
       }
     });
@@ -72,11 +75,11 @@ export function MatchesReviewClient({
   });
   const [loading, setLoading] = useState(false);
 
-  // Filter products that have selections (excluding null/__NONE__)
+  // Filter products that have selections (excluding NONE_VALUE)
   const matchedProducts = useMemo(() => {
     return groupedMatches.filter((group) => {
       const selectedId = selectedByProduct[group.product_id];
-      return selectedId && selectedId !== "__NONE__" && selectedId !== null;
+      return selectedId && selectedId !== NONE_VALUE;
     });
   }, [groupedMatches, selectedByProduct]);
 
@@ -88,11 +91,11 @@ export function MatchesReviewClient({
 
     setLoading(true);
     try {
-      // Build matches payload - only include rows where selectedId is not null/__NONE__
+      // Build matches payload - only include rows where selectedId is not NONE_VALUE
       const matches = groupedMatches
         .map((group) => {
           const selectedId = selectedByProduct[group.product_id];
-          if (selectedId && selectedId !== "__NONE__" && selectedId !== null) {
+          if (selectedId && selectedId !== NONE_VALUE) {
             return {
               product_id: group.product_id,
               competitor_product_id: selectedId,
@@ -200,24 +203,36 @@ export function MatchesReviewClient({
                   return null; // Skip if my product not found
                 }
 
-                // Get selected ID for this product (default to highest similarity if not set)
-                const selectedProductId = selectedByProduct[group.product_id];
-                const suggestedProductId = group.candidates?.[0]?.competitor_product_id ?? null;
+                // Get selected competitor product ID from state
+                const selectedCompetitorProductId = selectedByProduct[group.product_id];
+                // Get suggested competitor product ID (highest similarity) - only used as initial default
+                const suggestedCompetitorProductId = group.candidates?.[0]?.competitor_product_id ?? null;
                 
-                // Build select value: use selectedProductId, fallback to suggestedProductId, or __NONE__
-                const selectValue = selectedProductId ?? suggestedProductId ?? "__NONE__";
+                // Compute current Select value - use selected if exists, otherwise suggested, otherwise NONE_VALUE
+                // IMPORTANT: Only use suggested as INITIAL default (when no entry exists in the map)
+                // Remove ANY fallback like: selectedId ?? suggestedId after user interaction
+                const currentValue = selectedCompetitorProductId
+                  ?? (suggestedCompetitorProductId ? suggestedCompetitorProductId : NONE_VALUE);
                 
-                // Find the selected candidate (treat __NONE__ as null)
-                const selectedCandidate = (selectValue && selectValue !== "__NONE__" && selectValue !== null)
-                  ? group.candidates.find(c => c.competitor_product_id === selectValue) ?? null
+                // Find the selected candidate (treat NONE_VALUE as skipped)
+                const selectedCandidate = (currentValue && currentValue !== NONE_VALUE)
+                  ? group.candidates.find(c => c.competitor_product_id === currentValue) ?? null
                   : null;
                 
-                // Resolve current label from options list
-                const currentLabel = selectValue === "__NONE__"
+                // Resolve current label from options list by id
+                const currentSelectedLabel = currentValue === NONE_VALUE
                   ? "None (skip)"
                   : selectedCandidate
                     ? `${selectedCandidate.competitor_name} (${selectedCandidate.similarity_score.toFixed(0)}%)`
                     : "Select competitor product...";
+                
+                // Handle change handler - store as string (NONE_VALUE or competitor_product_id)
+                const handleChange = (v: string) => {
+                  setSelectedByProduct(prev => ({
+                    ...prev,
+                    [group.product_id]: v,
+                  }));
+                };
 
                 return (
                   <div
@@ -244,75 +259,95 @@ export function MatchesReviewClient({
                     {/* Right: Competitor Product (with similarity badge) */}
                     <div className="w-80 flex-shrink-0">
                       <div className="flex flex-col gap-2">
-                        {/* Top row: Competitor name on left, badge on right */}
-                        <div className="flex items-center justify-between gap-2">
-                          {selectedCandidate ? (
-                            <p className="text-sm font-medium truncate flex-1 min-w-0">
-                              {selectedCandidate.competitor_name}
-                            </p>
-                          ) : (
-                            <p className="text-sm text-muted-foreground flex-1 min-w-0">
-                              No competitor selected
-                            </p>
-                          )}
-                          {selectedCandidate ? (
-                            <Badge
-                              variant={getScoreBadgeVariant(selectedCandidate.similarity_score)}
-                              className="text-xs flex-shrink-0"
-                            >
-                              {selectedCandidate.similarity_score.toFixed(0)}% match
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs flex-shrink-0">
-                              Skipped
-                            </Badge>
-                          )}
-                        </div>
+                        {/* Top row: Competitor name on left, badge on right - hide when NONE */}
+                        {currentValue !== NONE_VALUE ? (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              {selectedCandidate ? (
+                                <p className="text-sm font-medium truncate flex-1 min-w-0">
+                                  {selectedCandidate.competitor_name}
+                                </p>
+                              ) : (
+                                <p className="text-sm text-muted-foreground flex-1 min-w-0">
+                                  No competitor selected
+                                </p>
+                              )}
+                              {selectedCandidate ? (
+                                <Badge
+                                  variant={getScoreBadgeVariant(selectedCandidate.similarity_score)}
+                                  className="text-xs flex-shrink-0"
+                                >
+                                  {selectedCandidate.similarity_score.toFixed(0)}% match
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs flex-shrink-0">
+                                  Skipped
+                                </Badge>
+                              )}
+                            </div>
 
-                        {/* View competitor product button */}
-                        {selectedCandidate?.competitor_url ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            asChild
-                            className="w-full"
-                          >
-                            <a
-                              href={selectedCandidate.competitor_url}
-                              target="_blank"
-                              rel="noreferrer"
+                            {/* View competitor product button */}
+                            {selectedCandidate?.competitor_url ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                className="w-full"
+                              >
+                                <a
+                                  href={selectedCandidate.competitor_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  View competitor product
+                                </a>
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled
+                                className="w-full"
+                              >
+                                View competitor product
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {/* When NONE: Show "Skipped" badge */}
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm text-muted-foreground flex-1 min-w-0">
+                                Skipped
+                              </p>
+                              <Badge variant="outline" className="text-xs flex-shrink-0">
+                                Skipped
+                              </Badge>
+                            </div>
+                            {/* View competitor product button - disabled when NONE */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              className="w-full"
                             >
                               View competitor product
-                            </a>
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled
-                            className="w-full"
-                          >
-                            View competitor product
-                          </Button>
+                            </Button>
+                          </>
                         )}
 
                         {/* Dropdown */}
                         <Select
-                          value={selectValue}
-                          onValueChange={(value) => {
-                            // Treat __NONE__ as null in state
-                            const next = (value === "__NONE__") ? null : value;
-                            setSelectedByProduct(prev => ({
-                              ...prev,
-                              [group.product_id]: next,
-                            }));
-                          }}
+                          value={currentValue}
+                          onValueChange={handleChange}
                         >
                           <SelectTrigger className="w-full">
-                            <span className="truncate">{currentLabel}</span>
+                            <span className="truncate">
+                              {currentValue === NONE_VALUE ? "None (skip)" : currentSelectedLabel}
+                            </span>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__NONE__">None (skip)</SelectItem>
+                            <SelectItem value={NONE_VALUE}>None (skip)</SelectItem>
                             {group.candidates.map((candidate) => {
                               const candidateId = candidate.competitor_product_id ? String(candidate.competitor_product_id) : null;
                               if (!candidateId) return null;
