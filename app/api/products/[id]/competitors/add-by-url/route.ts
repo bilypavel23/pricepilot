@@ -381,19 +381,18 @@ export async function POST(
       competitor_name: productTitle,
     });
 
-    // ✅ Use upsert with onConflict to handle duplicates gracefully
+    // Upsert into competitor_url_products with unique constraint on (store_id, product_id, competitor_url)
+    // Payload must include: store_id, product_id, competitor_url, competitor_name, last_price, currency, last_checked_at
     const { data: upsertedUrlCompetitor, error: upsertUrlErr } = await supabaseAdmin
       .from("competitor_url_products")
       .upsert(competitorUrlPayload, { 
         onConflict: "store_id,product_id,competitor_url" 
       })
       .select("id, competitor_url, competitor_name, last_price, currency, last_checked_at")
-      .single();
-
-    let urlCompetitorId: string | undefined;
+      .maybeSingle();
 
     if (upsertUrlErr) {
-      console.error("[add-competitor-url] Upsert error (falling back to select+update):", {
+      console.error("[add-competitor-url] Upsert error:", {
         table: "competitor_url_products",
         payloadKeys: Object.keys(competitorUrlPayload),
         error: upsertUrlErr,
@@ -403,78 +402,18 @@ export async function POST(
         details: upsertUrlErr?.details,
         hint: upsertUrlErr?.hint,
       });
-
-      // Fallback: select existing row by store_id + product_id + competitor_url
-      const { data: existing, error: selErr } = await supabaseAdmin
-        .from("competitor_url_products")
-        .select("id")
-        .eq("store_id", store.id)
-        .eq("product_id", productId)
-        .eq("competitor_url", competitorUrl.trim())
-        .single();
-
-      if (selErr || !existing) {
-        console.error("[add-competitor-url] Fallback select also failed:", {
+      return jsonResponse({
+        error: "Failed to save competitor URL product",
+        code: "SERVER_ERROR",
+        details: {
           table: "competitor_url_products",
-          selectError: selErr,
-          selectErrorRaw: JSON.stringify(selErr, null, 2),
-        });
-        return jsonResponse({
-          error: "Failed to save competitor URL product",
-          code: "SERVER_ERROR",
-          details: {
-            table: "competitor_url_products",
-            upsertError: upsertUrlErr?.message,
-            selectError: selErr?.message,
-          }
-        }, 500);
-      }
-
-      console.log("[add-competitor-url] Fallback: Found existing competitor_url_product, updating:", {
-        id: existing.id,
-        store_id: store.id,
-        product_id: productId,
-        competitor_url: competitorUrl.trim(),
-      });
-
-      // Update existing row with latest data
-      const { error: updateErr } = await supabaseAdmin
-        .from("competitor_url_products")
-        .update({
-          competitor_name: competitorUrlPayload.competitor_name,
-          last_price: competitorUrlPayload.last_price,
-          currency: competitorUrlPayload.currency,
-          last_checked_at: competitorUrlPayload.last_checked_at,
-        })
-        .eq("id", existing.id);
-
-      if (updateErr) {
-        console.error("[add-competitor-url] Fallback update failed:", {
-          id: existing.id,
-          updateError: updateErr,
-          updateErrorRaw: JSON.stringify(updateErr, null, 2),
-        });
-        // Still return success with existing ID - at least we have the product
-      } else {
-        console.log("[add-competitor-url] Fallback: Successfully updated existing competitor_url_product:", {
-          id: existing.id,
-        });
-      }
-
-      urlCompetitorId = existing.id;
-    } else {
-      console.log("[add-competitor-url] Upsert succeeded:", {
-        id: upsertedUrlCompetitor?.id,
-        competitor_url: upsertedUrlCompetitor?.competitor_url,
-        competitor_name: upsertedUrlCompetitor?.competitor_name,
-        last_price: upsertedUrlCompetitor?.last_price,
-        last_checked_at: upsertedUrlCompetitor?.last_checked_at,
-      });
-      urlCompetitorId = upsertedUrlCompetitor?.id;
+          upsertError: upsertUrlErr?.message,
+        }
+      }, 500);
     }
 
-    if (!urlCompetitorId) {
-      console.error("[add-competitor-url] No competitor URL product ID after upsert/fallback", {
+    if (!upsertedUrlCompetitor || !upsertedUrlCompetitor.id) {
+      console.error("[add-competitor-url] Upsert succeeded but no data returned:", {
         upserted: upsertedUrlCompetitor,
         upsertErr: upsertUrlErr,
       });
@@ -486,6 +425,16 @@ export async function POST(
         }
       }, 500);
     }
+
+    const urlCompetitorId = upsertedUrlCompetitor.id;
+
+    console.log("[add-competitor-url] Upsert succeeded:", {
+      id: upsertedUrlCompetitor.id,
+      competitor_url: upsertedUrlCompetitor.competitor_url,
+      competitor_name: upsertedUrlCompetitor.competitor_name,
+      last_price: upsertedUrlCompetitor.last_price,
+      last_checked_at: upsertedUrlCompetitor.last_checked_at,
+    });
 
     console.log("[add-competitor-url] Success", { 
       needsPrice,

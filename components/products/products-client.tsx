@@ -604,23 +604,12 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
               <Input
                 id="search"
                 name="search"
-                placeholder="Search by name or SKU..."
+                placeholder=""
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-11 h-12 text-base"
               />
             </div>
-            <Select
-              id="filter"
-              name="filter"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="h-12"
-            >
-              <option value="all">All products</option>
-              <option value="low-margin">Low margin (&lt;30%)</option>
-              <option value="low-inventory">Low inventory (&lt;5)</option>
-            </Select>
           </div>
         </CardContent>
       </Card>

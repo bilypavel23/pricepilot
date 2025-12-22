@@ -1,6 +1,10 @@
 /**
  * Competitor Store Discovery - Scrapes competitor stores and saves products
  * Server-only module
+ * 
+ * CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
+ * - All persistent logic must rely on: competitor_match_candidates and competitor_product_matches
+ * - Never read from competitor_store_products for persistent data
  */
 
 import * as cheerio from "cheerio";
@@ -340,7 +344,9 @@ export async function runCompetitorDiscovery({
           continue;
         }
 
-        // Upsert into competitor_store_products (NOT competitor_url_products)
+        // Upsert into competitor_store_products (VOLATILE staging only)
+        // CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
+        // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
         const { error: upsertError } = await supabaseAdmin
           .from("competitor_store_products")
           .upsert(
@@ -393,10 +399,31 @@ export async function runCompetitorDiscovery({
       .eq("store_id", storeId)
       .eq("period_start", quota.period_start);
 
-    // 8. Call RPC build_match_candidates_for_competitor_store
+    // 8. DEBUG - Check count of competitor_store_products BEFORE build call
+    // This helps diagnose if deletion is happening prematurely or RLS is blocking
+    const { count: stagingCount, error: countError } = await supabaseAdmin
+      .from("competitor_store_products")
+      .select("*", { count: "exact", head: true })
+      .eq("store_id", storeId)
+      .eq("competitor_id", competitorId);
+    
+    console.log(`[discovery] DEBUG: competitor_store_products count BEFORE build: ${stagingCount || 0} (error: ${countError ? JSON.stringify(countError) : 'none'})`);
+    
+    if (stagingCount === 0) {
+      console.error(`[discovery] ERROR: competitor_store_products is EMPTY before build call! store_id=${storeId}, competitor_id=${competitorId}`);
+      console.error(`[discovery] This indicates either: 1) premature deletion, 2) RLS blocking, or 3) insert failed silently`);
+    }
+
+    // 9. Call RPC build_match_candidates_for_competitor_store
+    // This RPC:
+    // - Deletes old candidates for (store_id, competitor_id)
+    // - Computes similarity between scraped products and store products using pg_trgm
+    // - Inserts matched items directly into competitor_match_candidates (top-1 per competitor product)
+    // - Returns inserted count
+    // - Does NOT persist unmatched competitor products
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
-    const { error: rpcError } = await supabase.rpc(
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
       "build_match_candidates_for_competitor_store",
       {
         p_store_id: storeId,
@@ -407,9 +434,26 @@ export async function runCompetitorDiscovery({
     if (rpcError) {
       console.error("[discovery] RPC error:", rpcError);
       // Continue anyway
+    } else {
+      // Log the returned count from RPC
+      const insertedCount = typeof rpcResult === 'number' ? rpcResult : rpcResult?.inserted_count || rpcResult?.count || 0;
+      console.log(`[discovery] build_match_candidates_for_competitor_store returned count: ${insertedCount}`);
+      
+      if (insertedCount === 0) {
+        console.warn(`[discovery] No candidates were inserted for store_id=${storeId}, competitor_id=${competitorId}. Check competitor_store_products.`);
+      }
+      
+      // NOTE: Deletion of competitor_store_products is DISABLED for now.
+      // The get_competitor_products_for_store_matches RPC will handle fallback build automatically.
+      // 10. Deletion removed - competitor_store_products is kept for fallback builds
+      // const { error: deleteError } = await supabaseAdmin
+      //   .from("competitor_store_products")
+      //   .delete()
+      //   .eq("store_id", storeId)
+      //   .eq("competitor_id", competitorId);
     }
 
-    // 9. Update competitor status="active" and last_sync_at
+    // 10. Update competitor status="active" and last_sync_at
     await supabaseAdmin
       .from("competitors")
       .update({

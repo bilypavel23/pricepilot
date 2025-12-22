@@ -22,44 +22,35 @@ export async function getRecommendationsWaitingCount(storeId: string): Promise<n
 
   const productIds = products.map((p) => p.id);
 
-  // 2) Check if there are any competitors for this store (store competitors OR URL competitors)
-  const { count: competitorsCount } = await supabase
-    .from("competitors")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId);
-
-  const { count: urlCompetitorsCount } = await supabase
-    .from("competitor_url_products")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId);
-
-  // If no competitors at all (neither store nor URL), return 0
-  if ((!competitorsCount || competitorsCount === 0) && (!urlCompetitorsCount || urlCompetitorsCount === 0)) {
-    return 0;
-  }
-
-  // 3) Load tracked competitors using RPC get_recommendation_competitors (same as Recommendations)
-  // This RPC returns confirmed matches from competitor_product_matches
-  // joined with competitor_store_products and competitors
+  // 2) Load competitors ONLY from v_product_competitor_links view
+  // DO NOT query competitors table - check competitors via v_product_competitor_links
+  // NOTE: URL competitors have competitor_id = null, Store competitors have competitor_id set
+  // Product has competitors if EXISTS (select 1 from v_product_competitor_links where product_id = p.id and store_id = p.store_id)
   const productCompetitorPrices = new Map<string, number[]>();
 
   if (productIds.length > 0) {
     try {
-      const { data: competitorRows, error: rpcError } = await supabase.rpc(
-        "get_recommendation_competitors",
-        { p_store_id: storeId }
-      );
+      // Query v_product_competitor_links view
+      // NOTE: competitor_id can be null for URL competitors - this is expected and correct
+      const { data: linksData, error: linksError } = await supabase
+        .from("v_product_competitor_links")
+        .select("product_id, competitor_price")
+        .eq("store_id", storeId)
+        .in("product_id", productIds);
 
-      if (rpcError) {
-        console.error("getRecommendationsWaitingCount: RPC error", JSON.stringify(rpcError, null, 2));
+      if (linksError) {
+        console.error("getRecommendationsWaitingCount: v_product_competitor_links error", JSON.stringify(linksError, null, 2));
       } else {
-        const rows = competitorRows ?? [];
+        const rows = linksData ?? [];
         
-        // Add tracked competitor prices from confirmed matches
+        // Add tracked competitor prices from v_product_competitor_links
+        // Only add prices (not count competitors) - competitors are counted separately
         for (const row of rows) {
           const productId = row.product_id as string;
           const competitorPrice = row.competitor_price != null ? Number(row.competitor_price) : null;
           
+          // Only add to prices array if price is available and > 0
+          // But DO NOT filter out competitors - they are counted separately
           if (productId && competitorPrice != null && competitorPrice > 0) {
             const prices = productCompetitorPrices.get(productId) || [];
             prices.push(competitorPrice);
@@ -68,27 +59,8 @@ export async function getRecommendationsWaitingCount(storeId: string): Promise<n
         }
       }
     } catch (err) {
-      console.error("getRecommendationsWaitingCount: RPC exception", err);
-      // Continue execution even if RPC fails
-    }
-  }
-
-  // 4) Load URL competitors from competitor_url_products (fallback, same as Recommendations)
-  const { data: urlCompetitors } = await supabase
-    .from("competitor_url_products")
-    .select("product_id, last_price")
-    .in("product_id", productIds)
-    .eq("store_id", storeId);
-
-  // Add URL competitor prices
-  if (urlCompetitors && urlCompetitors.length > 0) {
-    for (const uc of urlCompetitors) {
-      if (uc.last_price != null && uc.last_price > 0) {
-        const productId = uc.product_id as string;
-        const prices = productCompetitorPrices.get(productId) || [];
-        prices.push(Number(uc.last_price));
-        productCompetitorPrices.set(productId, prices);
-      }
+      console.error("getRecommendationsWaitingCount: exception loading competitors", err);
+      // Continue execution even if query fails
     }
   }
 

@@ -55,40 +55,18 @@ export default async function MatchesReviewPage({
   let myProducts: any[] = [];
 
   if (!isTrackingMode) {
-    // Step 1: Build match candidates first
-    const buildPayload = {
-      p_competitor_id: competitorId,
-      p_store_id: store.id,
-    };
-    console.log("[matches-review] Building match candidates with payload:", {
-      function: "build_match_candidates_for_competitor_store",
-      payload: buildPayload,
-    });
-
-    const { error: buildError } = await supabase.rpc(
-      "build_match_candidates_for_competitor_store",
-      buildPayload
-    );
-
-    if (buildError) {
-      console.error("[matches-review] Error building match candidates:", {
-        competitorId,
-        storeId: store.id,
-        payload: buildPayload,
-        message: buildError?.message || "Unknown error",
-        code: buildError?.code || "NO_CODE",
-        details: buildError?.details || null,
-        hint: buildError?.hint || null,
-        status: buildError?.status || null,
-      });
-      // Continue anyway - maybe candidates already exist
-    }
-
-    // Step 2: Load match candidates using RPC get_competitor_products_for_store_matches
-    // Use 2-arg version with EXACT payload keys: p_store_id and p_competitor_id
+    // REVIEW MODE: Load candidates using RPC get_competitor_products_for_store_matches
+    // This RPC builds candidates (if missing) and returns them in one call.
+    // DO NOT call any separate build RPC - this RPC handles everything automatically.
+    
+    // RPC get_competitor_products_for_store_matches:
+    // - Checks if candidates exist in competitor_match_candidates
+    // - If missing, automatically builds candidates from competitor_store_products
+    // - Returns candidate data (name, price, url) from competitor_match_candidates
+    // Use underscore prefix for payload keys if client library maps by name
     const loadPayload = {
-      p_store_id: store.id,
-      p_competitor_id: competitorId,
+      _store_id: store.id,
+      _competitor_id: competitorId,
     };
     console.log("[matches-review] Loading match candidates with payload:", {
       function: "get_competitor_products_for_store_matches",
@@ -142,7 +120,10 @@ export default async function MatchesReviewPage({
     // Transform match candidates for client
     // RPC get_competitor_products_for_store_matches returns flat rows with SQL field names:
     // { competitor_product_id, competitor_id, competitor_name, competitor_url, competitor_price, currency,
-    //   suggested_product_id, similarity_score, store_product_name, store_product_sku, store_product_price }
+    //   suggested_product_id, similarity_score, store_product_id, store_product_name, store_product_sku, store_product_price }
+    // CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
+    // - All candidate data comes from competitor_match_candidates (which contains full competitor fields)
+    // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
     // Normalize and map to internal structure
     
     type RawRow = any;
@@ -162,16 +143,17 @@ export default async function MatchesReviewPage({
         null;
 
       return {
-        competitorProductId: r.competitor_product_id ?? r.competitor_product_id ?? r.id,
+        competitorProductId: r.competitor_product_id ?? r.id,
         competitorId: r.competitor_id ?? r.competitorId,
         competitorName: r.competitor_name ?? r.competitorName ?? r.name ?? "",
         competitorUrl: r.competitor_url ?? r.competitorUrl ?? r.url ?? "",
         competitorPrice,
-        currency: r.currency ?? r.competitor_currency ?? null,
+        currency: r.currency ?? r.competitor_currency ?? "USD",
 
         suggestedProductId: r.suggested_product_id ?? r.suggestedProductId ?? null,
         similarityScore: Number(score) || 0,
 
+        storeProductId: r.store_product_id ?? r.storeProductId ?? null,
         storeProductName: r.store_product_name ?? r.storeProductName ?? "",
         storeProductSku: r.store_product_sku ?? r.storeProductSku ?? "",
         storeProductPrice: r.store_product_price ?? r.storeProductPrice ?? null,
@@ -200,12 +182,12 @@ export default async function MatchesReviewPage({
     // Group by suggestedProductId (keep rows even when suggestedProductId is null)
     // For rows without suggestedProductId, show each candidate as its own row
     rows.forEach((row) => {
-      // Use suggestedProductId if available, otherwise use competitorProductId to show each unmatched candidate separately
-      const productId = row.suggestedProductId || `__candidate_${row.competitorProductId}__`;
+      // Use suggestedProductId if available, otherwise use storeProductId, otherwise use competitorProductId to show each unmatched candidate separately
+      const productId = row.suggestedProductId || row.storeProductId || `__candidate_${row.competitorProductId}__`;
 
       if (!productGroups.has(productId)) {
         productGroups.set(productId, {
-          product_id: row.suggestedProductId || row.competitorProductId,
+          product_id: row.suggestedProductId || row.storeProductId || row.competitorProductId,
           product_name: row.storeProductName || "",
           product_sku: row.storeProductSku || null,
           product_price: row.storeProductPrice ?? null,
@@ -247,50 +229,62 @@ export default async function MatchesReviewPage({
     ? "An error occurred during competitor setup. Please try adding the competitor again." 
     : null;
 
-  // TRACKING MODE: Load tracked products using RPC
+  // TRACKING MODE: Load tracked products from competitor_product_matches
   if (isTrackingMode) {
-    // Use RPC get_tracked_products_for_competitor_store
-    // This RPC joins competitor_product_matches with products and competitor_store_products
-    const rpcPayload = {
-      p_store_id: store.id,
-      p_competitor_id: competitorId,
-    };
+    // Query competitor_product_matches directly
+    // CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
+    // - competitor_product_matches is fully self-contained (no dependency on competitor_store_products)
+    // - All competitor data (name, url, price, currency) is stored directly in competitor_product_matches
+    // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
+    const { data: matchesData, error: matchesError } = await supabase
+      .from("competitor_product_matches")
+      .select("product_id, competitor_product_id, competitor_name, competitor_url, competitor_price, currency")
+      .eq("store_id", store.id)
+      .eq("competitor_id", competitorId);
 
-    console.log("[tracking] Calling RPC get_tracked_products_for_competitor_store with payload:", rpcPayload);
-
-    const { data: trackedProductsData, error: rpcError } = await supabase.rpc(
-      "get_tracked_products_for_competitor_store",
-      rpcPayload
-    );
-
-    // Debug logs
-    console.log("[tracking] rpc error", rpcError);
-    console.log("[tracking] rpc data length", trackedProductsData?.length);
-    console.log("[tracking] first row", trackedProductsData?.[0]);
-
-    if (rpcError) {
-      console.error("[matches-tracking] Error loading tracked products via RPC:", {
+    if (matchesError) {
+      console.error("[matches-tracking] Error loading tracked products:", {
         competitorId,
         storeId: store.id,
-        payload: rpcPayload,
-        error: rpcError,
+        error: matchesError,
       });
     }
 
-    // Transform RPC response to tracking format
-    // RPC returns: store_product_id, store_product_name, store_product_sku, store_product_price,
-    //              competitor_product_id, competitor_name, competitor_url, competitor_price, currency
-    const trackedProducts = (trackedProductsData || []).map((row: any) => ({
-      store_product_id: row.store_product_id || row.store_product_id,
-      store_product_name: row.store_product_name || "",
-      store_product_sku: row.store_product_sku || null,
-      store_product_price: row.store_product_price ?? null,
-      competitor_product_id: row.competitor_product_id || row.competitor_product_id,
-      competitor_name: row.competitor_name || "",
-      competitor_url: row.competitor_url || "",
-      competitor_price: row.competitor_price ?? null,
-      currency: row.currency || "USD",
-    }));
+    // Load products separately (for store product info)
+    const productIds = (matchesData || []).map((m: any) => m.product_id).filter(Boolean);
+    let productsMap = new Map<string, any>();
+
+    if (productIds.length > 0) {
+      const { data: productsData } = await supabase
+        .from("products")
+        .select("id, name, sku, price")
+        .eq("store_id", store.id)
+        .in("id", productIds);
+      
+      if (productsData) {
+        productsData.forEach((p: any) => {
+          productsMap.set(p.id, p);
+        });
+      }
+    }
+
+    // Transform to tracking format
+    // All competitor data comes directly from competitor_product_matches (fully self-contained)
+    const trackedProducts = (matchesData || []).map((row: any) => {
+      const product = productsMap.get(row.product_id);
+      
+      return {
+        store_product_id: row.product_id,
+        store_product_name: product?.name || "",
+        store_product_sku: product?.sku || null,
+        store_product_price: product?.price ?? null,
+        competitor_product_id: row.competitor_product_id,
+        competitor_name: row.competitor_name || "",
+        competitor_url: row.competitor_url || "",
+        competitor_price: row.competitor_price ?? null,
+        currency: row.currency || "USD",
+      };
+    });
 
     return (
       <MatchesTrackingClient
@@ -310,6 +304,7 @@ export default async function MatchesReviewPage({
       errorMessage={errorMessage}
       groupedMatches={groupedMatches}
       myProducts={myProducts || []}
+      storeId={store.id}
     />
   );
 }

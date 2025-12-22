@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Test GET endpoint to verify route is working
 export async function GET(
@@ -64,7 +65,53 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  // Delete competitor (RLS on competitors must allow delete for this store_id)
+  const storeId = competitor.store_id;
+
+  // Step 1: Delete competitor_product_matches ONLY for this competitor_id + store_id
+  // CRITICAL: Must filter by BOTH store_id AND competitor_id to avoid deleting other competitors' matches
+  const { error: matchesDeleteError } = await supabaseAdmin
+    .from("competitor_product_matches")
+    .delete()
+    .eq("store_id", storeId)
+    .eq("competitor_id", competitorId);
+
+  if (matchesDeleteError) {
+    console.error("Error deleting competitor_product_matches:", JSON.stringify(matchesDeleteError, null, 2));
+    // Continue anyway - competitor deletion should proceed
+  } else {
+    console.log(`[delete-competitor] Deleted competitor_product_matches for competitor_id=${competitorId}, store_id=${storeId}`);
+  }
+
+  // Step 2: Delete competitor_match_candidates ONLY for this competitor_id + store_id
+  const { error: candidatesDeleteError } = await supabaseAdmin
+    .from("competitor_match_candidates")
+    .delete()
+    .eq("store_id", storeId)
+    .eq("competitor_id", competitorId);
+
+  if (candidatesDeleteError) {
+    console.error("Error deleting competitor_match_candidates:", JSON.stringify(candidatesDeleteError, null, 2));
+    // Continue anyway - competitor deletion should proceed
+  } else {
+    console.log(`[delete-competitor] Deleted competitor_match_candidates for competitor_id=${competitorId}, store_id=${storeId}`);
+  }
+
+  // Step 3: Delete competitor_store_products (staging) ONLY for this competitor_id + store_id
+  const { error: stagingDeleteError } = await supabaseAdmin
+    .from("competitor_store_products")
+    .delete()
+    .eq("store_id", storeId)
+    .eq("competitor_id", competitorId);
+
+  if (stagingDeleteError) {
+    console.error("Error deleting competitor_store_products:", JSON.stringify(stagingDeleteError, null, 2));
+    // Continue anyway - competitor deletion should proceed
+  } else {
+    console.log(`[delete-competitor] Deleted competitor_store_products for competitor_id=${competitorId}, store_id=${storeId}`);
+  }
+
+  // Step 4: Delete competitor (RLS on competitors must allow delete for this store_id)
+  // This should be last, as it may trigger CASCADE deletes if foreign keys are set up
   const { error: deleteError } = await supabase
     .from("competitors")
     .delete()
@@ -73,6 +120,8 @@ export async function DELETE(
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
   }
+
+  console.log(`[delete-competitor] Successfully deleted competitor_id=${competitorId} and all related data`);
 
   return NextResponse.json({ success: true });
 }

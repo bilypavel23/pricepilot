@@ -30,6 +30,16 @@ import { getCompetitorLimit } from "@/lib/planLimits";
 import Link from "next/link";
 import { formatMoney } from "@/lib/utils";
 
+/**
+ * Get badge color variant based on percentage value.
+ * Global rule: pct > 0 → green (positive opportunity), pct < 0 → red (negative/risky)
+ */
+function pctBadgeVariant(pct: number): "green" | "red" | "neutral" {
+  if (pct > 0) return "green";
+  if (pct < 0) return "red";
+  return "neutral";
+}
+
 type StoreInfo = {
   platform: string | null;
   shopify_access_token: string | null;
@@ -73,8 +83,10 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
     hasBasePrice &&
     !recommendation.isPlaceholder;
 
-  const isIncrease = recommendation.changePercent > 0;
-  const isDecrease = recommendation.changePercent < 0;
+  // Use shared helper for badge color logic
+  const badgeVariant = pctBadgeVariant(recommendation.changePercent);
+  const isIncrease = badgeVariant === "green";
+  const isDecrease = badgeVariant === "red";
 
   const handleOpenSheet = () => {
     const base =
@@ -214,14 +226,11 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
   // Currency (default to USD, could be from store.currency or product.currency in future)
   const currency = "USD";
 
-  // Prepare competitor slots (always 5 items)
-  const competitorSlots: CompetitorSlot[] = [
-    recommendation.competitors[0] ?? { label: "Competitor 1" },
-    recommendation.competitors[1] ?? { label: "Competitor 2" },
-    recommendation.competitors[2] ?? { label: "Competitor 3" },
-    recommendation.competitors[3] ?? { label: "Competitor 4" },
-    recommendation.competitors[4] ?? { label: "Competitor 5" },
-  ];
+  // Render only actual competitors (no placeholder slots)
+  // Filter out empty placeholder slots
+  const competitorSlots: CompetitorSlot[] = recommendation.competitors.filter(
+    (c) => c.name != null && c.name !== undefined
+  );
 
   return (
     <>
@@ -262,9 +271,9 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                       <span
                         className={cn(
                           "text-sm font-medium px-2 py-1 rounded-full",
-                          isIncrease
+                          badgeVariant === "green"
                             ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : isDecrease
+                            : badgeVariant === "red"
                             ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                             : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
                         )}
@@ -389,17 +398,24 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                         {c.name ? (
                           <>
                             <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <span className="shrink-0 text-xs font-semibold text-muted-foreground">
-                                {c.label}
-                              </span>
-
                               <span
                                 className="truncate text-sm font-medium"
-                                title={c.name}
+                                title={c.name || undefined}
                               >
                                 {c.name}
                               </span>
 
+                              {/* Source badge: Store or URL */}
+                              {c.source && (
+                                <Badge 
+                                  variant={c.source === "Store" ? "default" : "secondary"} 
+                                  className="text-[10px] px-1.5 py-0 shrink-0"
+                                >
+                                  {c.source}
+                                </Badge>
+                              )}
+
+                              {/* URL badge - clickable link to competitor product */}
                               {c.url && (
                                 <a
                                   href={c.url}
@@ -414,7 +430,7 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                               )}
 
                               <span className="shrink-0 text-sm text-muted-foreground">
-                                {formatMoney(recommendation.productPrice, currency)} → {c.newPrice != null ? formatMoney(c.newPrice, currency) : "—"}
+                                {formatMoney(recommendation.productPrice, currency)} → {c.newPrice != null ? formatMoney(c.newPrice, currency) : "Price not available yet"}
                               </span>
                             </div>
 
@@ -422,12 +438,19 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                               <span
                                 className={cn(
                                   "ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-                                  c.changePercent > 0
-                                    ? "bg-emerald-500/10 text-emerald-400"
-                                    : c.changePercent < 0
-                                    ? "bg-red-500/10 text-red-400"
-                                    : "bg-muted text-muted-foreground"
+                                  (() => {
+                                    const variant = pctBadgeVariant(c.changePercent);
+                                    return variant === "green"
+                                      ? "bg-emerald-500/10 text-emerald-400"  // Positive (competitor higher) = green
+                                      : variant === "red"
+                                      ? "bg-red-500/10 text-red-400"  // Negative (competitor lower) = red
+                                      : "bg-muted text-muted-foreground";
+                                  })()
                                 )}
+                                title={c.changePercent > 0 
+                                  ? `Competitor je o ${c.changePercent.toFixed(1)}% vyšší než tvoje cena`
+                                  : `Competitor je o ${Math.abs(c.changePercent).toFixed(1)}% nižší než tvoje cena`
+                                }
                               >
                                 {c.changePercent > 0 ? "+" : ""}
                                 {c.changePercent.toFixed(1)}%
@@ -436,9 +459,7 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                           </>
                         ) : (
                           <div className="flex w-full items-center justify-between text-muted-foreground/70">
-                            <span className="text-xs font-semibold">
-                              {c.label}
-                            </span>
+                            <span className="text-sm">—</span>
                             <span className="text-sm">—</span>
                           </div>
                         )}

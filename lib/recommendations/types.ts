@@ -1,16 +1,18 @@
 export type CompetitorSlot = {
   label: string;            // "Competitor 1", ...
-  name?: string | null;     // competitor product name
+  name?: string | null;     // competitor product name (competitor_name from view)
   url?: string | null;      // competitor product URL
   oldPrice?: number | null; // previous competitor price (for now can be null)
   newPrice?: number | null; // current competitor price
   changePercent?: number | null;
-  isUrlCompetitor?: boolean; // true if this is from competitor_url_products
+  source?: "Store" | "URL"; // source badge: "Store" or "URL"
+  isUrlCompetitor?: boolean; // deprecated - use source instead
 };
 
 export type ProductRecommendation = {
   productId: string;
   productName: string;
+  productSku?: string | null;
   productPrice: number | null;
 
   // recommendation core:

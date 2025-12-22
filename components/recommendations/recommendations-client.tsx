@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +23,16 @@ import type { ProductRecommendation } from "@/lib/recommendations/types";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 
+/**
+ * Get badge color variant based on percentage value.
+ * Global rule: pct > 0 → green (positive opportunity), pct < 0 → red (negative/risky)
+ */
+function pctBadgeVariant(pct: number): "green" | "red" | "neutral" {
+  if (pct > 0) return "green";
+  if (pct < 0) return "red";
+  return "neutral";
+}
+
 type StoreInfo = {
   platform: string | null;
   shopify_access_token: string | null;
@@ -39,11 +50,21 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  
+  // Debounce search query (200ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(INITIAL_LIMIT);
-  }, [typeFilter, sortBy]);
+  }, [typeFilter, sortBy, debouncedSearchQuery]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [updatedPrices, setUpdatedPrices] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -110,9 +131,18 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
 
       if (typeFilter === "increases" && rec.changePercent <= 0) return false;
       if (typeFilter === "decreases" && rec.changePercent >= 0) return false;
-      if (typeFilter === "safe-only" && Math.abs(rec.changePercent) > 5) return false;
       return true;
     });
+    
+    // Apply search filter (case-insensitive, by product name or SKU)
+    if (debouncedSearchQuery.trim()) {
+      const searchLower = debouncedSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((rec) => {
+        const nameMatch = rec.productName.toLowerCase().includes(searchLower);
+        const skuMatch = rec.productSku && rec.productSku.toLowerCase().includes(searchLower);
+        return nameMatch || skuMatch;
+      });
+    }
 
     // Sort
     filtered = [...filtered].sort((a, b) => {
@@ -138,7 +168,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
     });
 
     return filtered;
-  }, [displayRecommendations, typeFilter, sortBy]);
+  }, [displayRecommendations, typeFilter, sortBy, debouncedSearchQuery]);
 
   // Top opportunities: products with competitors, sorted by biggest impact
   const topOpportunities = useMemo(() => {
@@ -381,13 +411,24 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
                         <span className="text-xs font-medium">
                           ${rec.recommendedPrice?.toFixed(2) ?? "0.00"}
                         </span>
-                        <Badge
-                          variant={priceChangePercent > 0 ? "default" : priceChangePercent < 0 ? "secondary" : "outline"}
-                          className="text-xs"
-                        >
-                          {priceChangePercent > 0 ? "+" : ""}
-                          {priceChangePercent.toFixed(1)}%
-                        </Badge>
+                        {(() => {
+                          const variant = pctBadgeVariant(priceChangePercent);
+                          return (
+                            <span
+                              className={cn(
+                                "text-xs font-medium px-2 py-1 rounded-full",
+                                variant === "green"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                  : variant === "red"
+                                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                  : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                              )}
+                            >
+                              {priceChangePercent > 0 ? "+" : ""}
+                              {priceChangePercent.toFixed(1)}%
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                     <Button
@@ -419,7 +460,7 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
       {/* Filters Bar */}
       <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 justify-between">
             {/* Type Filter */}
             <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800 p-1">
               <button
@@ -455,32 +496,16 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
               >
                 Decrease
               </button>
-              <button
-                onClick={() => setTypeFilter("safe-only")}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                  typeFilter === "safe-only"
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                    : "bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                )}
-              >
-                Safe only
-              </button>
             </div>
 
-            {/* Sort By */}
-            <Select
-              id="sort-filter"
-              name="sort-filter"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="w-48"
-            >
-              <option value="biggest-impact">Biggest impact</option>
-              <option value="highest-margin">Highest margin</option>
-              <option value="lowest-margin">Lowest margin</option>
-              <option value="alphabetical">Alphabetical</option>
-            </Select>
+            {/* Search Input */}
+            <Input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full sm:w-64"
+            />
           </div>
         </CardContent>
       </Card>

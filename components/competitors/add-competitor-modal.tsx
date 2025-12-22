@@ -57,8 +57,17 @@ export function AddCompetitorModal({ open, onClose, storeId, onSuccess }: AddCom
       setStoreName("");
       setStoreUrl("");
       onClose();
-      router.refresh();
-      onSuccess();
+      
+      // After successful competitor creation, redirect to matches page
+      // The matches page will show "Processing..." and poll for completion
+      const competitorId = data.competitor?.id || data.competitorId;
+      if (competitorId) {
+        router.push(`/app/competitors/${competitorId}/matches`);
+        router.refresh();
+      } else {
+        router.refresh();
+        onSuccess();
+      }
     } catch (err: any) {
       setError(err.message || "Failed to add competitor");
     } finally {

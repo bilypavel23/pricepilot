@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 type MyProduct = {
   id: string;
@@ -42,26 +43,37 @@ type MatchesReviewClientProps = {
   errorMessage?: string | null;
   groupedMatches: GroupedMatch[];
   myProducts: MyProduct[];
+  storeId?: string;
 };
 
-const NONE_VALUE = "__NONE__";
+const NONE_VALUE = "__none__";
 
 export function MatchesReviewClient({
   competitorId,
   competitorName,
   competitorStatus,
   errorMessage,
-  groupedMatches,
-  myProducts,
+  groupedMatches: initialGroupedMatches,
+  myProducts: initialMyProducts,
+  storeId: propStoreId,
 }: MatchesReviewClientProps) {
   const router = useRouter();
+  const supabase = createClient();
+  
+  // State for polling and data refresh
+  const [groupedMatches, setGroupedMatches] = useState(initialGroupedMatches);
+  const [myProducts, setMyProducts] = useState(initialMyProducts);
+  const [isProcessing, setIsProcessing] = useState(competitorStatus === "processing");
+  const [currentStatus, setCurrentStatus] = useState(competitorStatus);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [storeId, setStoreId] = useState<string | null>(propStoreId || null);
   
   // Store selection as STRING (competitor_product_id or NONE_VALUE), NOT null
   // Key: product_id (my product) -> Value: competitor_product_id or NONE_VALUE
   type SelectionMap = Record<string, string>; // key: product_id -> value: competitor_product_id or NONE_VALUE
   const [selectedByProduct, setSelectedByProduct] = useState<SelectionMap>(() => {
     const initial: SelectionMap = {};
-    groupedMatches.forEach((group) => {
+    initialGroupedMatches.forEach((group) => {
       // Initialize default selection: highest similarity candidate if available, else NONE_VALUE
       if (group.product_id) {
         if (group.candidates.length > 0 && group.candidates[0]?.competitor_product_id) {
@@ -74,6 +86,135 @@ export function MatchesReviewClient({
     return initial;
   });
   const [loading, setLoading] = useState(false);
+  
+  // Get store_id on mount - use prop if provided, otherwise fetch
+  useEffect(() => {
+    if (propStoreId) {
+      setStoreId(propStoreId);
+      return;
+    }
+    
+    const fetchStoreId = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        // Get store_id from competitor record
+        const { data: competitor } = await supabase
+          .from("competitors")
+          .select("store_id")
+          .eq("id", competitorId)
+          .single();
+        
+        if (competitor?.store_id) {
+          setStoreId(competitor.store_id);
+        } else {
+          // Fallback: get store_id from user's stores
+          const { data: stores } = await supabase
+            .from("stores")
+            .select("id")
+            .eq("owner_id", user.id)
+            .limit(1)
+            .single();
+          
+          if (stores) {
+            setStoreId(stores.id);
+          }
+        }
+      } catch (err) {
+        console.error("[matches-review] Error fetching store_id:", err);
+      }
+    };
+    
+    fetchStoreId();
+  }, [supabase, competitorId, propStoreId]);
+  
+  // Polling function to refetch matches
+  const refetchMatches = async () => {
+    if (!storeId) return;
+    
+    try {
+      // Check competitor status first
+      const { data: competitor } = await supabase
+        .from("competitors")
+        .select("status")
+        .eq("id", competitorId)
+        .single();
+      
+      if (competitor) {
+        setCurrentStatus(competitor.status);
+        
+        // Stop polling if status is no longer 'processing'
+        if (competitor.status !== "processing") {
+          setIsProcessing(false);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          // Refresh page to get latest data
+          router.refresh();
+          return;
+        }
+      }
+      
+      // Call RPC to get match candidates
+      const { data: matchCandidates, error: candidatesError } = await supabase.rpc(
+        "get_competitor_products_for_store_matches",
+        {
+          _store_id: storeId,
+          _competitor_id: competitorId,
+        }
+      );
+      
+      if (candidatesError) {
+        console.error("[matches-review] Polling error:", candidatesError);
+        return;
+      }
+      
+      // If we have candidates, stop polling and refresh
+      if (matchCandidates && matchCandidates.length > 0) {
+        setIsProcessing(false);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        
+        // Refresh page to get latest data
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("[matches-review] Polling error:", err);
+    }
+  };
+  
+  // Start polling when status is 'processing'
+  useEffect(() => {
+    if (isProcessing && storeId && !pollingIntervalRef.current) {
+      console.log("[matches-review] Starting polling for competitor_id=", competitorId);
+      
+      // Poll every 2 seconds
+      pollingIntervalRef.current = setInterval(() => {
+        refetchMatches();
+      }, 2000);
+      
+      // Also call immediately
+      refetchMatches();
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [isProcessing, storeId, competitorId]);
+  
+  // Update isProcessing when status changes
+  useEffect(() => {
+    setIsProcessing(currentStatus === "processing");
+  }, [currentStatus]);
 
   // Filter products that have selections (excluding NONE_VALUE)
   const matchedProducts = useMemo(() => {
@@ -183,7 +324,15 @@ export function MatchesReviewClient({
           <p className="text-sm text-muted-foreground mt-1">
             {competitorName}
           </p>
-          {competitorStatus === "needs_review" && (
+          {isProcessing && (
+            <div className="flex items-center gap-2 mt-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                Processing... Scanning competitor store for products. This may take a few moments.
+              </p>
+            </div>
+          )}
+          {currentStatus === "needs_review" && !isProcessing && (
             <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
               Review and confirm matches to activate this competitor
             </p>
@@ -211,9 +360,23 @@ export function MatchesReviewClient({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {myProducts.length === 0 ? (
+          {isProcessing ? (
+            <div className="text-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                Scanning competitor store for products...
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Matches will appear here once scanning is complete.
+              </p>
+            </div>
+          ) : myProducts.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <p>No products found. Add products first to create matches.</p>
+            </div>
+          ) : groupedMatches.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>No matches found. The competitor store may not have overlapping products.</p>
             </div>
           ) : (
             <div className="space-y-4">
