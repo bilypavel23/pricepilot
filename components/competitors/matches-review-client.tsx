@@ -72,11 +72,11 @@ export function MatchesReviewClient({
   });
   const [loading, setLoading] = useState(false);
 
-  // Filter products that have selections (excluding null/__none__)
+  // Filter products that have selections (excluding null/__NONE__)
   const matchedProducts = useMemo(() => {
     return groupedMatches.filter((group) => {
       const selectedId = selectedByProduct[group.product_id];
-      return selectedId && selectedId !== "__none__" && selectedId !== null;
+      return selectedId && selectedId !== "__NONE__" && selectedId !== null;
     });
   }, [groupedMatches, selectedByProduct]);
 
@@ -88,11 +88,11 @@ export function MatchesReviewClient({
 
     setLoading(true);
     try {
-      // Build matches payload - only include rows where selectedId is not null/__none__
+      // Build matches payload - only include rows where selectedId is not null/__NONE__
       const matches = groupedMatches
         .map((group) => {
           const selectedId = selectedByProduct[group.product_id];
-          if (selectedId && selectedId !== "__none__" && selectedId !== null) {
+          if (selectedId && selectedId !== "__NONE__" && selectedId !== null) {
             return {
               product_id: group.product_id,
               competitor_product_id: selectedId,
@@ -201,13 +201,23 @@ export function MatchesReviewClient({
                 }
 
                 // Get selected ID for this product (default to highest similarity if not set)
-                const selectedId = selectedByProduct[group.product_id] ?? 
-                  (group.candidates?.[0]?.competitor_product_id ?? null);
+                const selectedProductId = selectedByProduct[group.product_id];
+                const suggestedProductId = group.candidates?.[0]?.competitor_product_id ?? null;
                 
-                // Find the selected candidate
-                const selectedCandidate = (selectedId && selectedId !== "__none__" && selectedId !== null)
-                  ? group.candidates.find(c => c.competitor_product_id === selectedId) ?? null
+                // Build select value: use selectedProductId, fallback to suggestedProductId, or __NONE__
+                const selectValue = selectedProductId ?? suggestedProductId ?? "__NONE__";
+                
+                // Find the selected candidate (treat __NONE__ as null)
+                const selectedCandidate = (selectValue && selectValue !== "__NONE__" && selectValue !== null)
+                  ? group.candidates.find(c => c.competitor_product_id === selectValue) ?? null
                   : null;
+                
+                // Resolve current label from options list
+                const currentLabel = selectValue === "__NONE__"
+                  ? "None (skip)"
+                  : selectedCandidate
+                    ? `${selectedCandidate.competitor_name} (${selectedCandidate.similarity_score.toFixed(0)}%)`
+                    : "Select competitor product...";
 
                 return (
                   <div
@@ -288,21 +298,21 @@ export function MatchesReviewClient({
 
                         {/* Dropdown */}
                         <Select
-                          value={selectedId && selectedId !== "__none__" && selectedId !== null ? selectedId : undefined}
+                          value={selectValue}
                           onValueChange={(value) => {
-                            setSelectedByProduct(prev => {
-                              if (value === "__none__") {
-                                return { ...prev, [group.product_id]: null };
-                              }
-                              return { ...prev, [group.product_id]: value };
-                            });
+                            // Treat __NONE__ as null in state
+                            const next = (value === "__NONE__") ? null : value;
+                            setSelectedByProduct(prev => ({
+                              ...prev,
+                              [group.product_id]: next,
+                            }));
                           }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select competitor product..." />
+                            <span className="truncate">{currentLabel}</span>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__none__">None (skip)</SelectItem>
+                            <SelectItem value="__NONE__">None (skip)</SelectItem>
                             {group.candidates.map((candidate) => {
                               const candidateId = candidate.competitor_product_id ? String(candidate.competitor_product_id) : null;
                               if (!candidateId) return null;
