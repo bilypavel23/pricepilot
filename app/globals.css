@@ -63,8 +63,17 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100%;
-  overflow-y: auto;
+  /* Ensure body never has vertical scroll - AppShell main element is the scroll container */
   overflow-x: hidden;
+  /* Prevent vertical scroll on body - main element in AppShell is the scroll container */
+  /* Allow overflow: hidden for dialogs via inline styles */
+  overflow-y: hidden;
+}
+
+/* Allow overflow: hidden when dialog is open (Radix UI sets this via inline style) */
+body[style*="overflow: hidden"],
+body[style*="overflow:hidden"] {
+  overflow: hidden !important;
 }
 
 @layer utilities {

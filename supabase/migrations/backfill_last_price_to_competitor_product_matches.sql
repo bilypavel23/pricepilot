@@ -50,3 +50,4 @@ BEGIN
     updated_count, total_with_null;
 END $$;
 
+

@@ -65,7 +65,8 @@ export function MatchesReviewClient({
   const [myProducts, setMyProducts] = useState(initialMyProducts);
   const [isProcessing, setIsProcessing] = useState(competitorStatus === "processing");
   const [currentStatus, setCurrentStatus] = useState(competitorStatus);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingStartTimeRef = useRef<number | null>(null);
   const [storeId, setStoreId] = useState<string | null>(propStoreId || null);
   
   // Store selection as STRING (competitor_product_id or NONE_VALUE), NOT null
@@ -129,36 +130,139 @@ export function MatchesReviewClient({
     fetchStoreId();
   }, [supabase, competitorId, propStoreId]);
   
-  // Polling function to refetch matches
-  const refetchMatches = async () => {
-    if (!storeId) return;
+  // Normalize RPC row data (same logic as server)
+  const normalizeRow = (r: any) => {
+    const score =
+      r.similarity_score ??
+      r.match_score ??
+      r.similarity ??
+      r.score ??
+      0;
+
+    const competitorPrice =
+      r.competitor_price ??
+      r.last_price ??
+      r.price ??
+      null;
+
+    return {
+      competitorProductId: r.competitor_product_id ?? r.id,
+      competitorId: r.competitor_id ?? r.competitorId,
+      competitorName: r.competitor_name ?? r.competitorName ?? r.name ?? "",
+      competitorUrl: r.competitor_url ?? r.competitorUrl ?? r.url ?? "",
+      competitorPrice,
+      currency: r.currency ?? r.competitor_currency ?? "USD",
+
+      suggestedProductId: r.suggested_product_id ?? r.suggestedProductId ?? null,
+      similarityScore: Number(score) || 0,
+
+      storeProductId: r.store_product_id ?? r.storeProductId ?? null,
+      storeProductName: r.store_product_name ?? r.storeProductName ?? "",
+      storeProductSku: r.store_product_sku ?? r.storeProductSku ?? "",
+      storeProductPrice: r.store_product_price ?? r.storeProductPrice ?? null,
+    };
+  };
+
+  // Transform match candidates to grouped format (same logic as server)
+  const transformCandidatesToGrouped = (matchCandidates: any[]): GroupedMatch[] => {
+    const rows = (Array.isArray(matchCandidates) ? matchCandidates : []).map(normalizeRow);
+
+    // Group by suggested_product_id (my product)
+    const productGroups = new Map<string, {
+      product_id: string;
+      product_name: string;
+      product_sku: string | null;
+      product_price: number | null;
+      options: Array<{
+        competitor_product_id: string;
+        competitor_product_name: string;
+        competitor_product_url: string;
+        competitor_price: number | null;
+        currency: string;
+        similarity_score: number;
+      }>;
+    }>();
+
+    rows.forEach((row) => {
+      const productId = row.suggestedProductId || row.storeProductId || `__candidate_${row.competitorProductId}__`;
+
+      if (!productGroups.has(productId)) {
+        productGroups.set(productId, {
+          product_id: row.suggestedProductId || row.storeProductId || row.competitorProductId,
+          product_name: row.storeProductName || "",
+          product_sku: row.storeProductSku || null,
+          product_price: row.storeProductPrice ?? null,
+          options: [],
+        });
+      }
+
+      const group = productGroups.get(productId)!;
+      group.options.push({
+        competitor_product_id: row.competitorProductId || "",
+        competitor_product_name: row.competitorName || "",
+        competitor_product_url: row.competitorUrl || "",
+        competitor_price: row.competitorPrice ?? null,
+        currency: row.currency || "USD",
+        similarity_score: row.similarityScore || 0,
+      });
+    });
+
+    // Convert to array and sort options by similarity_score descending
+    return Array.from(productGroups.values()).map((group) => ({
+      product_id: group.product_id,
+      product_name: group.product_name,
+      product_sku: group.product_sku,
+      product_price: group.product_price,
+      candidates: group.options.sort((a, b) => b.similarity_score - a.similarity_score).map((opt) => ({
+        candidate_id: opt.competitor_product_id,
+        competitor_product_id: opt.competitor_product_id,
+        competitor_url: opt.competitor_product_url,
+        competitor_name: opt.competitor_product_name,
+        competitor_last_price: opt.competitor_price,
+        competitor_currency: opt.currency,
+        similarity_score: opt.similarity_score,
+      })),
+    }));
+  };
+
+  // Load matches and products from client (no server cache)
+  const loadMatchesAndProducts = async () => {
+    if (!storeId) return { matches: null, products: null, status: null };
     
     try {
-      // Check competitor status first
-      const { data: competitor } = await supabase
+      // Check competitor status
+      const { data: competitor, error: statusError } = await supabase
         .from("competitors")
         .select("status")
         .eq("id", competitorId)
         .single();
       
-      if (competitor) {
-        setCurrentStatus(competitor.status);
-        
-        // Stop polling if status is no longer 'processing'
-        if (competitor.status !== "processing") {
-          setIsProcessing(false);
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
-          
-          // Refresh page to get latest data
-          router.refresh();
-          return;
-        }
+      if (statusError) {
+        console.error("[matches-review] Error loading competitor status:", statusError);
       }
       
-      // Call RPC to get match candidates
+      const status = competitor?.status || null;
+      if (competitor && status) {
+        setCurrentStatus(status);
+        setIsProcessing(status === "processing");
+      }
+      
+      // Load products
+      const { data: productsData, error: productsError } = await supabase
+        .from("products")
+        .select("id, name, sku, price")
+        .eq("store_id", storeId)
+        .eq("is_demo", false)
+        .order("name");
+      
+      if (productsError) {
+        console.error("[matches-review] Error loading products:", productsError);
+      }
+      
+      const products = productsData || [];
+      setMyProducts(products);
+      
+      // Call RPC to get match candidates (no cache)
       const { data: matchCandidates, error: candidatesError } = await supabase.rpc(
         "get_competitor_products_for_store_matches",
         {
@@ -168,48 +272,154 @@ export function MatchesReviewClient({
       );
       
       if (candidatesError) {
-        console.error("[matches-review] Polling error:", candidatesError);
-        return;
+        console.error("[matches-review] Error loading candidates:", candidatesError);
+        return { matches: null, products, status };
       }
       
-      // If we have candidates, stop polling and refresh
-      if (matchCandidates && matchCandidates.length > 0) {
-        setIsProcessing(false);
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-        
-        // Refresh page to get latest data
-        router.refresh();
+      // Transform candidates
+      const transformed = matchCandidates && matchCandidates.length > 0
+        ? transformCandidatesToGrouped(matchCandidates)
+        : [];
+      
+      setGroupedMatches(transformed);
+      
+      // Initialize selections for new matches
+      if (transformed.length > 0) {
+        setSelectedByProduct(prev => {
+          const updated = { ...prev };
+          transformed.forEach((group) => {
+            if (group.product_id && !updated[group.product_id]) {
+              if (group.candidates.length > 0 && group.candidates[0]?.competitor_product_id) {
+                updated[group.product_id] = group.candidates[0].competitor_product_id;
+              } else {
+                updated[group.product_id] = NONE_VALUE;
+              }
+            }
+          });
+          return updated;
+        });
       }
+      
+      // If we have candidates, stop processing
+      if (transformed.length > 0) {
+        setIsProcessing(false);
+      }
+      
+      return { matches: transformed, products, status };
     } catch (err) {
-      console.error("[matches-review] Polling error:", err);
+      console.error("[matches-review] Error loading data:", err);
+      return { matches: null, products: null, status: null };
     }
   };
   
-  // Start polling when status is 'processing'
+  // Load data on mount and when storeId changes (client-side, no cache)
   useEffect(() => {
-    if (isProcessing && storeId && !pollingIntervalRef.current) {
-      console.log("[matches-review] Starting polling for competitor_id=", competitorId);
-      
-      // Poll every 2 seconds
-      pollingIntervalRef.current = setInterval(() => {
-        refetchMatches();
-      }, 2000);
-      
-      // Also call immediately
-      refetchMatches();
+    if (!storeId) return;
+    
+    // Load data immediately
+    loadMatchesAndProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, competitorId]);
+  
+  // Polling: Start when status is 'processing' OR when no matches found
+  useEffect(() => {
+    if (!storeId) return;
+    
+    // Determine if we should poll
+    const shouldPoll = isProcessing || currentStatus === "processing" || 
+      (groupedMatches.length === 0 && currentStatus !== "error" && currentStatus !== "failed");
+    
+    if (!shouldPoll) {
+      // Stop polling if not needed
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+      pollingStartTimeRef.current = null;
+      return;
     }
     
-    // Cleanup on unmount
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
+    // Don't start if already polling
+    if (pollingTimeoutRef.current) {
+      return;
+    }
+    
+    console.log("[matches-review] Starting polling for competitor_id=", competitorId, "isProcessing:", isProcessing, "status:", currentStatus);
+    
+    let cancelled = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+    const POLL_INTERVAL = 2000; // 2 seconds
+    const MAX_POLL_TIME = 90000; // 90 seconds
+    
+    // Record start time
+    if (!pollingStartTimeRef.current) {
+      pollingStartTimeRef.current = Date.now();
+    }
+    
+    const poll = async () => {
+      if (cancelled) return;
+      
+      // Check timeout (90 seconds)
+      const elapsed = pollingStartTimeRef.current 
+        ? Date.now() - pollingStartTimeRef.current 
+        : 0;
+      
+      if (elapsed >= MAX_POLL_TIME) {
+        console.log("[matches-review] Polling timeout after 90 seconds");
+        setIsProcessing(false);
+        pollingTimeoutRef.current = null;
+        pollingStartTimeRef.current = null;
+        return;
+      }
+      
+      // Load matches and check status
+      const result = await loadMatchesAndProducts();
+      
+      if (cancelled) return;
+      
+      // Stop polling if:
+      // 1. We have matches
+      // 2. Status is 'ready' (scanning complete)
+      // 3. Status is 'error' or 'failed'
+      const shouldStop = 
+        (result.matches && result.matches.length > 0) ||
+        result.status === "ready" ||
+        result.status === "error" ||
+        result.status === "failed";
+      
+      if (shouldStop) {
+        console.log("[matches-review] Stopping polling - matches:", result.matches?.length || 0, "status:", result.status);
+        pollingTimeoutRef.current = null;
+        pollingStartTimeRef.current = null;
+        return;
+      }
+      
+      // Continue polling if still processing (use result.status, not closure variable)
+      if (!cancelled && storeId && result.status === "processing") {
+        timeoutId = setTimeout(poll, POLL_INTERVAL);
+        pollingTimeoutRef.current = timeoutId;
+      } else {
+        pollingTimeoutRef.current = null;
+        pollingStartTimeRef.current = null;
       }
     };
-  }, [isProcessing, storeId, competitorId]);
+    
+    // Start polling immediately
+    poll();
+    
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+      pollingStartTimeRef.current = null;
+    };
+  }, [isProcessing, storeId, competitorId, currentStatus, groupedMatches.length]);
   
   // Update isProcessing when status changes
   useEffect(() => {
@@ -230,68 +440,77 @@ export function MatchesReviewClient({
       return;
     }
 
+    if (!storeId) {
+      alert("Store ID is missing. Please refresh the page.");
+      return;
+    }
+
     setLoading(true);
     try {
       // UUID regex for validation
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-      // Build selections payload - only include rows where selectedId is not NONE_VALUE
-      // Payload shape: [{ competitor_product_id: string, product_id: string }]
-      const selections = groupedMatches
-        .map((group) => {
-          const selectedCompetitorProductId = selectedByProduct[group.product_id];
-          // Skip if NONE_VALUE or empty
-          if (!selectedCompetitorProductId || selectedCompetitorProductId === NONE_VALUE) {
-            return null;
-          }
-
-          // Ensure we're using the actual competitor_product_id from the candidate
-          // Find the candidate to verify the ID exists
+      // Build list of selected competitor_product_ids
+      const selectedCompetitorProductIds: string[] = [];
+      groupedMatches.forEach((group) => {
+        const selectedCompetitorProductId = selectedByProduct[group.product_id];
+        if (selectedCompetitorProductId && selectedCompetitorProductId !== NONE_VALUE) {
           const selectedCandidate = group.candidates.find(
             c => c.competitor_product_id === selectedCompetitorProductId
           );
-
-          if (!selectedCandidate) {
-            // Candidate not found - skip this row
-            return null;
+          if (selectedCandidate && UUID_REGEX.test(selectedCandidate.competitor_product_id)) {
+            selectedCompetitorProductIds.push(selectedCandidate.competitor_product_id);
           }
+        }
+      });
 
-          return {
-            competitor_product_id: selectedCandidate.competitor_product_id,
-            product_id: group.product_id,
-          };
-        })
-        .filter((s): s is { competitor_product_id: string; product_id: string } => {
-          // Defensive filter: include only items where both ids match UUID regex
-          if (!s) return false;
-          return UUID_REGEX.test(s.competitor_product_id) && UUID_REGEX.test(s.product_id);
-        });
-
-      if (selections.length === 0) {
+      if (selectedCompetitorProductIds.length === 0) {
         alert("Please select at least one match to confirm.");
         setLoading(false);
         return;
       }
 
-      const response = await fetch(`/api/competitors/${competitorId}/matches/confirm`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          selections,
-        }),
-      });
+      // Load competitor_match_candidates.id for selected competitor_product_ids
+      const { data: candidateRows, error: candidateError } = await supabase
+        .from("competitor_match_candidates")
+        .select("id, competitor_product_id")
+        .eq("store_id", storeId)
+        .eq("competitor_id", competitorId)
+        .in("competitor_product_id", selectedCompetitorProductIds);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to confirm matches");
+      if (candidateError) {
+        throw new Error(`Failed to load candidate IDs: ${candidateError.message}`);
       }
 
-      // Show success toast (simple alert for now)
-      alert(`Successfully confirmed ${selections.length} matches!`);
+      if (!candidateRows || candidateRows.length === 0) {
+        throw new Error("No matching candidates found. Please refresh the page.");
+      }
+
+      // Extract competitor_match_candidates.id values
+      const selectedCandidateIds = candidateRows.map((row: any) => row.id).filter((id: any) => UUID_REGEX.test(id));
+
+      if (selectedCandidateIds.length === 0) {
+        throw new Error("No valid candidate IDs found. Please refresh the page.");
+      }
+
+      // Call RPC to confirm matches and cleanup
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "confirm_competitor_matches_and_cleanup",
+        {
+          _store_id: storeId,
+          _competitor_id: competitorId,
+          _confirmed_candidate_ids: selectedCandidateIds,
+        }
+      );
+
+      if (rpcError) {
+        throw new Error(rpcError.message || "Failed to confirm matches");
+      }
+
+      // Show success toast
+      alert(`Matches confirmed`);
       
+      // Navigate to competitors page
       router.push("/app/competitors");
       router.refresh();
     } catch (error: any) {
@@ -360,7 +579,7 @@ export function MatchesReviewClient({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isProcessing ? (
+          {isProcessing || currentStatus === "processing" ? (
             <div className="text-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
               <p className="text-muted-foreground">

@@ -62,7 +62,8 @@ export function AddCompetitorModal({ open, onClose, storeId, onSuccess }: AddCom
       // The matches page will show "Processing..." and poll for completion
       const competitorId = data.competitor?.id || data.competitorId;
       if (competitorId) {
-        router.push(`/app/competitors/${competitorId}/matches`);
+        // Add cache-buster to prevent stale data
+        router.push(`/app/competitors/${competitorId}/matches?ts=${Date.now()}`);
         router.refresh();
       } else {
         router.refresh();

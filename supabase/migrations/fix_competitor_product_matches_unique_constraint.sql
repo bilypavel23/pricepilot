@@ -117,3 +117,4 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_product_matches_store_competitor_product 
 ON public.competitor_product_matches(store_id, competitor_id, product_id);
 
+

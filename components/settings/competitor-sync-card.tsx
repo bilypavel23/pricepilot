@@ -6,7 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectLabel,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -19,13 +27,55 @@ type Props = {
   onSaveError?: (error: string) => void;
 };
 
-const COMMON_TIMEZONES = [
-  "Europe/Prague",
-  "Europe/Berlin",
-  "Europe/London",
-  "UTC",
-  "America/New_York",
-  "America/Los_Angeles",
+type TimezoneOption = {
+  value: string;
+  label: string;
+  group: string;
+};
+
+const TIMEZONE_OPTIONS: TimezoneOption[] = [
+  // EUROPE
+  { value: "Europe/Prague", label: "Europe — Prague", group: "Europe" },
+  { value: "Europe/Berlin", label: "Europe — Berlin", group: "Europe" },
+  { value: "Europe/Vienna", label: "Europe — Vienna", group: "Europe" },
+  { value: "Europe/Warsaw", label: "Europe — Warsaw", group: "Europe" },
+  { value: "Europe/Budapest", label: "Europe — Budapest", group: "Europe" },
+  { value: "Europe/Paris", label: "Europe — Paris", group: "Europe" },
+  { value: "Europe/Rome", label: "Europe — Rome", group: "Europe" },
+  { value: "Europe/Madrid", label: "Europe — Madrid", group: "Europe" },
+  { value: "Europe/Amsterdam", label: "Europe — Amsterdam", group: "Europe" },
+  { value: "Europe/Brussels", label: "Europe — Brussels", group: "Europe" },
+  { value: "Europe/Stockholm", label: "Europe — Stockholm", group: "Europe" },
+  { value: "Europe/Copenhagen", label: "Europe — Copenhagen", group: "Europe" },
+  { value: "Europe/Oslo", label: "Europe — Oslo", group: "Europe" },
+  { value: "Europe/Helsinki", label: "Europe — Helsinki", group: "Europe" },
+  { value: "Europe/Dublin", label: "Europe — Dublin", group: "Europe" },
+  { value: "Europe/Lisbon", label: "Europe — Lisbon", group: "Europe" },
+  { value: "Europe/London", label: "Europe — London", group: "Europe" },
+  { value: "Europe/Zurich", label: "Europe — Zurich", group: "Europe" },
+  { value: "Europe/Athens", label: "Europe — Athens", group: "Europe" },
+  { value: "Europe/Istanbul", label: "Europe — Istanbul", group: "Europe" },
+  { value: "Europe/Kyiv", label: "Europe — Kyiv", group: "Europe" },
+  { value: "Europe/Bucharest", label: "Europe — Bucharest", group: "Europe" },
+  // USA + CANADA
+  { value: "America/New_York", label: "America — New York (ET)", group: "USA + Canada" },
+  { value: "America/Detroit", label: "America — Detroit (ET)", group: "USA + Canada" },
+  { value: "America/Chicago", label: "America — Chicago (CT)", group: "USA + Canada" },
+  { value: "America/Winnipeg", label: "America — Winnipeg (CT)", group: "USA + Canada" },
+  { value: "America/Denver", label: "America — Denver (MT)", group: "USA + Canada" },
+  { value: "America/Edmonton", label: "America — Edmonton (MT)", group: "USA + Canada" },
+  { value: "America/Phoenix", label: "America — Phoenix (AZ / no DST)", group: "USA + Canada" },
+  { value: "America/Los_Angeles", label: "America — Los Angeles (PT)", group: "USA + Canada" },
+  { value: "America/Vancouver", label: "America — Vancouver (PT)", group: "USA + Canada" },
+  { value: "America/Anchorage", label: "America — Anchorage (AK)", group: "USA + Canada" },
+  { value: "Pacific/Honolulu", label: "Pacific — Honolulu (HI)", group: "USA + Canada" },
+  { value: "America/Halifax", label: "America — Halifax (Atlantic)", group: "USA + Canada" },
+  { value: "America/St_Johns", label: "America — St. John's (Newfoundland)", group: "USA + Canada" },
+  { value: "America/Toronto", label: "America — Toronto (Canada ET)", group: "USA + Canada" },
+  { value: "America/Montreal", label: "America — Montreal (Canada ET)", group: "USA + Canada" },
+  { value: "America/Calgary", label: "America — Calgary (Canada MT)", group: "USA + Canada" },
+  // UTC
+  { value: "UTC", label: "UTC", group: "UTC" },
 ];
 
 export function CompetitorSyncCard({
@@ -132,12 +182,22 @@ export function CompetitorSyncCard({
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Timezone
                 </Label>
-                <Select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full md:w-64">
-                  {COMMON_TIMEZONES.map((tz) => (
-                    <option key={tz} value={tz}>
-                      {tz}
-                    </option>
-                  ))}
+                <Select value={timezone} onValueChange={setTimezone}>
+                  <SelectTrigger className="w-full md:w-64">
+                    <SelectValue placeholder="Select timezone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Europe", "USA + Canada", "UTC"].map((groupName) => (
+                      <SelectGroup key={groupName}>
+                        <SelectLabel>{groupName}</SelectLabel>
+                        {TIMEZONE_OPTIONS.filter((opt) => opt.group === groupName).map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
 

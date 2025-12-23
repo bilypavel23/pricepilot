@@ -7,6 +7,7 @@ import { MatchesTrackingClient } from "@/components/competitors/matches-tracking
 import { getMatchCountForCompetitor } from "@/lib/competitors";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function MatchesReviewPage({
   params,
