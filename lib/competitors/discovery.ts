@@ -10,6 +10,7 @@
 import * as cheerio from "cheerio";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getDiscoveryQuota } from "@/lib/discovery-quota";
+import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
 
 export interface RunDiscoveryParams {
   storeId: string;
@@ -311,69 +312,87 @@ export async function runCompetitorDiscovery({
       return { success: false, productsScraped: 0, error };
     }
 
-    // 4. Scrape product URLs
-    const productUrls = await scrapeStoreProductUrls(competitorUrl);
-    if (productUrls.length === 0) {
-      const error = "No product URLs found";
-      console.error("[discovery] no product URLs:", { competitorUrl });
-      // Keep status as "pending" if "error" not allowed by constraint
+    // 4. Scrape products (general listing crawler / Shopify)
+    const scraped = await scrapeCompetitorProducts(competitorUrl);
+
+    if (scraped.length === 0) {
+      const error = "No products found";
+      console.error("[discovery] no products:", { competitorUrl });
+      const now = new Date().toISOString();
       await supabaseAdmin
         .from("competitors")
         .update({
-          last_sync_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          status: "failed",
+          last_sync_at: now,
+          updated_at: now,
         })
         .eq("id", competitorId);
       return { success: false, productsScraped: 0, error };
     }
 
     // 5. Limit to remaining quota
-    const urlsToScrape = productUrls.slice(0, remaining);
-    console.log("[discovery] scraping products", { total: urlsToScrape.length, remaining });
+    const itemsToUpsert = scraped.slice(0, remaining);
+    console.log("[discovery] scraping products", { total: itemsToUpsert.length, remaining });
 
-    // 6. Scrape each product and upsert
+    // 6. Upsert to competitor_store_products
     const now = new Date().toISOString();
     let successCount = 0;
 
-    for (const productUrl of urlsToScrape) {
-      try {
-        const details = await scrapeProductDetails(productUrl);
-        
-        if (!details.title) {
-          console.warn("[discovery] skipping product with no title:", productUrl);
-          continue;
-        }
+    for (const item of itemsToUpsert) {
+      if (!item?.name || !item?.url) continue;
 
-        // Upsert into competitor_store_products (VOLATILE staging only)
-        // CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
-        // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
-        const { error: upsertError } = await supabaseAdmin
-          .from("competitor_store_products")
-          .upsert(
-            {
-              store_id: storeId,
-              competitor_id: competitorId, // CRITICAL
-              competitor_url: productUrl,
-              competitor_name: details.title,
-              last_price: details.price,
-              currency: details.currency,
-              last_checked_at: now,
-            },
-            {
-              onConflict: "competitor_id,competitor_url",
-            }
-          );
-
-        if (upsertError) {
-          console.error("[discovery] upsert error:", upsertError, productUrl);
-          continue;
-        }
-
-        successCount++;
-      } catch (error) {
-        console.error("[discovery] product scrape error:", error, productUrl);
+      // Guard: Validate that name doesn't look like a price
+      const pricePattern = /^\s*\$?\s*\d+(\.\d+)?\s*$/;
+      let competitorName = item.name.trim();
+      
+      if (pricePattern.test(competitorName)) {
+        // Name looks like a price - skip this product
+        console.warn("[discovery] Name looks like price, skipping", { url: item.url, name: competitorName, price: item.price });
         continue;
       }
+
+      // Ensure price is numeric
+      let numericPrice: number | null = null;
+      if (item.price != null) {
+        if (typeof item.price === 'number') {
+          numericPrice = item.price > 0 ? item.price : null;
+        } else if (typeof item.price === 'string') {
+          const priceStr = String(item.price);
+          const cleaned = priceStr.replace(/[$£€,\s]/g, '').trim();
+          const parsed = parseFloat(cleaned);
+          numericPrice = !isNaN(parsed) && parsed > 0 ? parsed : null;
+        }
+      }
+
+      // Log parsed values before insert
+      console.log("[discovery] Upserting product", {
+        url: item.url,
+        name: competitorName,
+        price: numericPrice,
+        currency: item.currency || "USD",
+      });
+
+      const { error: upsertError } = await supabaseAdmin
+        .from("competitor_store_products")
+        .upsert(
+          {
+            store_id: storeId,
+            competitor_id: competitorId,
+            competitor_url: item.url,
+            competitor_name: competitorName,
+            last_price: numericPrice,
+            currency: item.currency || "USD",
+            last_checked_at: now,
+          },
+          { onConflict: "competitor_id,competitor_url" }
+        );
+
+      if (upsertError) {
+        console.error("[discovery] upsert error:", upsertError, item.url);
+        continue;
+      }
+
+      successCount++;
     }
 
     if (successCount === 0) {

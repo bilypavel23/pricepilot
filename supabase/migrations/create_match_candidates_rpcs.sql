@@ -248,45 +248,43 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- filtered by store_id + competitor_id, joined with products for display
 -- ============================================================================
 CREATE OR REPLACE FUNCTION get_competitor_products_for_store_matches(
-  p_store_id UUID,
-  p_competitor_id UUID
+  _store_id UUID,
+  _competitor_id UUID,
+  _min_score NUMERIC DEFAULT 15
 )
 RETURNS TABLE (
-  competitor_product_id UUID,
-  competitor_id UUID,
+  candidate_id UUID,
+  product_name TEXT,
+  product_sku TEXT,
+  product_price NUMERIC(10, 2),
   competitor_name TEXT,
-  competitor_url TEXT,
   competitor_price NUMERIC(10, 2),
-  currency TEXT,
-  last_checked_at TIMESTAMPTZ,
-  suggested_product_id UUID,
+  competitor_url TEXT,
   similarity_score NUMERIC(5, 2),
-  store_product_id UUID,
-  store_product_name TEXT,
-  store_product_sku TEXT,
-  store_product_price NUMERIC(10, 2)
+  currency TEXT,
+  suggested_product_id UUID,
+  competitor_product_id UUID
 ) AS $$
 BEGIN
   RETURN QUERY
   SELECT 
-    cmc.competitor_product_id,
-    cmc.competitor_id,
+    cmc.id as candidate_id,
+    p.name as product_name,
+    p.sku as product_sku,
+    p.price as product_price,
     cmc.competitor_name,
+    cmc.last_price as competitor_price,
     cmc.competitor_url,
-    cmc.competitor_price,
-    COALESCE(cmc.currency, 'USD') as currency,
-    cmc.last_checked_at,
-    cmc.suggested_product_id,
     cmc.similarity_score,
-    p.id as store_product_id,
-    p.name as store_product_name,
-    p.sku as store_product_sku,
-    p.price as store_product_price
+    COALESCE(cmc.currency, 'USD') as currency,
+    cmc.suggested_product_id,
+    cmc.competitor_product_id
   FROM public.competitor_match_candidates cmc
   LEFT JOIN public.products p ON p.id = cmc.suggested_product_id
-  WHERE cmc.store_id = p_store_id
-  AND cmc.competitor_id = p_competitor_id
-  ORDER BY cmc.similarity_score DESC, cmc.competitor_name;
+  WHERE cmc.store_id = _store_id
+  AND cmc.competitor_id = _competitor_id
+  AND (cmc.similarity_score IS NULL OR cmc.similarity_score >= _min_score)
+  ORDER BY cmc.similarity_score DESC NULLS LAST;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 

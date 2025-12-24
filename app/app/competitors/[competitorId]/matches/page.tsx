@@ -68,6 +68,7 @@ export default async function MatchesReviewPage({
     const loadPayload = {
       _store_id: store.id,
       _competitor_id: competitorId,
+      _min_score: 15, // Default to 15 for better matches, can be adjusted
     };
     console.log("[matches-review] Loading match candidates with payload:", {
       function: "get_competitor_products_for_store_matches",
@@ -82,6 +83,13 @@ export default async function MatchesReviewPage({
     // Log the raw RPC response
     console.log("[matches-review] rpc error:", candidatesError);
     console.log("[matches-review] rpc data:", matchCandidates?.length, matchCandidates?.[0]);
+    
+    // Ensure matchCandidates is an array (not count or single object)
+    const candidatesData = Array.isArray(matchCandidates) ? matchCandidates : [];
+    const candidates = candidatesData ?? [];
+    
+    // Log candidates before transformation
+    console.log('[matches-review] candidates length:', candidates.length, 'first:', candidates[0]);
 
     if (candidatesError) {
       console.error("[matches-review] Error loading match candidates:", {
@@ -120,109 +128,103 @@ export default async function MatchesReviewPage({
 
     // Transform match candidates for client
     // RPC get_competitor_products_for_store_matches returns flat rows with SQL field names:
-    // { competitor_product_id, competitor_id, competitor_name, competitor_url, competitor_price, currency,
-    //   suggested_product_id, similarity_score, store_product_id, store_product_name, store_product_sku, store_product_price }
+    // { candidate_id, store_id, competitor_id, product_id, product_name, product_sku, product_price,
+    //   competitor_url, competitor_name, competitor_price, currency, similarity_score, last_checked_at }
+    // RPC already sorts by similarity_score DESC and filters by >= _min_score
     // CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
     // - All candidate data comes from competitor_match_candidates (which contains full competitor fields)
     // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
-    // Normalize and map to internal structure
     
     type RawRow = any;
 
-    function normalizeRow(r: RawRow) {
-      const score =
-        r.similarity_score ??
-        r.match_score ??
-        r.similarity ??
-        r.score ??
-        0;
-
-      const competitorPrice =
-        r.competitor_price ??
-        r.last_price ??
-        r.price ??
-        null;
-
-      return {
-        competitorProductId: r.competitor_product_id ?? r.id,
-        competitorId: r.competitor_id ?? r.competitorId,
-        competitorName: r.competitor_name ?? r.competitorName ?? r.name ?? "",
-        competitorUrl: r.competitor_url ?? r.competitorUrl ?? r.url ?? "",
-        competitorPrice,
-        currency: r.currency ?? r.competitor_currency ?? "USD",
-
-        suggestedProductId: r.suggested_product_id ?? r.suggestedProductId ?? null,
-        similarityScore: Number(score) || 0,
-
-        storeProductId: r.store_product_id ?? r.storeProductId ?? null,
-        storeProductName: r.store_product_name ?? r.storeProductName ?? "",
-        storeProductSku: r.store_product_sku ?? r.storeProductSku ?? "",
-        storeProductPrice: r.store_product_price ?? r.storeProductPrice ?? null,
-      };
-    }
-
-    // Map SQL fields to internal structure using normalizeRow
-    const rows = (Array.isArray(matchCandidates) ? matchCandidates : []).map(normalizeRow);
-
-    // Group by suggested_product_id (my product)
+    // Group by product_id (NOT candidate_id)
     const productGroups = new Map<string, {
       product_id: string;
       product_name: string;
       product_sku: string | null;
       product_price: number | null;
-      options: Array<{
+      max_similarity_score: number | null;
+      candidates: Array<{
+        candidate_id: string;
         competitor_product_id: string;
-        competitor_product_name: string;
-        competitor_product_url: string;
-        competitor_price: number | null;
-        currency: string;
+        competitor_url: string;
+        competitor_name: string;
+        competitor_last_price: number | null;
+        competitor_currency: string | null;
         similarity_score: number;
       }>;
     }>();
 
-    // Group by suggestedProductId (keep rows even when suggestedProductId is null)
-    // For rows without suggestedProductId, show each candidate as its own row
-    rows.forEach((row) => {
-      // Use suggestedProductId if available, otherwise use storeProductId, otherwise use competitorProductId to show each unmatched candidate separately
-      const productId = row.suggestedProductId || row.storeProductId || `__candidate_${row.competitorProductId}__`;
+    // Group by product_id from RPC
+    candidates.forEach((row: RawRow) => {
+      // Skip rows without product_id (unmatched candidates)
+      if (!row.product_id) {
+        return;
+      }
+      
+      const productId = String(row.product_id);
 
       if (!productGroups.has(productId)) {
         productGroups.set(productId, {
-          product_id: row.suggestedProductId || row.storeProductId || row.competitorProductId,
-          product_name: row.storeProductName || "",
-          product_sku: row.storeProductSku || null,
-          product_price: row.storeProductPrice ?? null,
-          options: [],
+          product_id: productId,
+          product_name: row.product_name ?? "",
+          product_sku: row.product_sku ?? null,
+          product_price: row.product_price != null ? Number(row.product_price) : null,
+          max_similarity_score: null,
+          candidates: [],
         });
       }
 
       const group = productGroups.get(productId)!;
-      group.options.push({
-        competitor_product_id: row.competitorProductId || "",
-        competitor_product_name: row.competitorName || "",
-        competitor_product_url: row.competitorUrl || "",
-        competitor_price: row.competitorPrice ?? null,
-        currency: row.currency || "USD",
-        similarity_score: row.similarityScore || 0,
-      });
+      
+      // Map candidate fields exactly as specified
+      const candidate = {
+        candidate_id: String(row.candidate_id ?? row.id),
+        competitor_product_id: row.competitor_product_id ?? "",
+        competitor_url: row.competitor_url ?? "",
+        competitor_name: row.competitor_name ?? "",
+        competitor_last_price: row.competitor_last_price ?? row.last_price ?? row.competitor_price ?? null,
+        competitor_currency: row.competitor_currency ?? row.currency ?? null,
+        similarity_score: row.similarity_score != null ? Number(row.similarity_score) : 0,
+      };
+      
+      // Convert price to number if it's a string
+      if (candidate.competitor_last_price != null && typeof candidate.competitor_last_price === 'string') {
+        candidate.competitor_last_price = Number(candidate.competitor_last_price) || null;
+      }
+      
+      group.candidates.push(candidate);
+      
+      // Track max similarity_score for this product
+      if (candidate.similarity_score != null && candidate.similarity_score > 0) {
+        if (group.max_similarity_score == null || candidate.similarity_score > group.max_similarity_score) {
+          group.max_similarity_score = candidate.similarity_score;
+        }
+      }
     });
 
-    // Convert to array and sort options by similarity_score descending
-    groupedMatches = Array.from(productGroups.values()).map((group) => ({
-      product_id: group.product_id,
-      product_name: group.product_name,
-      product_sku: group.product_sku,
-      product_price: group.product_price,
-      candidates: group.options.sort((a, b) => b.similarity_score - a.similarity_score).map((opt) => ({
-        candidate_id: opt.competitor_product_id,
-        competitor_product_id: opt.competitor_product_id,
-        competitor_url: opt.competitor_product_url,
-        competitor_name: opt.competitor_product_name,
-        competitor_last_price: opt.competitor_price,
-        competitor_currency: opt.currency,
-        similarity_score: opt.similarity_score,
-      })),
-    }));
+    // Sort products by max similarity_score DESC, then sort candidates within each product by similarity_score DESC
+    groupedMatches = Array.from(productGroups.values())
+      .map((group) => {
+        // Sort candidates by similarity_score DESC
+        const sortedCandidates = group.candidates.sort((a, b) => b.similarity_score - a.similarity_score);
+        
+        return {
+          product_id: group.product_id,
+          product_name: group.product_name,
+          product_sku: group.product_sku,
+          product_price: group.product_price,
+          max_similarity_score: group.max_similarity_score,
+          candidates: sortedCandidates,
+        };
+      })
+      .sort((a, b) => {
+        // Sort products by max similarity_score DESC (nulls last)
+        if (a.max_similarity_score === null && b.max_similarity_score === null) return 0;
+        if (a.max_similarity_score === null) return 1;
+        if (b.max_similarity_score === null) return -1;
+        return b.max_similarity_score - a.max_similarity_score;
+      });
   }
 
   // Derive error message from status if needed

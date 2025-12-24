@@ -123,35 +123,56 @@ export async function POST(
         return "USD"; // Default
       };
       
-      // Ensure price is numeric (parse if string, convert null/undefined to null)
-      const competitorProductsToInsert = scrapedProducts.map((p) => {
-        let numericPrice: number | null = null;
-        
-        if (p.price != null) {
-          // If price is already a number, use it
-          if (typeof p.price === 'number') {
-            numericPrice = p.price > 0 ? p.price : null;
-          } 
-          // If price is a string, try to parse it
-          else if (typeof p.price === 'string') {
-            // Remove currency symbols and whitespace, then parse
-            const priceStr: string = p.price;
-            const cleaned = priceStr.replace(/[$£€,\s]/g, '').trim();
-            const parsed = parseFloat(cleaned);
-            numericPrice = !isNaN(parsed) && parsed > 0 ? parsed : null;
+      // Ensure price is numeric and name is valid (not a price string)
+      const pricePattern = /^\s*\$?\s*\d+(\.\d+)?\s*$/;
+      
+      const competitorProductsToInsert = scrapedProducts
+        .map((p) => {
+          // Guard: Validate that name doesn't look like a price
+          let competitorName = p.name?.trim() || "";
+          
+          if (!competitorName || pricePattern.test(competitorName)) {
+            // Name looks like a price or is empty - skip this product
+            console.warn("[discover] Name looks like price or is empty, skipping", { url: p.url, name: competitorName, price: p.price });
+            return null;
           }
-        }
-        
-        return {
-          store_id: store.id, // CRITICAL: Must be set
-          competitor_id: competitorId, // CRITICAL: Must be set
-          competitor_name: p.name,
-          competitor_url: p.url,
-          last_price: numericPrice, // Ensure numeric price (or null)
-          currency: detectCurrency(p),
-          last_checked_at: now,
-        };
-      });
+
+          let numericPrice: number | null = null;
+          
+          if (p.price != null) {
+            // If price is already a number, use it
+            if (typeof p.price === 'number') {
+              numericPrice = p.price > 0 ? p.price : null;
+            } 
+            // If price is a string, try to parse it
+            else if (typeof p.price === 'string') {
+              // Remove currency symbols and whitespace, then parse
+              const priceStr: string = p.price;
+              const cleaned = priceStr.replace(/[$£€,\s]/g, '').trim();
+              const parsed = parseFloat(cleaned);
+              numericPrice = !isNaN(parsed) && parsed > 0 ? parsed : null;
+            }
+          }
+          
+          // Log parsed values before insert
+          console.log("[discover] Preparing product for insert", {
+            url: p.url,
+            name: competitorName,
+            price: numericPrice,
+            currency: detectCurrency(p),
+          });
+          
+          return {
+            store_id: store.id, // CRITICAL: Must be set
+            competitor_id: competitorId, // CRITICAL: Must be set
+            competitor_name: competitorName,
+            competitor_url: p.url,
+            last_price: numericPrice, // Ensure numeric price (or null)
+            currency: detectCurrency(p),
+            last_checked_at: now,
+          };
+        })
+        .filter((p): p is NonNullable<typeof p> => p !== null);
 
       const { data: insertedProducts, error: insertError } = await supabaseAdmin
         .from("competitor_store_products")
