@@ -16,6 +16,54 @@ const MAX_TOTAL_PRODUCTS = 1200;
 const MIN_PRODUCTS_PER_PAGE = 3;
 const MAX_VISITED_PAGES = 80;
 
+/**
+ * Normalize competitorUrl to origin + basePath (strip trailing slash)
+ */
+function normalizeCompetitorUrl(url: string): { origin: string; basePath: string } {
+  try {
+    const urlObj = new URL(url);
+    const origin = `${urlObj.protocol}//${urlObj.hostname}`;
+    let basePath = urlObj.pathname;
+    // Strip trailing slash
+    if (basePath.endsWith('/') && basePath.length > 1) {
+      basePath = basePath.slice(0, -1);
+    }
+    // Ensure basePath starts with /
+    if (!basePath.startsWith('/')) {
+      basePath = '/' + basePath;
+    }
+    return { origin, basePath };
+  } catch {
+    // Fallback if URL parsing fails
+    const origin = url.split('/').slice(0, 3).join('/');
+    const pathMatch = url.match(/\/\/[^\/]+(\/.*)/);
+    let basePath = pathMatch ? pathMatch[1] : '/';
+    if (basePath.endsWith('/') && basePath.length > 1) {
+      basePath = basePath.slice(0, -1);
+    }
+    return { origin, basePath };
+  }
+}
+
+/**
+ * Normalize URL: strip hash and drop tracking params (utm_*, gclid, fbclid)
+ */
+function normalizeUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    // Remove hash
+    urlObj.hash = '';
+    // Remove tracking params
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid'];
+    trackingParams.forEach(param => {
+      urlObj.searchParams.delete(param);
+    });
+    return urlObj.toString();
+  } catch {
+    return url;
+  }
+}
+
 export async function scrapeCompetitorProducts(storeUrl: string): Promise<RawScrapedProduct[]> {
   const platform = detectPlatformFromUrl(storeUrl);
 
@@ -31,22 +79,36 @@ export async function scrapeCompetitorProducts(storeUrl: string): Promise<RawScr
     }));
   }
 
+  // Normalize competitorUrl to origin + basePath
+  const { origin, basePath } = normalizeCompetitorUrl(storeUrl);
+
   // General HTML crawler: frontier BFS crawler
   const map = new Map<string, RawScrapedProduct>();
-  await crawlFrontier(storeUrl, storeUrl, map);
+  await crawlFrontier(storeUrl, storeUrl, map, origin, basePath);
   return Array.from(map.values());
 }
 
 // ----------------------
 // Frontier crawler
 // ----------------------
-async function crawlFrontier(startUrl: string, baseUrl: string, map: Map<string, RawScrapedProduct>) {
+async function crawlFrontier(
+  startUrl: string,
+  baseUrl: string,
+  map: Map<string, RawScrapedProduct>,
+  origin: string,
+  basePath: string
+) {
   const queue: string[] = [startUrl];
   const visited = new Set<string>();
+  const normalizedVisited = new Set<string>(); // For deduplication using normalized URLs
 
   while (queue.length && visited.size < MAX_VISITED_PAGES && map.size < MAX_TOTAL_PRODUCTS) {
     const url = queue.shift()!;
-    if (visited.has(url)) continue;
+    const normalizedUrl = normalizeUrl(url);
+    
+    // Skip if already visited (using normalized URL for deduplication)
+    if (normalizedVisited.has(normalizedUrl)) continue;
+    normalizedVisited.add(normalizedUrl);
     visited.add(url);
 
     let html = await fetchHtml(url, false);
@@ -68,11 +130,15 @@ async function crawlFrontier(startUrl: string, baseUrl: string, map: Map<string,
       if (!map.has(p.url)) map.set(p.url, p);
     }
 
-    const links = extractCandidateLinksFromPage(html, url, baseUrl);
+    const links = extractCandidateLinksFromPage(html, url, baseUrl, origin, basePath);
 
     for (const link of links) {
-      if (visited.has(link)) continue;
-      if (!queue.includes(link)) queue.push(link);
+      const normalizedLink = normalizeUrl(link);
+      // Skip if already visited (using normalized URL)
+      if (normalizedVisited.has(normalizedLink)) continue;
+      // Skip if already in queue (using normalized URL)
+      if (queue.some(q => normalizeUrl(q) === normalizedLink)) continue;
+      queue.push(link);
       if (queue.length > 600) break; // safety
     }
   }
@@ -86,7 +152,13 @@ async function crawlFrontier(startUrl: string, baseUrl: string, map: Map<string,
   });
 }
 
-function extractCandidateLinksFromPage(html: string, currentUrl: string, baseUrl: string): string[] {
+function extractCandidateLinksFromPage(
+  html: string,
+  currentUrl: string,
+  baseUrl: string,
+  origin: string,
+  basePath: string
+): string[] {
   const $ = cheerio.load(html);
   const out = new Set<string>();
 
@@ -149,14 +221,48 @@ function extractCandidateLinksFromPage(html: string, currentUrl: string, baseUrl
 
   // Normalize + filter
   const filtered: string[] = [];
+  let originHostname: string;
+  try {
+    const originUrl = new URL(origin);
+    originHostname = originUrl.hostname;
+  } catch {
+    // Fallback: extract hostname from origin string
+    const match = origin.match(/\/\/([^\/]+)/);
+    originHostname = match ? match[1] : '';
+  }
+
   for (const u of out) {
     if (!u) continue;
-    if (!sameHost(u, baseUrl)) continue;
+    
+    try {
+      const urlObj = new URL(u);
+      
+      // Filter: same hostname
+      if (urlObj.hostname !== originHostname) continue;
+      
+      // Filter: pathname starts with basePath
+      if (!urlObj.pathname.startsWith(basePath)) continue;
+    } catch {
+      // Skip invalid URLs
+      continue;
+    }
+    
     if (looksLikeAssetOrAuth(u)) continue;
     filtered.push(u);
   }
 
-  return dedupeUrls(filtered);
+  // Deduplicate using normalized URLs
+  const normalized = new Set<string>();
+  const deduplicated: string[] = [];
+  for (const u of filtered) {
+    const norm = normalizeUrl(u);
+    if (!normalized.has(norm)) {
+      normalized.add(norm);
+      deduplicated.push(u);
+    }
+  }
+
+  return deduplicated;
 }
 
 async function crawlSeed(seedUrl: string, baseUrl: string, map: Map<string, RawScrapedProduct>) {

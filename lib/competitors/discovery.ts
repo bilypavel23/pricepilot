@@ -274,6 +274,195 @@ function absoluteUrl(base: string, href: string): string {
 }
 
 /**
+ * Check if URL is likely a Shopify store
+ */
+async function isLikelyShopifyStore(url: string): Promise<boolean> {
+  try {
+    const urlObj = new URL(url);
+    const origin = `${urlObj.protocol}//${urlObj.host}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      // Try /meta.json
+      const metaRes = await fetch(`${origin}/meta.json`, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (metaRes.ok) {
+        const meta = await metaRes.json().catch(() => null);
+        if (meta && (meta.shop || meta.myshopify_domain)) {
+          console.log("[discovery] detected shopify: true (via meta.json)");
+          return true;
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    // Try /products.json?limit=1
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), 6000);
+    try {
+      const productsRes = await fetch(`${origin}/products.json?limit=1`, {
+        signal: controller2.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+      clearTimeout(timeoutId2);
+
+      if (productsRes.ok) {
+        const data = await productsRes.json().catch(() => null);
+        if (data && Array.isArray(data.products)) {
+          console.log("[discovery] detected shopify: true (via products.json)");
+          return true;
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        clearTimeout(timeoutId2);
+      }
+    }
+
+    console.log("[discovery] detected shopify: false");
+    return false;
+  } catch (error) {
+    console.log("[discovery] detected shopify: false (error:", error);
+    return false;
+  }
+}
+
+/**
+ * Fetch products from Shopify store via JSON API
+ */
+async function fetchShopifyProducts(origin: string, maxProducts: number): Promise<Array<{
+  url: string;
+  title: string;
+  price: number | null;
+  currency: string;
+}>> {
+  const products: Array<{ url: string; title: string; price: number | null; currency: string }> = [];
+  let page = 1;
+  let currency = "USD";
+
+  // Try to get currency from meta.json
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+      const metaRes = await fetch(`${origin}/meta.json`, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (metaRes.ok) {
+        const meta = await metaRes.json().catch(() => null);
+        if (meta?.money_format) {
+          // Extract currency from money_format (e.g., "${{amount}}" -> "USD")
+          const format = String(meta.money_format);
+          if (format.includes('$')) currency = "USD";
+          else if (format.includes('£')) currency = "GBP";
+          else if (format.includes('€')) currency = "EUR";
+        }
+      }
+    } catch {
+      // Ignore meta.json errors
+    }
+  } catch {
+    // Ignore
+  }
+
+  while (products.length < maxProducts) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const url = `${origin}/products.json?limit=250&page=${page}`;
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        if (res.status === 404 || res.status >= 500) {
+          break; // No more pages or server error
+        }
+        page++;
+        continue;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (!data || !Array.isArray(data.products)) {
+        break;
+      }
+
+      if (data.products.length === 0) {
+        break; // No more products
+      }
+
+      for (const product of data.products) {
+        if (products.length >= maxProducts) break;
+
+        const handle = product.handle || product.id;
+        if (!handle) continue;
+
+        const productUrl = `${origin}/products/${handle}`;
+        const title = product.title || product.name || "";
+        if (!title) continue;
+
+        // Get price from first variant if available
+        let price: number | null = null;
+        if (product.variants && Array.isArray(product.variants) && product.variants.length > 0) {
+          const firstVariant = product.variants[0];
+          if (firstVariant.price != null) {
+            price = parseFloat(String(firstVariant.price));
+            if (isNaN(price)) price = null;
+          }
+        } else if (product.price != null) {
+          price = parseFloat(String(product.price));
+          if (isNaN(price)) price = null;
+        }
+
+        products.push({
+          url: productUrl,
+          title,
+          price,
+          currency,
+        });
+      }
+
+      if (data.products.length < 250) {
+        break; // Last page
+      }
+
+      page++;
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn(`[discovery] Shopify fetch timeout for page ${page}`);
+      } else {
+        console.error(`[discovery] Shopify fetch error for page ${page}:`, error);
+      }
+      break;
+    }
+  }
+
+  return products;
+}
+
+/**
  * Main discovery function
  */
 export async function runCompetitorDiscovery({
@@ -312,8 +501,39 @@ export async function runCompetitorDiscovery({
       return { success: false, productsScraped: 0, error };
     }
 
-    // 4. Scrape products (general listing crawler / Shopify)
-    const scraped = await scrapeCompetitorProducts(competitorUrl);
+    // 4. Try Shopify first (if detected)
+    let scraped: Array<{ name: string; url: string; price: number | null; currency: string }> = [];
+    let shopifySucceeded = false;
+
+    try {
+      const urlObj = new URL(competitorUrl);
+      const origin = `${urlObj.protocol}//${urlObj.host}`;
+      
+      if (await isLikelyShopifyStore(competitorUrl)) {
+        console.log("[discovery] Attempting Shopify fetch...");
+        const shopifyProducts = await fetchShopifyProducts(origin, remaining);
+        
+        if (shopifyProducts.length > 0) {
+          console.log(`[discovery] shopify products fetched count: ${shopifyProducts.length}`);
+          scraped = shopifyProducts.map(p => ({
+            name: p.title,
+            url: p.url,
+            price: p.price,
+            currency: p.currency,
+          }));
+          shopifySucceeded = true;
+        } else {
+          console.log("[discovery] shopify products fetched count: 0 (fallback to general scraper)");
+        }
+      }
+    } catch (error: any) {
+      console.log(`[discovery] Shopify attempt failed: ${error.message || error} (fallback to general scraper)`);
+    }
+
+    // 5. Fallback to general scraper if Shopify didn't succeed
+    if (!shopifySucceeded) {
+      scraped = await scrapeCompetitorProducts(competitorUrl);
+    }
 
     if (scraped.length === 0) {
       const error = "No products found";
