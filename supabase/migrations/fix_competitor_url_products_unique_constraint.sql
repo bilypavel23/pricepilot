@@ -131,3 +131,4 @@ CREATE INDEX IF NOT EXISTS idx_competitor_url_products_store_product_url
 ON public.competitor_url_products(store_id, product_id, competitor_url);
 
 
+

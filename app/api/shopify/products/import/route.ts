@@ -215,6 +215,17 @@ export async function POST() {
       }
     );
 
+    // Mark products sync as completed
+    const { error: syncError } = await supabase.rpc("mark_products_sync", {
+      p_store_id: store.id,
+      p_source: "Shopify",
+    });
+
+    if (syncError) {
+      console.error("[shopify-import] Error calling mark_products_sync:", syncError);
+      // Don't fail the import if sync marking fails
+    }
+
     const response: any = {
       success: true,
       imported: productsToUpsert.length,

@@ -42,6 +42,52 @@ import { ProductTable } from "@/components/products/product-table";
 import { StoreConnectionCard } from "@/components/store/store-connection-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+/**
+ * Formats a timestamp for "Last sync" display
+ * Format: "DD. MM. YYYY · HH:MM" or "Today · HH:MM" if date is today
+ * Uses Czech locale (cs-CZ)
+ */
+function formatLastSync(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Never";
+  }
+
+  try {
+    // Parse the timestamp (handles ISO format and other formats)
+    const date = new Date(timestamp);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return "Never";
+    }
+
+    // Check if date is today
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const syncDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const isToday = syncDate.getTime() === today.getTime();
+
+    if (isToday) {
+      // Format as "Today · HH:MM"
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return `Today · ${hours}:${minutes}`;
+    } else {
+      // Format as "DD. MM. YYYY · HH:MM"
+      // Use manual formatting to ensure exact format (DD. MM. YYYY · HH:MM)
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return `${day}. ${month}. ${year} · ${hours}:${minutes}`;
+    }
+  } catch (error) {
+    console.error("[formatLastSync] Error formatting timestamp:", error);
+    return "Never";
+  }
+}
+
 type Product = {
   id: string;
   name: string;
@@ -76,9 +122,13 @@ interface ProductsClientProps {
     shop_domain?: string;
   };
   productCount?: number;
+  syncStatus?: {
+    last_sync_local: string | null;
+    products_sync_source: string | null;
+  } | null;
 }
 
-export function ProductsClient({ initialProducts, isDemo, store, productCount: initialProductCount }: ProductsClientProps) {
+export function ProductsClient({ initialProducts, isDemo, store, productCount: initialProductCount, syncStatus }: ProductsClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -400,25 +450,49 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
     }
 
     try {
-      // Get current user ID
+      // Get current user ID and store
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         alert("You must be logged in to import products");
         return;
       }
 
-      // Add user_id to each product
-      const payloadWithUserId = payload.map((p) => ({
+      // Get store ID for the user
+      const { data: storeData, error: storeError } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .limit(1)
+        .single();
+
+      if (storeError || !storeData?.id) {
+        alert("Failed to get store. Please refresh the page.");
+        return;
+      }
+
+      // Add store_id to each product
+      const payloadWithStoreId = payload.map((p) => ({
         ...p,
-        user_id: user.id,
+        store_id: storeData.id,
       }));
 
-      const { error } = await supabase.from("products").insert(payloadWithUserId);
+      const { error } = await supabase.from("products").insert(payloadWithStoreId);
 
       if (error) {
         console.error(error);
         alert("Failed to import products: " + error.message);
         return;
+      }
+
+      // Mark products sync as completed (only after successful import)
+      const { error: syncError } = await supabase.rpc("mark_products_sync", {
+        p_store_id: storeData.id,
+        p_source: "Feed URL",
+      });
+
+      if (syncError) {
+        console.error("[feed-import] Error calling mark_products_sync:", syncError);
+        // Don't fail the import if sync marking fails
       }
 
       setShowFeedUrlModal(false);
@@ -484,39 +558,28 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
               Products are kept in sync automatically. Manual import is only needed if something changes.
             </p>
             {/* Last sync status */}
-            <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-              <span>
-                Last sync: {mockProductSyncStatus.lastSync} • Source: {mockProductSyncStatus.source}
-              </span>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[10px] px-2 py-0.5",
-                  mockProductSyncStatus.status === "synced" && "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800",
-                  mockProductSyncStatus.status === "syncing" && "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/20 dark:text-yellow-800",
-                  mockProductSyncStatus.status === "error" && "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800"
-                )}
-              >
-                {mockProductSyncStatus.status === "synced" && (
-                  <>
+            {syncStatus && (
+              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+                <span>
+                  {syncStatus.last_sync_local
+                    ? `Last sync: ${formatLastSync(syncStatus.last_sync_local)}`
+                    : "Last sync: Never"}
+                  {syncStatus.products_sync_source && ` • Source: ${syncStatus.products_sync_source}`}
+                </span>
+                {syncStatus.last_sync_local && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] px-2 py-0.5",
+                      "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800"
+                    )}
+                  >
                     <CheckCircle2 className="h-3 w-3 mr-1 inline" />
                     Synced
-                  </>
+                  </Badge>
                 )}
-                {mockProductSyncStatus.status === "syncing" && (
-                  <>
-                    <Loader2 className="h-3 w-3 mr-1 inline animate-spin" />
-                    Syncing...
-                  </>
-                )}
-                {mockProductSyncStatus.status === "error" && (
-                  <>
-                    <AlertCircle className="h-3 w-3 mr-1 inline" />
-                    Error
-                  </>
-                )}
-              </Badge>
-            </div>
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <TooltipProvider>

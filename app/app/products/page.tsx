@@ -48,5 +48,34 @@ export default async function ProductsPage() {
 
   const productCount = products.length;
 
-  return <ProductsClient initialProducts={products} isDemo={isDemo} store={store} productCount={productCount} />;
+  // Load sync status from view
+  let syncStatus: {
+    last_sync_local: string | null;
+    products_sync_source: string | null;
+  } | null = null;
+
+  if (!isDemo && store.id) {
+    const { data: syncData, error: syncError } = await supabase
+      .from("store_products_sync_status_safe")
+      .select("last_sync_local, products_sync_source")
+      .eq("store_id", store.id)
+      .maybeSingle();
+
+    if (!syncError && syncData) {
+      syncStatus = {
+        last_sync_local: syncData.last_sync_local,
+        products_sync_source: syncData.products_sync_source,
+      };
+    }
+  }
+
+  return (
+    <ProductsClient
+      initialProducts={products}
+      isDemo={isDemo}
+      store={store}
+      productCount={productCount}
+      syncStatus={syncStatus}
+    />
+  );
 }

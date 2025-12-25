@@ -12,7 +12,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ConnectStoreModalProps {
   open: boolean;
@@ -69,17 +75,17 @@ export function ConnectStoreModal({ open, onOpenChange }: ConnectStoreModalProps
           {/* Step 1: Select Platform */}
           <div className="space-y-2">
             <Label htmlFor="platform">Platform</Label>
-            <Select
-              id="platform"
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
-            >
-              <option value="">Select a platform</option>
-              <option value="shopify">Shopify</option>
-              <option value="woocommerce" disabled>
-                WooCommerce (Coming Soon)
-              </option>
-              <option value="csv">CSV Import</option>
+            <Select value={platform} onValueChange={setPlatform}>
+              <SelectTrigger id="platform">
+                <SelectValue placeholder="Select a platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="shopify">Shopify</SelectItem>
+                <SelectItem value="woocommerce" disabled>
+                  WooCommerce (Coming Soon)
+                </SelectItem>
+                <SelectItem value="csv">CSV Import</SelectItem>
+              </SelectContent>
             </Select>
           </div>
 

@@ -1,22 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Edit2, Save, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { cn } from "@/lib/utils";
 import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
 import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
-import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { PromoCodeForm } from "@/components/settings/promo-code-form";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
+import { NotificationsSection } from "@/components/settings/notifications-section";
+import { AccountSection } from "@/components/settings/account-section";
+import { AppearanceSection } from "@/components/settings/appearance-section";
+
+// Memoized CompetitorSyncCard to prevent remounting
+const MemoizedCompetitorSyncCard = memo(CompetitorSyncCard);
 
 interface SettingsClientProps {
   userEmail: string;
@@ -51,11 +50,11 @@ export function SettingsClient({
     weeklyReport: false,
   });
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+  }, []);
 
-  const showSuccessToast = () => {
+  const showSuccessToast = useCallback(() => {
     const id = Date.now().toString();
     setToasts((prev) => [
       ...prev,
@@ -69,9 +68,9 @@ export function SettingsClient({
     setTimeout(() => {
       removeToast(id);
     }, 2000);
-  };
+  }, [removeToast]);
 
-  const showErrorToast = (message: string) => {
+  const showErrorToast = useCallback((message: string) => {
     const id = Date.now().toString();
     setToasts((prev) => [
       ...prev,
@@ -85,7 +84,7 @@ export function SettingsClient({
     setTimeout(() => {
       removeToast(id);
     }, 3000);
-  };
+  }, [removeToast]);
 
   const [storeName, setStoreName] = useState(initialStoreName);
   const [isEditingStoreName, setIsEditingStoreName] = useState(false);
@@ -112,6 +111,7 @@ export function SettingsClient({
   // Ensure body never has overflow-y-auto/scroll (prevent double scrollbar)
   // The AppShell main element is the scroll container, not body
   // Only allow overflow: hidden when dialogs are open
+  // Removed dependencies to prevent re-runs on state changes
   useEffect(() => {
     const checkAndFixBodyOverflow = () => {
       const hasOpenDialog = document.querySelector('[data-state="open"][role="dialog"]');
@@ -147,16 +147,12 @@ export function SettingsClient({
       attributeFilter: ['style'],
     });
     
-    // Also check after state updates
-    const timeoutId = setTimeout(checkAndFixBodyOverflow, 0);
-    
     return () => {
       observer.disconnect();
-      clearTimeout(timeoutId);
     };
-  }, [notifications, storeName, isEditingStoreName, toasts]);
+  }, []); // Empty deps - only run once on mount
 
-  const handleSaveStoreName = () => {
+  const handleSaveStoreName = useCallback(() => {
     setStoreName(tempStoreName);
     setIsEditingStoreName(false);
     // TODO: Save to Supabase
@@ -167,77 +163,78 @@ export function SettingsClient({
       window.dispatchEvent(new CustomEvent("storeNameUpdated"));
     }
     showSuccessToast();
-  };
+  }, [tempStoreName]);
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setTempStoreName(storeName);
     setIsEditingStoreName(false);
-  };
+  }, [storeName]);
+
+  // Optimistic notification toggle handlers
+  const handleNotificationToggle = useCallback((key: keyof typeof notifications, checked: boolean) => {
+    // Optimistic update - update UI immediately
+    setNotifications((prev) => ({ ...prev, [key]: checked }));
+    
+    // TODO: Save to Supabase (async, can fail)
+    // For now, just show success toast
+    showSuccessToast();
+  }, [showSuccessToast]);
+
+  // Memoize CompetitorSyncCard props to prevent remounting
+  const competitorSyncProps = useMemo(() => ({
+    planLabel,
+    syncsPerDay,
+    initialTimezone,
+    initialTimes,
+    storeId: store?.id,
+    onSaveSuccess: showSuccessToast,
+    onSaveError: showErrorToast,
+  }), [planLabel, syncsPerDay, initialTimezone, initialTimes, store?.id, showSuccessToast, showErrorToast]);
+
+  // Memoize section props to prevent unnecessary re-renders
+  const accountSectionProps = useMemo(() => ({
+    userEmail,
+    storeName,
+    tempStoreName,
+    isEditingStoreName,
+    currentPlan,
+    onStoreNameChange: setTempStoreName,
+    onEditStart: () => setIsEditingStoreName(true),
+    onEditSave: handleSaveStoreName,
+    onEditCancel: handleCancelEdit,
+    onPasswordChangeSuccess: showSuccessToast,
+  }), [userEmail, storeName, tempStoreName, isEditingStoreName, currentPlan, handleSaveStoreName, handleCancelEdit, showSuccessToast]);
+
+  const notificationsSectionProps = useMemo(() => ({
+    notifications,
+    onToggle: handleNotificationToggle,
+  }), [notifications, handleNotificationToggle]);
+
+  const appearanceSectionProps = useMemo(() => ({
+    mounted,
+    theme,
+    onThemeChange: (value: "light" | "dark" | "system") => {
+      setTheme(value);
+      showSuccessToast();
+    },
+  }), [mounted, theme, showSuccessToast]);
 
   return (
-    <div className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8">
+    <div 
+      className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8" 
+      style={{ 
+        minHeight: 'calc(100vh - 64px)', // Subtract header height (Topbar is ~64px)
+        flexShrink: 0, // Prevent flex container from shrinking
+      }}
+    >
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage your account preferences and integrations</p>
       </div>
 
-      {/* Account Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Account</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground mt-1">Manage your account details and subscription</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-1">
-            <Label className="text-sm font-medium">Email</Label>
-            <p className="text-sm text-muted-foreground">{userEmail || "Loading..."}</p>
-          </div>
-          <ChangePasswordForm onSuccess={showSuccessToast} />
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Store name</Label>
-            {isEditingStoreName ? (
-              <div className="flex gap-2">
-                <Input
-                  value={tempStoreName}
-                  onChange={(e) => setTempStoreName(e.target.value)}
-                  className="flex-1"
-                  autoFocus
-                />
-                <Button size="sm" onClick={handleSaveStoreName}>
-                  <Save className="h-4 w-4 mr-1" />
-                  Save
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleCancelEdit}>
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-foreground font-medium">{storeName}</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setIsEditingStoreName(true)}
-                  className="h-7 w-7 p-0"
-                >
-                  <Edit2 className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <Label className="text-sm font-medium">Current plan</Label>
-            <div className="pt-1 flex items-center gap-2">
-              <span className="text-base">{badge.emoji}</span>
-              <Badge variant={badge.variant} className={cn("text-sm", badge.color)}>
-                {badge.label}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Account Section - Always mounted */}
+      <AccountSection {...accountSectionProps} />
 
       {/* Promo Code Section */}
       <Card>
@@ -290,153 +287,14 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
-      {/* Notifications Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Notifications</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground mt-1">
-            Choose which alerts you want to receive
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
-            <div className="space-y-0.5">
-              <Label htmlFor="competitor-drops" className="text-sm font-medium">Competitor price drops</Label>
-              <p className="text-xs text-muted-foreground">Get notified when competitors lower their prices</p>
-            </div>
-            <Switch
-              id="competitor-drops"
-              checked={notifications.competitorDrops}
-              onCheckedChange={(checked) => {
-                // Preserve scroll position from the actual scroll container (main element)
-                const mainElement = document.querySelector('main');
-                const scrollY = mainElement?.scrollTop ?? window.scrollY;
-                
-                setNotifications({ ...notifications, competitorDrops: checked });
-                // TODO: Save to Supabase
-                showSuccessToast();
-                
-                // Restore scroll position after React re-render
-                requestAnimationFrame(() => {
-                  if (mainElement) {
-                    mainElement.scrollTo({ top: scrollY, behavior: "instant" });
-                  } else {
-                    window.scrollTo({ top: scrollY, behavior: "instant" });
-                  }
-                });
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
-            <div className="space-y-0.5">
-              <Label htmlFor="low-margin" className="text-sm font-medium">Low margin alerts</Label>
-              <p className="text-xs text-muted-foreground">Alert when product margins fall below threshold</p>
-            </div>
-            <Switch
-              id="low-margin"
-              checked={notifications.lowMargin}
-              onCheckedChange={(checked) => {
-                // Preserve scroll position from the actual scroll container (main element)
-                const mainElement = document.querySelector('main');
-                const scrollY = mainElement?.scrollTop ?? window.scrollY;
-                
-                setNotifications({ ...notifications, lowMargin: checked });
-                // TODO: Save to Supabase
-                showSuccessToast();
-                
-                // Restore scroll position after React re-render
-                requestAnimationFrame(() => {
-                  if (mainElement) {
-                    mainElement.scrollTo({ top: scrollY, behavior: "instant" });
-                  } else {
-                    window.scrollTo({ top: scrollY, behavior: "instant" });
-                  }
-                });
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label htmlFor="weekly-report" className="text-sm font-medium">Weekly summary report</Label>
-              <p className="text-xs text-muted-foreground">Receive weekly pricing and performance summaries</p>
-            </div>
-            <Switch
-              id="weekly-report"
-              checked={notifications.weeklyReport}
-              onCheckedChange={(checked) => {
-                // Preserve scroll position from the actual scroll container (main element)
-                const mainElement = document.querySelector('main');
-                const scrollY = mainElement?.scrollTop ?? window.scrollY;
-                
-                setNotifications({ ...notifications, weeklyReport: checked });
-                // TODO: Save to Supabase
-                showSuccessToast();
-                
-                // Restore scroll position after React re-render
-                requestAnimationFrame(() => {
-                  if (mainElement) {
-                    mainElement.scrollTo({ top: scrollY, behavior: "instant" });
-                  } else {
-                    window.scrollTo({ top: scrollY, behavior: "instant" });
-                  }
-                });
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Notifications Section - Always mounted */}
+      <NotificationsSection {...notificationsSectionProps} />
 
-      {/* Competitor Sync Section */}
-      <CompetitorSyncCard
-        planLabel={planLabel}
-        syncsPerDay={syncsPerDay}
-        initialTimezone={initialTimezone}
-        initialTimes={initialTimes}
-        storeId={store?.id}
-        onSaveSuccess={showSuccessToast}
-        onSaveError={(error) => showErrorToast(error)}
-      />
+      {/* Competitor Sync Section - Always mounted, memoized props */}
+      <MemoizedCompetitorSyncCard {...competitorSyncProps} />
 
-      {/* Appearance Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">Appearance</CardTitle>
-          <CardDescription className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Choose how PricePilot looks on your device.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {mounted && (
-            <RadioGroup
-              value={theme === "system" ? "system" : theme}
-              onValueChange={(value) => {
-                setTheme(value as "light" | "dark" | "system");
-                showSuccessToast();
-              }}
-              className="flex gap-6"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="light" id="theme-light" />
-                <Label htmlFor="theme-light" className="text-sm font-medium cursor-pointer">
-                  Light
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="dark" id="theme-dark" />
-                <Label htmlFor="theme-dark" className="text-sm font-medium cursor-pointer">
-                  Dark
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="system" id="theme-system" />
-                <Label htmlFor="theme-system" className="text-sm font-medium cursor-pointer">
-                  System
-                </Label>
-              </div>
-            </RadioGroup>
-          )}
-        </CardContent>
-      </Card>
+      {/* Appearance Section - Always mounted */}
+      <AppearanceSection {...appearanceSectionProps} />
 
       <ConnectStoreModal open={connectModalOpen} onOpenChange={setConnectModalOpen} />
       <ToastContainer toasts={toasts} onRemove={removeToast} />
