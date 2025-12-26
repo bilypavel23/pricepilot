@@ -38,15 +38,22 @@ type StoreInfo = {
   shopify_access_token: string | null;
 };
 
+type SyncStatus = {
+  last_competitor_sync_at: string | null;
+  last_competitor_sync_status: string | null;
+  last_competitor_sync_updated_count: number | null;
+} | null;
+
 type Props = {
   store: StoreInfo;
   recommendations: ProductRecommendation[];
   hasProducts: boolean;
   plan: string;
   hasProductsWithoutCompetitors?: boolean;
+  syncStatus?: SyncStatus;
 };
 
-export function RecommendationsClient({ store, recommendations, hasProducts, plan, hasProductsWithoutCompetitors = false }: Props) {
+export function RecommendationsClient({ store, recommendations, hasProducts, plan, hasProductsWithoutCompetitors = false, syncStatus = null }: Props) {
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("biggest-impact");
@@ -353,6 +360,77 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
             </p>
           )}
         </div>
+      )}
+
+      {/* Sync Status Section */}
+      {syncStatus && (
+        <Card className="mb-6 rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Sync Status</h3>
+                <div className="space-y-1.5 text-xs">
+                  {syncStatus.last_competitor_sync_at ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Last sync:</span>
+                      <span className="font-medium">
+                        {(() => {
+                          try {
+                            const date = new Date(syncStatus.last_competitor_sync_at);
+                            const now = new Date();
+                            const diffMs = now.getTime() - date.getTime();
+                            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                            const diffDays = Math.floor(diffHours / 24);
+                            
+                            if (diffDays === 0) {
+                              if (diffHours === 0) {
+                                const diffMins = Math.floor(diffMs / (1000 * 60));
+                                return diffMins < 1 ? "Just now" : `${diffMins} minutes ago`;
+                              }
+                              return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                            } else if (diffDays === 1) {
+                              return "Yesterday";
+                            } else if (diffDays < 7) {
+                              return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+                            } else {
+                              return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            }
+                          } catch {
+                            return "Invalid date";
+                          }
+                        })()}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Last sync:</span>
+                      <span className="font-medium">Never</span>
+                    </div>
+                  )}
+                  
+                  {syncStatus.last_competitor_sync_status && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge 
+                        variant={syncStatus.last_competitor_sync_status === 'success' ? 'default' : 'destructive'}
+                        className="text-[10px] px-2 py-0"
+                      >
+                        {syncStatus.last_competitor_sync_status === 'success' ? 'Success' : syncStatus.last_competitor_sync_status === 'error' ? 'Failed' : syncStatus.last_competitor_sync_status}
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  {syncStatus.last_competitor_sync_updated_count !== null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Updated prices:</span>
+                      <span className="font-medium">{syncStatus.last_competitor_sync_updated_count}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Start Here Guidance */}

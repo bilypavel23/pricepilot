@@ -53,6 +53,29 @@ export default async function RecommendationsPage() {
   // Check if user has products without competitors
   const productsWithoutCompetitors = recommendations.filter((r) => r.competitorCount === 0);
 
+  // Load sync status from store_sync_settings
+  let syncStatus: {
+    last_competitor_sync_at: string | null;
+    last_competitor_sync_status: string | null;
+    last_competitor_sync_updated_count: number | null;
+  } | null = null;
+
+  if (!isDemo && store.id) {
+    const { data: syncData, error: syncError } = await supabase
+      .from("store_sync_settings")
+      .select("last_competitor_sync_at, last_competitor_sync_status, last_competitor_sync_updated_count")
+      .eq("store_id", store.id)
+      .maybeSingle();
+
+    if (!syncError && syncData) {
+      syncStatus = {
+        last_competitor_sync_at: syncData.last_competitor_sync_at,
+        last_competitor_sync_status: syncData.last_competitor_sync_status,
+        last_competitor_sync_updated_count: syncData.last_competitor_sync_updated_count,
+      };
+    }
+  }
+
   return (
     <RecommendationsClient
       store={{
@@ -63,6 +86,7 @@ export default async function RecommendationsPage() {
       hasProducts={hasProducts}
       plan={plan}
       hasProductsWithoutCompetitors={productsWithoutCompetitors.length > 0}
+      syncStatus={syncStatus}
     />
   );
 }

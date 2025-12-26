@@ -390,81 +390,124 @@ export function RecommendationCard({ recommendation, store, plan, onPriceUpdated
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    {competitorSlots.map((c, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-lg bg-muted/40 dark:bg-slate-700/40 px-3 py-2 text-xs"
-                      >
-                        {c.name ? (
-                          <>
-                            <div className="flex min-w-0 flex-1 items-center gap-2">
-                              <span
-                                className="truncate text-sm font-medium"
-                                title={c.name || undefined}
-                              >
-                                {c.name}
-                              </span>
+                    {competitorSlots.map((c, index) => {
+                      const competitorCurrency = c.currency || currency;
+                      const formatLastChecked = (timestamp: string | null | undefined): string => {
+                        if (!timestamp) return "Never checked";
+                        try {
+                          const date = new Date(timestamp);
+                          const now = new Date();
+                          const diffMs = now.getTime() - date.getTime();
+                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                          const diffDays = Math.floor(diffHours / 24);
+                          
+                          if (diffDays === 0) {
+                            if (diffHours === 0) {
+                              const diffMins = Math.floor(diffMs / (1000 * 60));
+                              return diffMins < 1 ? "Just now" : `${diffMins}m ago`;
+                            }
+                            return `${diffHours}h ago`;
+                          } else if (diffDays === 1) {
+                            return "Yesterday";
+                          } else if (diffDays < 7) {
+                            return `${diffDays}d ago`;
+                          } else {
+                            return date.toLocaleDateString();
+                          }
+                        } catch {
+                          return "Invalid date";
+                        }
+                      };
 
-                              {/* Source badge: Store or URL */}
-                              {c.source && (
-                                <Badge 
-                                  variant={c.source === "Store" ? "default" : "secondary"} 
-                                  className="text-[10px] px-1.5 py-0 shrink-0"
+                      return (
+                        <div
+                          key={index}
+                          className="flex flex-col gap-1.5 rounded-lg bg-muted/40 dark:bg-slate-700/40 px-3 py-2 text-xs"
+                        >
+                          {c.name ? (
+                            <>
+                              {/* First row: Name, source badges, price */}
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <span
+                                  className="truncate text-sm font-medium"
+                                  title={c.name || undefined}
                                 >
-                                  {c.source}
-                                </Badge>
-                              )}
+                                  {c.name}
+                                </span>
 
-                              {/* URL badge - clickable link to competitor product */}
-                              {c.url && (
-                                <a
-                                  href={c.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0"
-                                >
-                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 hover:bg-secondary/80">
-                                    URL
+                                {/* Source badge: Store or URL */}
+                                {c.source && (
+                                  <Badge 
+                                    variant={c.source === "Store" ? "default" : "secondary"} 
+                                    className="text-[10px] px-1.5 py-0 shrink-0"
+                                  >
+                                    {c.source}
                                   </Badge>
-                                </a>
-                              )}
-
-                              <span className="shrink-0 text-sm text-muted-foreground">
-                                {formatMoney(recommendation.productPrice, currency)} → {c.newPrice != null ? formatMoney(c.newPrice, currency) : "Price not available yet"}
-                              </span>
-                            </div>
-
-                            {c.changePercent != null && recommendation.productPrice != null && recommendation.productPrice > 0 && (
-                              <span
-                                className={cn(
-                                  "ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-                                  (() => {
-                                    const variant = pctBadgeVariant(c.changePercent);
-                                    return variant === "green"
-                                      ? "bg-emerald-500/10 text-emerald-400"  // Positive (competitor higher) = green
-                                      : variant === "red"
-                                      ? "bg-red-500/10 text-red-400"  // Negative (competitor lower) = red
-                                      : "bg-muted text-muted-foreground";
-                                  })()
                                 )}
-                                title={c.changePercent > 0 
-                                  ? `Competitor je o ${c.changePercent.toFixed(1)}% vyšší než tvoje cena`
-                                  : `Competitor je o ${Math.abs(c.changePercent).toFixed(1)}% nižší než tvoje cena`
-                                }
-                              >
-                                {c.changePercent > 0 ? "+" : ""}
-                                {c.changePercent.toFixed(1)}%
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <div className="flex w-full items-center justify-between text-muted-foreground/70">
-                            <span className="text-sm">—</span>
-                            <span className="text-sm">—</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+
+                                {/* URL badge - clickable link to competitor product */}
+                                {c.url && (
+                                  <a
+                                    href={c.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="shrink-0"
+                                  >
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 hover:bg-secondary/80">
+                                      URL
+                                    </Badge>
+                                  </a>
+                                )}
+
+                                {/* Price with currency */}
+                                <span className="ml-auto shrink-0 text-sm font-semibold">
+                                  {c.newPrice != null 
+                                    ? formatMoney(c.newPrice, competitorCurrency)
+                                    : "Price not available"
+                                  }
+                                </span>
+
+                                {/* Change percent badge */}
+                                {c.changePercent != null && recommendation.productPrice != null && recommendation.productPrice > 0 && (
+                                  <span
+                                    className={cn(
+                                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                                      (() => {
+                                        const variant = pctBadgeVariant(c.changePercent);
+                                        return variant === "green"
+                                          ? "bg-emerald-500/10 text-emerald-400"  // Positive (competitor higher) = green
+                                          : variant === "red"
+                                          ? "bg-red-500/10 text-red-400"  // Negative (competitor lower) = red
+                                          : "bg-muted text-muted-foreground";
+                                      })()
+                                    )}
+                                    title={c.changePercent > 0 
+                                      ? `Competitor je o ${c.changePercent.toFixed(1)}% vyšší než tvoje cena`
+                                      : `Competitor je o ${Math.abs(c.changePercent).toFixed(1)}% nižší než tvoje cena`
+                                    }
+                                  >
+                                    {c.changePercent > 0 ? "+" : ""}
+                                    {c.changePercent.toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Second row: Last checked timestamp */}
+                              {c.lastCheckedAt && (
+                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  <span>Last checked: {formatLastChecked(c.lastCheckedAt)}</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex w-full items-center justify-between text-muted-foreground/70">
+                              <span className="text-sm">—</span>
+                              <span className="text-sm">—</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

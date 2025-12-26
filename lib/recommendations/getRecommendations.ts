@@ -224,10 +224,12 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
         name: tc.competitor_name || null,
         url: tc.competitor_url ?? null,
         oldPrice,
-        newPrice: competitorPrice, // null if price not available
+        newPrice: competitorPrice, // null if price not available (uses last_price from DB)
         changePercent, // null if price not available - shows how much my price is higher/lower
         source: sourceDisplay,
         isUrlCompetitor: tc.source === "url", // deprecated, but keep for backward compatibility
+        currency: tc.currency || null, // currency from DB
+        lastCheckedAt: tc.last_checked_at || null, // ISO timestamp from DB
       };
       
       competitorSlots.push(slot);

@@ -3,10 +3,12 @@ export type CompetitorSlot = {
   name?: string | null;     // competitor product name (competitor_name from view)
   url?: string | null;      // competitor product URL
   oldPrice?: number | null; // previous competitor price (for now can be null)
-  newPrice?: number | null; // current competitor price
+  newPrice?: number | null; // current competitor price (last_price from DB)
   changePercent?: number | null;
   source?: "Store" | "URL"; // source badge: "Store" or "URL"
   isUrlCompetitor?: boolean; // deprecated - use source instead
+  currency?: string | null; // currency code (USD, EUR, etc.)
+  lastCheckedAt?: string | null; // ISO timestamp of last price check
 };
 
 export type ProductRecommendation = {
