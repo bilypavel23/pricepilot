@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export type StoreSyncSettings = {
   store_id: string;
+  sync_enabled: boolean;
   timezone: string;
   daily_sync_times: string[]; // ['06:00', '12:00', ...]
 };
@@ -45,17 +46,23 @@ export async function getOrCreateStoreSyncSettings(
   // try existing row
   const { data: existing } = await supabase
     .from("store_sync_settings")
-    .select("store_id, timezone, daily_sync_times")
+    .select("store_id, sync_enabled, timezone, daily_sync_times")
     .eq("store_id", storeId)
     .maybeSingle();
 
   if (existing) {
-    return existing as StoreSyncSettings;
+    return {
+      store_id: existing.store_id,
+      sync_enabled: existing.sync_enabled ?? true,
+      timezone: existing.timezone,
+      daily_sync_times: existing.daily_sync_times,
+    } as StoreSyncSettings;
   }
 
   // create new with defaults
   const defaults: StoreSyncSettings = {
     store_id: storeId,
+    sync_enabled: true,
     timezone: "Europe/Prague",
     daily_sync_times: getDefaultSyncTimes(plan),
   };
@@ -66,12 +73,13 @@ export async function getOrCreateStoreSyncSettings(
     .upsert(
       {
         store_id: defaults.store_id,
+        sync_enabled: defaults.sync_enabled,
         timezone: defaults.timezone,
         daily_sync_times: defaults.daily_sync_times,
       },
       { onConflict: "store_id" }
     )
-    .select("store_id, timezone, daily_sync_times")
+    .select("store_id, sync_enabled, timezone, daily_sync_times")
     .single();
 
   if (error || !upserted) {

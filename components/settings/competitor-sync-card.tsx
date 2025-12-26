@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,16 +16,66 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { supabase } from "@/lib/supabaseClient";
 
 type Props = {
   planLabel: string;
   syncsPerDay: number;
+  initialSyncEnabled?: boolean;
   initialTimezone: string | null;
   initialTimes: string[] | null;
   storeId?: string;
   onSaveSuccess?: () => void;
   onSaveError?: (error: string) => void;
+  lastCompetitorSyncAt?: string | null;
+  lastCompetitorSyncStatus?: string | null;
+  lastCompetitorSyncUpdatedCount?: number | null;
 };
+
+/**
+ * Formats a timestamp for "Last sync" display
+ * Format: "DD. MM. YYYY · HH:MM" or "Today · HH:MM" if date is today
+ */
+function formatLastSync(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Never";
+  }
+
+  try {
+    // Parse the timestamp (handles ISO format and other formats)
+    const date = new Date(timestamp);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return "Never";
+    }
+
+    // Check if date is today (compare only date part, ignore time)
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const syncDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const isToday = syncDate.getTime() === today.getTime();
+
+    if (isToday) {
+      // Format as "Today · HH:MM"
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return `Today · ${hours}:${minutes}`;
+    } else {
+      // Format as "DD. MM. YYYY · HH:MM"
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return `${day}. ${month}. ${year} · ${hours}:${minutes}`;
+    }
+  } catch (error) {
+    console.error("[formatLastSync] Error formatting timestamp:", error);
+    return "Never";
+  }
+}
 
 type TimezoneOption = {
   value: string;
@@ -81,21 +131,45 @@ const TIMEZONE_OPTIONS: TimezoneOption[] = [
 export function CompetitorSyncCard({
   planLabel,
   syncsPerDay,
+  initialSyncEnabled,
   initialTimezone,
   initialTimes,
   storeId,
   onSaveSuccess,
   onSaveError,
+  lastCompetitorSyncAt,
+  lastCompetitorSyncStatus,
+  lastCompetitorSyncUpdatedCount,
 }: Props) {
   const router = useRouter();
+  const [syncEnabled, setSyncEnabled] = useState(initialSyncEnabled ?? true);
   const [timezone, setTimezone] = useState(initialTimezone || "Europe/Prague");
   const [times, setTimes] = useState<string[]>(
-    initialTimes && initialTimes.length > 0 ? initialTimes : syncsPerDay > 0 ? ["09:00"] : []
+    initialTimes && initialTimes.length > 0 ? initialTimes : syncsPerDay > 0 ? ["06:00"] : []
   );
   const [isSaving, setIsSaving] = useState(false);
   const isReadOnly = syncsPerDay <= 0;
 
-  const maxSlots = syncsPerDay;
+  const maxSlots = Math.min(syncsPerDay, 2); // Enforce max 2 times
+
+  // Get timezone label for display
+  const getTimezoneLabel = (ianaValue: string): string => {
+    const option = TIMEZONE_OPTIONS.find(opt => opt.value === ianaValue);
+    return option?.label || ianaValue;
+  };
+
+  // Sync state when props change (e.g., after refetch)
+  useEffect(() => {
+    if (initialSyncEnabled !== undefined) {
+      setSyncEnabled(initialSyncEnabled);
+    }
+    if (initialTimezone) {
+      setTimezone(initialTimezone);
+    }
+    if (initialTimes && initialTimes.length > 0) {
+      setTimes(initialTimes);
+    }
+  }, [initialSyncEnabled, initialTimezone, initialTimes]);
 
   const handleTimeChange = (index: number, value: string) => {
     const next = [...times];
@@ -105,7 +179,7 @@ export function CompetitorSyncCard({
 
   const handleAddTime = () => {
     if (times.length >= maxSlots) return;
-    setTimes([...times, "09:00"]);
+    setTimes([...times, "06:00"]);
   };
 
   const handleRemoveTime = (index: number) => {
@@ -118,35 +192,87 @@ export function CompetitorSyncCard({
     if (isReadOnly) return;
     setIsSaving(true);
     try {
-      const trimmedTimes = times
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0)
-        .slice(0, maxSlots);
-
       if (!storeId) {
-        alert("Store ID is missing. Please refresh the page.");
+        onSaveError?.("Store ID is missing. Please refresh the page.");
+        setIsSaving(false);
         return;
       }
+
+      // Validate and prepare times: ensure "HH:mm" format, unique, sorted, max 2
+      const trimmedTimes = times
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+      
+      // Format times to ensure "HH:mm" with zero-padding
+      const formattedTimes = trimmedTimes.map((t) => {
+        const parts = t.split(":");
+        if (parts.length !== 2) return null;
+        const hours = parseInt(parts[0], 10);
+        const minutes = parseInt(parts[1], 10);
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+          return null;
+        }
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+      }).filter((t): t is string => t !== null);
+      
+      // Remove duplicates
+      const uniqueTimes = Array.from(new Set(formattedTimes));
+      
+      // Sort ascending
+      const sortedTimes = uniqueTimes.sort((a, b) => {
+        const [aH, aM] = a.split(":").map(Number);
+        const [bH, bM] = b.split(":").map(Number);
+        const aMinutes = aH * 60 + aM;
+        const bMinutes = bH * 60 + bM;
+        return aMinutes - bMinutes;
+      });
+      
+      // Limit to maxSlots (max 2)
+      const finalTimes = sortedTimes.slice(0, maxSlots);
+
+      // Send timezone value (can be either IANA or label - API will normalize)
+      const timezoneValue = timezone; // Already IANA format from state
 
       const res = await fetch(`/api/stores/${storeId}/sync-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          timezone,
-          daily_sync_times: trimmedTimes,
+          sync_enabled: syncEnabled,
+          timezone: timezoneValue,
+          daily_sync_times: finalTimes,
         }),
       });
 
+      const responseData = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.error("Failed to save:", data);
-        const errorMsg = data.error || "Failed to save competitor sync settings";
+        console.error("Failed to save:", responseData);
+        const errorMsg = responseData.error || "Failed to save competitor sync settings";
         onSaveError?.(errorMsg);
         setIsSaving(false);
         return;
       }
 
-      router.refresh();
+      // Refetch settings and rehydrate UI state without remounting
+      const { data: refreshed, error: fetchError } = await supabase
+        .from("store_sync_settings")
+        .select("sync_enabled, timezone, daily_sync_times")
+        .eq("store_id", storeId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("Failed to refetch settings:", fetchError);
+        // Still show success since save succeeded, but log the refetch error
+      }
+
+      if (refreshed) {
+        // Update local state with refreshed data from DB
+        setSyncEnabled(refreshed.sync_enabled ?? true);
+        setTimezone(refreshed.timezone);
+        setTimes(refreshed.daily_sync_times || []);
+      }
+
+      // Only show success toast if save succeeded (res.ok was true)
       onSaveSuccess?.();
     } catch (err: any) {
       console.error("Error saving competitor sync settings:", err);
@@ -171,6 +297,34 @@ export function CompetitorSyncCard({
         <p className="mt-2 text-xs text-muted-foreground/80">{planInfo}</p>
       </CardHeader>
       <CardContent>
+        {/* Last competitor sync status */}
+        {(lastCompetitorSyncAt || lastCompetitorSyncStatus) && (
+          <div className="mb-6 space-y-2 pb-6 border-b border-border">
+            <div className="text-xs text-muted-foreground">
+              Last competitor sync: {formatLastSync(lastCompetitorSyncAt || null)}
+            </div>
+            {lastCompetitorSyncStatus && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Status:</span>
+                <span
+                  className={cn(
+                    "text-xs font-medium",
+                    lastCompetitorSyncStatus === "success"
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  )}
+                >
+                  {lastCompetitorSyncStatus === "success" ? "Synced" : "Failed"}
+                </span>
+              </div>
+            )}
+            {lastCompetitorSyncUpdatedCount !== null && lastCompetitorSyncUpdatedCount !== undefined && (
+              <div className="text-xs text-muted-foreground">
+                Updated prices: {lastCompetitorSyncUpdatedCount}
+              </div>
+            )}
+          </div>
+        )}
         {isReadOnly ? (
           <p className="text-sm text-muted-foreground">
             Upgrade your plan to configure automatic competitor sync times.
@@ -178,6 +332,18 @@ export function CompetitorSyncCard({
         ) : (
           <div className="space-y-6">
             <div className="space-y-3">
+              <div className="flex items-center justify-between py-2 border-b border-border">
+                <div className="space-y-0.5">
+                  <Label htmlFor="sync-enabled" className="text-sm font-medium">Enable competitor sync</Label>
+                  <p className="text-xs text-muted-foreground">Automatically sync competitor prices at scheduled times</p>
+                </div>
+                <Switch
+                  id="sync-enabled"
+                  checked={syncEnabled}
+                  onCheckedChange={setSyncEnabled}
+                />
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Timezone

@@ -49,3 +49,4 @@ This Edge Function runs every 5 minutes via Supabase cron to scrape competitor p
 - `competitor_product_matches` table must have `last_price` and `last_checked_at` columns
 - `competitor_url_products` table must have `last_price` and `last_checked_at` columns
 
+

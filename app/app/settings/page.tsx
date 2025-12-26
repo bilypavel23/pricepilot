@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { SettingsClient } from "@/components/settings/settings-client";
 import { normalizePlan } from "@/lib/planLimits";
 import { getOrCreateStoreSyncSettings } from "@/lib/competitors/syncSettings";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function SettingsPage() {
   const { user, profile } = await getProfile();
@@ -22,8 +23,61 @@ export default async function SettingsPage() {
   // Get store with sync settings
   const store = await getOrCreateStore();
 
-  // Load sync settings using new helper (creates defaults if not exists)
-  const syncSettings = await getOrCreateStoreSyncSettings(store.id, user.id);
+  // Load sync settings directly from store_sync_settings (includes sync_enabled)
+  const supabase = await createClient();
+  const { data: syncSettingsData } = await supabase
+    .from("store_sync_settings")
+    .select("sync_enabled, timezone, daily_sync_times, last_competitor_sync_at, last_competitor_sync_status, last_competitor_sync_updated_count")
+    .eq("store_id", store.id)
+    .maybeSingle();
+
+  // If row doesn't exist, create it with defaults
+  let syncSettings: {
+    sync_enabled: boolean;
+    timezone: string;
+    daily_sync_times: string[];
+  };
+  let syncResults: {
+    last_competitor_sync_at: string | null;
+    last_competitor_sync_status: string | null;
+    last_competitor_sync_updated_count: number | null;
+  } | null = null;
+
+  if (!syncSettingsData) {
+    // Create with defaults based on plan
+    // Pro plan (syncsPerDay >= 2) gets 2 times, Starter gets 1 time
+    const defaultTimes = planConfig.syncsPerDay >= 2
+      ? ["06:00", "18:00"] 
+      : ["06:00"];
+    
+    const { data: created } = await supabase
+      .from("store_sync_settings")
+      .upsert({
+        store_id: store.id,
+        sync_enabled: true,
+        timezone: "Europe/Prague", // Store as IANA in DB
+        daily_sync_times: defaultTimes,
+      }, { onConflict: "store_id" })
+      .select("sync_enabled, timezone, daily_sync_times")
+      .single();
+
+    syncSettings = created || {
+      sync_enabled: true,
+      timezone: "Europe/Prague",
+      daily_sync_times: defaultTimes,
+    };
+  } else {
+    syncSettings = {
+      sync_enabled: syncSettingsData.sync_enabled ?? true,
+      timezone: syncSettingsData.timezone,
+      daily_sync_times: syncSettingsData.daily_sync_times,
+    };
+    syncResults = {
+      last_competitor_sync_at: syncSettingsData.last_competitor_sync_at || null,
+      last_competitor_sync_status: syncSettingsData.last_competitor_sync_status || null,
+      last_competitor_sync_updated_count: syncSettingsData.last_competitor_sync_updated_count || null,
+    };
+  }
 
   return (
     <SettingsClient
@@ -33,8 +87,12 @@ export default async function SettingsPage() {
       currentPlan={normalizedPlan}
       planLabel={planConfig.label}
       syncsPerDay={planConfig.syncsPerDay}
+      initialSyncEnabled={syncSettings.sync_enabled}
       initialTimezone={syncSettings.timezone}
       initialTimes={syncSettings.daily_sync_times}
+      lastCompetitorSyncAt={syncResults?.last_competitor_sync_at || null}
+      lastCompetitorSyncStatus={syncResults?.last_competitor_sync_status || null}
+      lastCompetitorSyncUpdatedCount={syncResults?.last_competitor_sync_updated_count || null}
     />
   );
 }

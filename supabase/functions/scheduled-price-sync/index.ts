@@ -209,11 +209,14 @@ serve(async (req) => {
 
       console.log(`[price-sync] Processing store_id: ${storeId}`);
 
+      let storeUpdatedCount = 0;
+      let storeFatalError = false;
+
       try {
         // 2a. Fetch competitor URLs from competitor_product_matches
         const { data: matches, error: matchesError } = await supabase
           .from("competitor_product_matches")
-          .select("id, competitor_url")
+          .select("id, competitor_url, last_price, last_checked_at")
           .eq("store_id", storeId)
           .not("competitor_url", "is", null);
 
@@ -222,7 +225,18 @@ serve(async (req) => {
             `[price-sync] Error fetching matches for store ${storeId}:`,
             matchesError
           );
+          storeFatalError = true;
           totalErrors++;
+          // Mark as failed and continue
+          try {
+            await supabase.rpc("mark_competitor_sync_result", {
+              p_store_id: storeId,
+              p_status: "failed",
+              p_updated_count: storeUpdatedCount,
+            });
+          } catch (rpcError) {
+            console.error(`[price-sync] Error calling mark_competitor_sync_result:`, rpcError);
+          }
           continue;
         }
 
@@ -239,6 +253,10 @@ serve(async (req) => {
               const scraped = await scrapePriceFromUrl(match.competitor_url);
 
               if (scraped.price !== null) {
+                // Check if price changed or last_checked_at was null
+                const priceChanged = match.last_price !== scraped.price;
+                const wasNeverChecked = match.last_checked_at === null;
+
                 const { error: updateError } = await supabase
                   .from("competitor_product_matches")
                   .update({
@@ -254,22 +272,31 @@ serve(async (req) => {
                   );
                 } else {
                   totalProcessed++;
+                  // Increment updatedCount if price changed or was never checked
+                  if (priceChanged || wasNeverChecked) {
+                    storeUpdatedCount++;
+                  }
                 }
               } else {
                 // Still update last_checked_at even if price is null
+                const wasNeverChecked = match.last_checked_at === null;
                 await supabase
                   .from("competitor_product_matches")
                   .update({
                     last_checked_at: syncTime,
                   })
                   .eq("id", match.id);
+                // Increment if was never checked (even if price is null, we checked it)
+                if (wasNeverChecked) {
+                  storeUpdatedCount++;
+                }
               }
             } catch (error) {
               console.error(
                 `[price-sync] Error scraping ${match.competitor_url}:`,
                 error
               );
-              // Continue with next URL
+              // Continue with next URL (non-fatal)
             }
           }
         }
@@ -277,7 +304,7 @@ serve(async (req) => {
         // 2b. Fetch competitor URLs from competitor_url_products
         const { data: urlProducts, error: urlProductsError } = await supabase
           .from("competitor_url_products")
-          .select("id, competitor_url")
+          .select("id, competitor_url, last_price, last_checked_at")
           .eq("store_id", storeId)
           .not("competitor_url", "is", null);
 
@@ -286,7 +313,18 @@ serve(async (req) => {
             `[price-sync] Error fetching url_products for store ${storeId}:`,
             urlProductsError
           );
+          storeFatalError = true;
           totalErrors++;
+          // Mark as failed and continue
+          try {
+            await supabase.rpc("mark_competitor_sync_result", {
+              p_store_id: storeId,
+              p_status: "failed",
+              p_updated_count: storeUpdatedCount,
+            });
+          } catch (rpcError) {
+            console.error(`[price-sync] Error calling mark_competitor_sync_result:`, rpcError);
+          }
           continue;
         }
 
@@ -303,6 +341,10 @@ serve(async (req) => {
               const scraped = await scrapePriceFromUrl(urlProduct.competitor_url);
 
               if (scraped.price !== null) {
+                // Check if price changed or last_checked_at was null
+                const priceChanged = urlProduct.last_price !== scraped.price;
+                const wasNeverChecked = urlProduct.last_checked_at === null;
+
                 const { error: updateError } = await supabase
                   .from("competitor_url_products")
                   .update({
@@ -318,22 +360,31 @@ serve(async (req) => {
                   );
                 } else {
                   totalProcessed++;
+                  // Increment updatedCount if price changed or was never checked
+                  if (priceChanged || wasNeverChecked) {
+                    storeUpdatedCount++;
+                  }
                 }
               } else {
                 // Still update last_checked_at even if price is null
+                const wasNeverChecked = urlProduct.last_checked_at === null;
                 await supabase
                   .from("competitor_url_products")
                   .update({
                     last_checked_at: syncTime,
                   })
                   .eq("id", urlProduct.id);
+                // Increment if was never checked (even if price is null, we checked it)
+                if (wasNeverChecked) {
+                  storeUpdatedCount++;
+                }
               }
             } catch (error) {
               console.error(
                 `[price-sync] Error scraping ${urlProduct.competitor_url}:`,
                 error
               );
-              // Continue with next URL
+              // Continue with next URL (non-fatal)
             }
           }
         }
@@ -367,15 +418,57 @@ serve(async (req) => {
               touchError
             );
           }
+
+          // Call mark_competitor_sync_result(store_id, status, updated_count)
+          const { error: syncResultError } = await supabase.rpc(
+            "mark_competitor_sync_result",
+            {
+              p_store_id: storeId,
+              p_status: "success",
+              p_updated_count: storeUpdatedCount,
+            }
+          );
+
+          if (syncResultError) {
+            console.error(
+              `[price-sync] Error calling mark_competitor_sync_result for store ${storeId}:`,
+              syncResultError
+            );
+          } else {
+            console.log(
+              `[price-sync] Marked sync result for store ${storeId}: success, ${storeUpdatedCount} updated`
+            );
+          }
         } catch (error) {
           console.error(
             `[price-sync] Error calling RPCs for store ${storeId}:`,
             error
           );
+          // Mark as failed if RPC calls fail
+          try {
+            await supabase.rpc("mark_competitor_sync_result", {
+              p_store_id: storeId,
+              p_status: "failed",
+              p_updated_count: storeUpdatedCount,
+            });
+          } catch (rpcError) {
+            console.error(`[price-sync] Error calling mark_competitor_sync_result:`, rpcError);
+          }
         }
       } catch (error) {
         console.error(`[price-sync] Error processing store ${storeId}:`, error);
+        storeFatalError = true;
         totalErrors++;
+        // Mark as failed
+        try {
+          await supabase.rpc("mark_competitor_sync_result", {
+            p_store_id: storeId,
+            p_status: "failed",
+            p_updated_count: storeUpdatedCount,
+          });
+        } catch (rpcError) {
+          console.error(`[price-sync] Error calling mark_competitor_sync_result:`, rpcError);
+        }
         // Continue with next store
       }
     }

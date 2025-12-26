@@ -24,8 +24,12 @@ interface SettingsClientProps {
   currentPlan: Plan;
   planLabel: string;
   syncsPerDay: number;
+  initialSyncEnabled?: boolean;
   initialTimezone: string | null;
   initialTimes: string[] | null;
+  lastCompetitorSyncAt?: string | null;
+  lastCompetitorSyncStatus?: string | null;
+  lastCompetitorSyncUpdatedCount?: number | null;
 }
 
 export function SettingsClient({
@@ -35,8 +39,12 @@ export function SettingsClient({
   currentPlan,
   planLabel,
   syncsPerDay,
+  initialSyncEnabled,
   initialTimezone,
   initialTimes,
+  lastCompetitorSyncAt,
+  lastCompetitorSyncStatus,
+  lastCompetitorSyncUpdatedCount,
 }: SettingsClientProps) {
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -184,12 +192,16 @@ export function SettingsClient({
   const competitorSyncProps = useMemo(() => ({
     planLabel,
     syncsPerDay,
+    initialSyncEnabled: initialSyncEnabled ?? true,
     initialTimezone,
     initialTimes,
     storeId: store?.id,
     onSaveSuccess: showSuccessToast,
     onSaveError: showErrorToast,
-  }), [planLabel, syncsPerDay, initialTimezone, initialTimes, store?.id, showSuccessToast, showErrorToast]);
+    lastCompetitorSyncAt,
+    lastCompetitorSyncStatus,
+    lastCompetitorSyncUpdatedCount,
+  }), [planLabel, syncsPerDay, initialSyncEnabled, initialTimezone, initialTimes, store?.id, showSuccessToast, showErrorToast, lastCompetitorSyncAt, lastCompetitorSyncStatus, lastCompetitorSyncUpdatedCount]);
 
   // Memoize section props to prevent unnecessary re-renders
   const accountSectionProps = useMemo(() => ({

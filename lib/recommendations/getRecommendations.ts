@@ -46,83 +46,100 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
 
   const productIds = products.map((p) => p.id).filter(Boolean);
 
-  // 2) Load competitors ONLY from v_product_competitor_links view
+  // 2) Load competitors from competitor_product_matches and competitor_url_products
   // Group by product_id - each product shows its matched competitors
-  // NOTE: URL competitors have competitor_id = null, Store competitors have competitor_id set
-  // DO NOT query competitors table - all data comes from v_product_competitor_links
+  // DO NOT query v_product_competitor_links or competitor_store_products
   let competitorsByProduct = new Map<string, any[]>();
 
   if (productIds.length > 0) {
     try {
-      // Query v_product_competitor_links view for all products at once
-      // This view contains both Store competitors (competitor_id set) and URL competitors (competitor_id null)
-      // NOTE: competitor_id can be null for URL competitors - this is expected and correct
-      // DO NOT read from competitor_url_products or any other table - ONLY v_product_competitor_links
-      const { data: linksData, error: linksError } = await supabase
-        .from("v_product_competitor_links")
-        .select("product_id, competitor_id, competitor_name, competitor_url, competitor_price, last_price, currency, source")
+      // 1) Query competitor_product_matches
+      // Select real columns that exist in the table
+      const { data: matches, error: matchesError } = await supabase
+        .from("competitor_product_matches")
+        .select("product_id, competitor_id, competitor_product_id, competitor_name, competitor_url, last_price, currency, last_checked_at, created_at")
         .eq("store_id", storeId)
-        .in("product_id", productIds)
-        .order("competitor_price", { ascending: true, nullsFirst: false }); // Order by competitor_price asc nulls last
+        .in("product_id", productIds);
 
-      // Debug logs
-      console.log("[reco] Querying v_product_competitor_links for storeId:", storeId, "productIds:", productIds.length);
-      console.log("[reco] v_product_competitor_links rows", linksData?.length, linksData?.[0]);
-      if (linksError) {
-        console.error("[reco] ERROR querying v_product_competitor_links:", JSON.stringify(linksError, null, 2));
+      if (matchesError) {
+        console.error("[reco] Error querying competitor_product_matches:", matchesError);
       }
 
-      if (linksError) {
-        console.error("getRecommendationsForStore: v_product_competitor_links error", JSON.stringify(linksError, null, 2));
-      } else {
-        const rows = linksData ?? [];
-        console.log("[reco] Loaded", rows.length, "competitor links from v_product_competitor_links");
-        
-        // Group by product_id
-        // A competitor EXISTS if competitor_name IS NOT NULL AND competitor_url IS NOT NULL
-        rows.forEach((row: any) => {
-          const pid = row.product_id as string;
-          if (!pid) return;
-          
-          // Filter: only include competitors that have both name and url
-          if (!row.competitor_name || !row.competitor_url) {
-            console.log("[reco] Skipping competitor row - missing name or url:", { 
-              product_id: pid, 
-              has_name: !!row.competitor_name, 
-              has_url: !!row.competitor_url 
-            });
-            return;
-          }
-          
-          if (!competitorsByProduct.has(pid)) {
-            competitorsByProduct.set(pid, []);
-          }
-          
-          competitorsByProduct.get(pid)!.push({
-            product_id: pid,
-            competitor_id: row.competitor_id || null, // null for URL competitors - this is expected and correct
-            competitor_name: row.competitor_name,
-            competitor_url: row.competitor_url,
-            competitor_price: row.competitor_price, // Legacy field, can be null
-            last_price: row.last_price, // Primary price field from v_product_competitor_links
-            currency: row.currency || "USD",
-            source: row.source || (row.competitor_id ? "Store" : "URL"), // Use source from view if available
-          });
+      const matchesRows = matches ?? [];
+      console.log("[reco] matches rows", matchesRows.length);
+      console.log("[reco] First store_match row raw:", matchesRows?.[0]);
+
+      // 2) Query competitor_url_products
+      const { data: urlRows, error: urlRowsError } = await supabase
+        .from("competitor_url_products")
+        .select("product_id, competitor_url, competitor_name, last_price, currency, last_checked_at, created_at")
+        .eq("store_id", storeId)
+        .in("product_id", productIds);
+
+      if (urlRowsError) {
+        console.error("[reco] Error querying competitor_url_products:", urlRowsError);
+      }
+
+      const urlCompetitorRows = urlRows ?? [];
+      console.log("[reco] url competitor rows", urlCompetitorRows.length);
+
+      // 3) Build competitorsByProduct Map keyed by product_id
+      
+      // For each competitor_url_products row:
+      urlCompetitorRows.forEach((row: any) => {
+        const pid = String(row.product_id);
+        if (!pid) return;
+
+        if (!competitorsByProduct.has(pid)) {
+          competitorsByProduct.set(pid, []);
+        }
+
+        competitorsByProduct.get(pid)!.push({
+          product_id: pid,
+          competitor_name: row.competitor_name ?? "Competitor URL", // name
+          competitor_url: row.competitor_url, // url
+          last_price: row.last_price != null ? Number(row.last_price) : null, // last_price: use last_price from competitor_url_products
+          currency: row.currency || "USD", // currency
+          last_checked_at: row.last_checked_at || null, // lastCheckedAt
+          source: "url", // source
         });
-        
-        // Competitors are already sorted by competitor_price asc nulls last from SQL query
-        // No need to sort again in JavaScript
-        
-        console.log("[reco] Grouped competitors by product:", Array.from(competitorsByProduct.entries()).map(([pid, comps]) => ({ productId: pid, count: comps.length })));
-      }
+      });
+
+      // For each competitor_product_matches row:
+      matchesRows.forEach((row: any) => {
+        const pid = String(row.product_id);
+        if (!pid) return;
+
+        if (!competitorsByProduct.has(pid)) {
+          competitorsByProduct.set(pid, []);
+        }
+
+        // Build competitor object using fields directly from competitor_product_matches
+        // Do NOT set url/price/currency/lastCheckedAt to null - use row fields
+        competitorsByProduct.get(pid)!.push({
+          product_id: pid,
+          competitor_name: row.competitor_name ?? "Competitor Store",
+          competitor_url: row.competitor_url ?? null,
+          last_price: row.last_price != null ? Number(row.last_price) : null, // Use last_price (not competitor_price or price)
+          currency: row.currency ?? null,
+          last_checked_at: row.last_checked_at ?? null,
+          source: "store_match",
+          competitor_id: row.competitor_id || null,
+          competitor_product_id: row.competitor_product_id || null,
+        });
+      });
+
+      console.log("[reco] competitorsByProduct size", competitorsByProduct.size);
+      console.log("[reco] First competitor built:", matchesRows?.[0] ? competitorsByProduct.get(String(matchesRows[0].product_id))?.[0] : null);
+      console.log("[reco] Grouped competitors by product:", Array.from(competitorsByProduct.entries()).map(([pid, comps]) => ({ productId: pid, count: comps.length })));
     } catch (err) {
       console.error("getRecommendationsForStore: exception loading competitors", err);
       // Continue execution even if query fails - we'll just have no competitors
     }
   }
 
-  // 3) Recommendations uses ONLY v_product_competitor_links
-  // DO NOT query competitor_product_matches, product_competitor_matches, or competitors table
+  // 3) Recommendations uses competitor_product_matches and competitor_url_products
+  // DO NOT query v_product_competitor_links or competitor_store_products
 
   const recommendations: ProductRecommendation[] = [];
 
@@ -132,10 +149,8 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
     const productSku = (p.sku ?? null) as string | null;
     const productPrice = (p.price ?? null) as number | null;
 
-    // Get competitors from v_product_competitor_links (grouped by product_id)
-    // Already sorted by competitor_price asc nulls last from SQL query
-    // NOTE: competitor_id can be NULL for source='URL' (don't filter it out)
-    // Product has competitors if: EXISTS (select 1 from v_product_competitor_links where product_id = p.id and store_id = p.store_id)
+    // Get competitors from competitorsByProduct (grouped by product_id)
+    // Built from competitor_product_matches and competitor_url_products
     const trackedCompetitors = competitorsByProduct.get(productId) ?? [];
 
     // Debug log
@@ -144,22 +159,31 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
       console.log("[reco] First competitor:", trackedCompetitors[0]);
     }
 
-    // Competitor exists if competitor_name IS NOT NULL AND competitor_url IS NOT NULL
-    // DO NOT require competitor_price to be non-null
-    // Filter out competitors that don't have name or url
+    // Competitor exists if it's in the map (regardless of price)
+    // For store_match competitors, url may be null - still count them
+    // For url competitors, both name and url should exist
+    // Skip competitors with price === null in price-based computations, but still count them as linked competitors
     const validCompetitors = trackedCompetitors.filter(
-      (tc) => tc.competitor_name != null && tc.competitor_url != null
+      (tc) => {
+        // URL competitors must have both name and url
+        if (tc.source === "url") {
+          return tc.competitor_name != null && tc.competitor_url != null;
+        }
+        // Store match competitors are valid even without url
+        return tc.competitor_name != null;
+      }
     );
 
     // competitorCount = total number of valid competitors (regardless of price)
     const competitorCount = validCompetitors.length;
 
     // Calculate average price only from competitors that have price
-    // Use last_price ?? competitor_price for calculations
+    // Skip competitors with price === null in price-based computations
+    // Use last_price field (normalized to number | null)
     const prices: number[] = [];
     for (const tc of validCompetitors) {
-      const price = tc.last_price ?? tc.competitor_price;
-      const competitorPrice = price != null ? Number(price) : null;
+      const competitorPrice = tc.last_price; // Use last_price field (from competitor_url_products.last_price)
+      // Only include competitors with valid price (skip null prices)
       if (competitorPrice != null && competitorPrice > 0) {
         prices.push(competitorPrice);
       }
@@ -174,12 +198,11 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
 
     // Build competitor slots from valid competitors only
     // Include ALL valid competitors (even if price is null)
-    // Use last_price ?? competitor_price for calculations
+    // Use last_price field (normalized to number | null)
     // DO NOT create placeholder slots - render only actual competitors
     validCompetitors.forEach((tc) => {
-      // Use last_price ?? competitor_price (as specified)
-      const price = tc.last_price ?? tc.competitor_price;
-      const competitorPrice = price != null ? Number(price) : null;
+      // Use last_price field (from competitor_url_products.last_price for URL competitors, null for store_match)
+      const competitorPrice = tc.last_price;
       const oldPrice = null; // not tracked for now
       
       // Calculate percent change using the same formula as left summary
@@ -190,9 +213,11 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
         ? pctVsYourPrice(productPrice, competitorPrice)
         : null;
 
-      // Use competitor_name for display (from v_product_competitor_links)
-      // source is already set from the view (Store or URL)
-      // competitor_id can be null for URL competitors - this is expected
+      // Use competitor_name for display
+      // source is "url" for competitor_url_products or "store_match" for competitor_product_matches
+      
+      // Map source: "url" -> "URL", "store_match" -> "Store"
+      const sourceDisplay = tc.source === "url" ? "URL" : tc.source === "store_match" ? "Store" : (tc.competitor_id ? "Store" : "URL");
       
       const slot: CompetitorSlot = {
         label: "", // Will be set after sorting
@@ -201,8 +226,8 @@ export async function getRecommendationsForStore(storeId: string): Promise<Produ
         oldPrice,
         newPrice: competitorPrice, // null if price not available
         changePercent, // null if price not available - shows how much my price is higher/lower
-        source: tc.source || (tc.competitor_id ? "Store" : "URL"),
-        isUrlCompetitor: !tc.competitor_id, // deprecated, but keep for backward compatibility
+        source: sourceDisplay,
+        isUrlCompetitor: tc.source === "url", // deprecated, but keep for backward compatibility
       };
       
       competitorSlots.push(slot);
