@@ -10,9 +10,9 @@ import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
 import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
 import { PromoCodeForm } from "@/components/settings/promo-code-form";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
-import { NotificationsCard } from "@/components/settings/notifications-card";
 import { AccountSection } from "@/components/settings/account-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
+import { NotificationsCard } from "@/components/settings/notifications-card";
 
 // Memoized CompetitorSyncCard to prevent remounting
 const MemoizedCompetitorSyncCard = memo(CompetitorSyncCard);
@@ -108,49 +108,6 @@ export function SettingsClient({
     }
   }, []);
 
-  // Ensure body never has overflow-y-auto/scroll (prevent double scrollbar)
-  // The AppShell main element is the scroll container, not body
-  // Only allow overflow: hidden when dialogs are open
-  // Removed dependencies to prevent re-runs on state changes
-  useEffect(() => {
-    const checkAndFixBodyOverflow = () => {
-      const hasOpenDialog = document.querySelector('[data-state="open"][role="dialog"]');
-      const bodyStyle = window.getComputedStyle(document.body);
-      const bodyOverflow = document.body.style.overflow || bodyStyle.overflow;
-      
-      // If no dialog is open, body should never have overflow
-      if (!hasOpenDialog) {
-        // Remove any overflow styles that might cause scrolling
-        if (bodyOverflow && bodyOverflow !== 'hidden') {
-          document.body.style.overflow = '';
-          document.body.style.overflowY = '';
-          document.body.style.overflowX = '';
-        }
-      } else {
-        // Dialog is open - allow overflow: hidden but nothing else
-        if (bodyOverflow && bodyOverflow !== 'hidden') {
-          document.body.style.overflow = 'hidden';
-        }
-      }
-    };
-
-    // Check immediately
-    checkAndFixBodyOverflow();
-    
-    // Watch for changes to body style
-    const observer = new MutationObserver(() => {
-      checkAndFixBodyOverflow();
-    });
-    
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['style'],
-    });
-    
-    return () => {
-      observer.disconnect();
-    };
-  }, []); // Empty deps - only run once on mount
 
   const handleSaveStoreName = useCallback(() => {
     setStoreName(tempStoreName);
@@ -210,13 +167,7 @@ export function SettingsClient({
   }), [mounted, theme, showSuccessToast]);
 
   return (
-    <div 
-      className="max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8" 
-      style={{ 
-        minHeight: 'calc(100vh - 64px)', // Subtract header height (Topbar is ~64px)
-        flexShrink: 0, // Prevent flex container from shrinking
-      }}
-    >
+    <div className="w-full max-w-4xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-8">
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>

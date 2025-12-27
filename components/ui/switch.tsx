@@ -10,24 +10,51 @@ export interface SwitchProps
 }
 
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
-  ({ className, checked, onCheckedChange, ...props }, ref) => {
+  ({ className, checked, onCheckedChange, onClick, onPointerDown, onKeyDown, ...props }, ref) => {
+    const handleLabelClick = (e: React.MouseEvent<HTMLLabelElement>) => {
+      // Stop propagation to prevent form submission, but don't preventDefault to allow checkbox toggle
+      e.stopPropagation();
+      onClick?.(e as any);
+    };
+
+    const handleLabelPointerDown = (e: React.PointerEvent<HTMLLabelElement>) => {
+      // Stop propagation to prevent form submission, but don't preventDefault to allow checkbox toggle
+      e.stopPropagation();
+      onPointerDown?.(e as any);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Stop propagation to prevent form submission
+      e.stopPropagation();
+      onCheckedChange?.(e.target.checked);
+    };
+
+    const handleInputClick = (e: React.MouseEvent<HTMLInputElement>) => {
+      // Stop propagation to prevent form submission
+      e.stopPropagation();
+    };
+
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Prevent form submission for Enter/Space, but still allow toggle via checkbox behavior
+      if (e.key === "Enter" || e.key === " ") {
+        e.stopPropagation();
+      }
+      onKeyDown?.(e as any);
+    };
+
     return (
       <label 
         className="inline-flex items-center cursor-pointer"
+        onClick={handleLabelClick}
+        onPointerDown={handleLabelPointerDown}
       >
         <input
           type="checkbox"
           className="sr-only"
           checked={checked}
-          onChange={(e) => {
-            // Prevent form submission - checkbox type shouldn't submit, but be explicit
-            e.stopPropagation();
-            onCheckedChange?.(e.target.checked);
-          }}
-          onClick={(e) => {
-            // Prevent any form submission behavior
-            e.stopPropagation();
-          }}
+          onChange={handleInputChange}
+          onClick={handleInputClick}
+          onKeyDown={handleInputKeyDown}
           ref={ref}
           {...props}
         />

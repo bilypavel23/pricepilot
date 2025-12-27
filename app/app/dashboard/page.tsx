@@ -110,8 +110,19 @@ export default async function DashboardPage() {
     recommendationsWaiting = await getRecommendationsWaitingCount(store.id);
   }
 
-  // Competitor activity should show recommendations waiting count
-  const competitorActivityCount = recommendationsWaiting;
+  // Competitor activity should show updated prices count from last sync (same as Recommendations page)
+  let competitorActivityCount = 0;
+  if (!isDemo && store.id) {
+    const { data: syncData, error: syncError } = await supabase
+      .from("store_sync_settings")
+      .select("last_competitor_sync_updated_count")
+      .eq("store_id", store.id)
+      .maybeSingle();
+
+    if (!syncError && syncData?.last_competitor_sync_updated_count !== null && syncData?.last_competitor_sync_updated_count !== undefined) {
+      competitorActivityCount = syncData.last_competitor_sync_updated_count;
+    }
+  }
 
   // Calculate chart data (average price and margin from current products)
   let avgPrice = 0;
