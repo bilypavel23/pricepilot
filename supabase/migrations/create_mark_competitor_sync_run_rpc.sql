@@ -53,3 +53,4 @@ $$;
 GRANT EXECUTE ON FUNCTION public.mark_competitor_sync_run(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mark_competitor_sync_run(UUID, TEXT) TO service_role;
 
+

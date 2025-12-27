@@ -243,32 +243,40 @@ export default async function CompetitorsPage() {
       )
     : []; // Return empty array if no competitors
 
-  // LAST SYNC – max(last_sync_at) from tracked competitors only
-  const { data: lastSyncRow } = await supabase
-    .from("competitors")
-    .select("last_sync_at")
-    .eq("store_id", store.id)
-    .eq("is_tracked", true)
-    .order("last_sync_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const lastSyncAt = lastSyncRow?.last_sync_at
-    ? new Date(lastSyncRow.last_sync_at as string)
-    : null;
-
-  // SYNC SETTINGS + NEXT SYNC
+  // SYNC SETTINGS + NEXT SYNC + SYNC STATUS
   const now = new Date();
   let settings;
   let nextSyncDate: Date | null = null;
   let nextSyncText = "not scheduled";
   let nextSyncTimeLabel: string | null = null;
   
+  // Load sync status from store_sync_settings
+  let syncStatus: {
+    last_competitor_sync_at: string | null;
+    last_competitor_sync_status: string | null;
+    last_competitor_sync_updated_count: number | null;
+  } | null = null;
+  
   try {
     settings = await getOrCreateStoreSyncSettings(store.id, user.id);
     nextSyncDate = computeNextSyncDate(settings, now);
     nextSyncText = formatNextSyncDistance(nextSyncDate, now);
     nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
+    
+    // Load sync status data
+    const { data: syncSettingsData } = await supabase
+      .from("store_sync_settings")
+      .select("last_competitor_sync_at, last_competitor_sync_status, last_competitor_sync_updated_count")
+      .eq("store_id", store.id)
+      .maybeSingle();
+    
+    if (syncSettingsData) {
+      syncStatus = {
+        last_competitor_sync_at: syncSettingsData.last_competitor_sync_at || null,
+        last_competitor_sync_status: syncSettingsData.last_competitor_sync_status || null,
+        last_competitor_sync_updated_count: syncSettingsData.last_competitor_sync_updated_count || null,
+      };
+    }
   } catch (error) {
     console.warn("Failed to load sync settings, using defaults:", error);
     // Use defaults if sync settings fail to load
@@ -280,17 +288,6 @@ export default async function CompetitorsPage() {
     nextSyncDate = computeNextSyncDate(settings, now);
     nextSyncText = formatNextSyncDistance(nextSyncDate, now);
     nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
-  }
-
-  // Format "Today, 12:34" for Last sync
-  let lastSyncLabel = "Never";
-  if (lastSyncAt) {
-    const isToday = lastSyncAt.toDateString() === now.toDateString();
-    const hh = String(lastSyncAt.getHours()).padStart(2, "0");
-    const mm = String(lastSyncAt.getMinutes()).padStart(2, "0");
-    lastSyncLabel = isToday
-      ? `Today, ${hh}:${mm}`
-      : `${lastSyncAt.toLocaleDateString()} ${hh}:${mm}`;
   }
 
   return (
@@ -375,46 +372,121 @@ export default async function CompetitorsPage() {
         </Card>
       )}
 
-      {/* Global Sync Box */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-medium">Sync competitor prices</h3>
-              <p className="text-xs text-muted-foreground">
-                Sync runs automatically based on your plan.
-              </p>
-              <Link
-                href="/app/settings"
-                className="inline-flex items-center text-xs text-primary hover:underline mt-1"
-              >
-                Set up your sync
-              </Link>
-              <div className="mt-2 space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  Tracked stores: {trackedWithMatches.length}
-                </p>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>Last sync: {lastSyncLabel}</span>
-                  {nextSyncDate && (
-                    <span>
-                      Next sync: {nextSyncText}
+      {/* Sync Status Section */}
+      <Card className="rounded-2xl bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Sync Status</h3>
+              <div className="space-y-1.5 text-xs">
+                {/* Tracked stores */}
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Tracked stores:</span>
+                  <span className="font-medium">{trackedWithMatches.length}</span>
+                </div>
+                
+                {/* Last sync */}
+                {syncStatus?.last_competitor_sync_at ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Last sync:</span>
+                    <span className="font-medium">
+                      {(() => {
+                        try {
+                          const date = new Date(syncStatus.last_competitor_sync_at);
+                          const now = new Date();
+                          const diffMs = now.getTime() - date.getTime();
+                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                          const diffDays = Math.floor(diffHours / 24);
+                          
+                          if (diffDays === 0) {
+                            if (diffHours === 0) {
+                              const diffMins = Math.floor(diffMs / (1000 * 60));
+                              return diffMins < 1 ? "Just now" : `${diffMins} minutes ago`;
+                            }
+                            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                          } else if (diffDays === 1) {
+                            return "Yesterday";
+                          } else if (diffDays < 7) {
+                            return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+                          } else {
+                            return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          }
+                        } catch {
+                          return "Invalid date";
+                        }
+                      })()}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Last sync:</span>
+                    <span className="font-medium">Never</span>
+                  </div>
+                )}
+                
+                {/* Status */}
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Status:</span>
+                  {(() => {
+                    // Determine status and color based on logic (same as competitor-sync-card.tsx)
+                    let statusText: string;
+                    let statusColor: string;
+                    
+                    if (!syncStatus?.last_competitor_sync_at || syncStatus.last_competitor_sync_at === null) {
+                      statusText = "Never";
+                      statusColor = "bg-gray-500 hover:bg-gray-600 text-white dark:bg-gray-600 dark:hover:bg-gray-700";
+                    } else if (
+                      syncStatus.last_competitor_sync_status === "ok" ||
+                      (syncStatus.last_competitor_sync_updated_count !== null && syncStatus.last_competitor_sync_updated_count > 0)
+                    ) {
+                      statusText = "OK";
+                      statusColor = "bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-700";
+                    } else if (syncStatus.last_competitor_sync_status === "partial") {
+                      statusText = "Partial";
+                      statusColor = "bg-yellow-500 hover:bg-yellow-600 text-white dark:bg-yellow-600 dark:hover:bg-yellow-700";
+                    } else if (syncStatus.last_competitor_sync_status === "error") {
+                      statusText = "Failed";
+                      statusColor = "bg-red-500 hover:bg-red-600 text-white dark:bg-red-600 dark:hover:bg-red-700";
+                    } else if (
+                      syncStatus.last_competitor_sync_updated_count !== null &&
+                      syncStatus.last_competitor_sync_updated_count >= 0
+                    ) {
+                      statusText = "OK";
+                      statusColor = "bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-700";
+                    } else {
+                      statusText = "Unknown";
+                      statusColor = "bg-gray-500 hover:bg-gray-600 text-white dark:bg-gray-600 dark:hover:bg-gray-700";
+                    }
+                    
+                    return (
+                      <Badge 
+                        variant="outline"
+                        className={cn("text-[10px] px-2 py-0 border-0", statusColor)}
+                      >
+                        {statusText}
+                      </Badge>
+                    );
+                  })()}
+                </div>
+                
+                {/* Updated prices */}
+                {syncStatus?.last_competitor_sync_updated_count !== null && syncStatus.last_competitor_sync_updated_count !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Updated prices:</span>
+                    <span className="font-medium">{syncStatus.last_competitor_sync_updated_count}</span>
+                  </div>
+                )}
+                
+                {/* Next sync - keep existing format */}
+                {nextSyncDate && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Next sync:</span>
+                    <span className="font-medium">
+                      {nextSyncText}
                       {nextSyncTimeLabel && ` (at ${nextSyncTimeLabel})`}
                     </span>
-                  )}
-                  {lastSyncAt && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] px-2 py-0.5",
-                        "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800"
-                      )}
-                    >
-                      <CheckCircle2 className="h-3 w-3 mr-1 inline" />
-                      Synced
-                    </Badge>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ import { CompetitorSyncCard } from "@/components/settings/competitor-sync-card";
 import { ConnectStoreModal } from "@/components/integrations/connect-store-modal";
 import { PromoCodeForm } from "@/components/settings/promo-code-form";
 import { ToastContainer, type Toast } from "@/components/ui/toast";
-import { NotificationsSection } from "@/components/settings/notifications-section";
+import { NotificationsCard } from "@/components/settings/notifications-card";
 import { AccountSection } from "@/components/settings/account-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 
@@ -24,7 +24,6 @@ interface SettingsClientProps {
   currentPlan: Plan;
   planLabel: string;
   syncsPerDay: number;
-  initialSyncEnabled?: boolean;
   initialTimezone: string | null;
   initialTimes: string[] | null;
   lastCompetitorSyncAt?: string | null;
@@ -39,7 +38,6 @@ export function SettingsClient({
   currentPlan,
   planLabel,
   syncsPerDay,
-  initialSyncEnabled,
   initialTimezone,
   initialTimes,
   lastCompetitorSyncAt,
@@ -51,12 +49,6 @@ export function SettingsClient({
   const [mounted, setMounted] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // TODO: Replace with real notifications settings from Supabase user preferences
-  const [notifications, setNotifications] = useState({
-    competitorDrops: true,
-    lowMargin: true,
-    weeklyReport: false,
-  });
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
@@ -178,21 +170,11 @@ export function SettingsClient({
     setIsEditingStoreName(false);
   }, [storeName]);
 
-  // Optimistic notification toggle handlers
-  const handleNotificationToggle = useCallback((key: keyof typeof notifications, checked: boolean) => {
-    // Optimistic update - update UI immediately
-    setNotifications((prev) => ({ ...prev, [key]: checked }));
-    
-    // TODO: Save to Supabase (async, can fail)
-    // For now, just show success toast
-    showSuccessToast();
-  }, [showSuccessToast]);
 
   // Memoize CompetitorSyncCard props to prevent remounting
   const competitorSyncProps = useMemo(() => ({
     planLabel,
     syncsPerDay,
-    initialSyncEnabled: initialSyncEnabled ?? true,
     initialTimezone,
     initialTimes,
     storeId: store?.id,
@@ -201,7 +183,7 @@ export function SettingsClient({
     lastCompetitorSyncAt,
     lastCompetitorSyncStatus,
     lastCompetitorSyncUpdatedCount,
-  }), [planLabel, syncsPerDay, initialSyncEnabled, initialTimezone, initialTimes, store?.id, showSuccessToast, showErrorToast, lastCompetitorSyncAt, lastCompetitorSyncStatus, lastCompetitorSyncUpdatedCount]);
+  }), [planLabel, syncsPerDay, initialTimezone, initialTimes, store?.id, showSuccessToast, showErrorToast, lastCompetitorSyncAt, lastCompetitorSyncStatus, lastCompetitorSyncUpdatedCount]);
 
   // Memoize section props to prevent unnecessary re-renders
   const accountSectionProps = useMemo(() => ({
@@ -217,10 +199,6 @@ export function SettingsClient({
     onPasswordChangeSuccess: showSuccessToast,
   }), [userEmail, storeName, tempStoreName, isEditingStoreName, currentPlan, handleSaveStoreName, handleCancelEdit, showSuccessToast]);
 
-  const notificationsSectionProps = useMemo(() => ({
-    notifications,
-    onToggle: handleNotificationToggle,
-  }), [notifications, handleNotificationToggle]);
 
   const appearanceSectionProps = useMemo(() => ({
     mounted,
@@ -299,8 +277,8 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
-      {/* Notifications Section - Always mounted */}
-      <NotificationsSection {...notificationsSectionProps} />
+      {/* Notifications Section - Always mounted, self-contained */}
+      <NotificationsCard />
 
       {/* Competitor Sync Section - Always mounted, memoized props */}
       <MemoizedCompetitorSyncCard {...competitorSyncProps} />

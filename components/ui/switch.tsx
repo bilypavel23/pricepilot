@@ -12,12 +12,22 @@ export interface SwitchProps
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
   ({ className, checked, onCheckedChange, ...props }, ref) => {
     return (
-      <label className="inline-flex items-center cursor-pointer">
+      <label 
+        className="inline-flex items-center cursor-pointer"
+      >
         <input
           type="checkbox"
           className="sr-only"
           checked={checked}
-          onChange={(e) => onCheckedChange?.(e.target.checked)}
+          onChange={(e) => {
+            // Prevent form submission - checkbox type shouldn't submit, but be explicit
+            e.stopPropagation();
+            onCheckedChange?.(e.target.checked);
+          }}
+          onClick={(e) => {
+            // Prevent any form submission behavior
+            e.stopPropagation();
+          }}
           ref={ref}
           {...props}
         />

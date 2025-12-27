@@ -61,3 +61,4 @@ COMMENT ON FUNCTION public.mark_products_sync(UUID, TEXT) IS
   'Records that a products sync was completed. Updates last_products_sync_at and products_sync_source. This timestamp is the single source of truth for "Last sync" in UI.';
 
 
+

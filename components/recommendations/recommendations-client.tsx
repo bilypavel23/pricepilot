@@ -408,17 +408,27 @@ export function RecommendationsClient({ store, recommendations, hasProducts, pla
                     </div>
                   )}
                   
-                  {syncStatus.last_competitor_sync_status && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge 
-                        variant={syncStatus.last_competitor_sync_status === 'success' ? 'default' : 'destructive'}
-                        className="text-[10px] px-2 py-0"
-                      >
-                        {syncStatus.last_competitor_sync_status === 'success' ? 'Success' : syncStatus.last_competitor_sync_status === 'error' ? 'Failed' : syncStatus.last_competitor_sync_status}
-                      </Badge>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge 
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] px-2 py-0 border-0",
+                        syncStatus.last_competitor_sync_status === 'ok' && "bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-700",
+                        syncStatus.last_competitor_sync_status === 'partial' && "bg-yellow-500 hover:bg-yellow-600 text-white dark:bg-yellow-600 dark:hover:bg-yellow-700",
+                        syncStatus.last_competitor_sync_status === 'error' && "bg-red-500 hover:bg-red-600 text-white dark:bg-red-600 dark:hover:bg-red-700",
+                        (!syncStatus.last_competitor_sync_status || syncStatus.last_competitor_sync_status === null || syncStatus.last_competitor_sync_status === undefined) && "bg-gray-500 hover:bg-gray-600 text-white dark:bg-gray-600 dark:hover:bg-gray-700"
+                      )}
+                    >
+                      {syncStatus.last_competitor_sync_status === 'ok' 
+                        ? 'OK' 
+                        : syncStatus.last_competitor_sync_status === 'partial' 
+                        ? 'Partial' 
+                        : syncStatus.last_competitor_sync_status === 'error' 
+                        ? 'Error' 
+                        : 'Unknown'}
+                    </Badge>
+                  </div>
                   
                   {syncStatus.last_competitor_sync_updated_count !== null && (
                     <div className="flex items-center gap-2">

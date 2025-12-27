@@ -16,13 +16,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabaseClient";
 
 type Props = {
   planLabel: string;
   syncsPerDay: number;
-  initialSyncEnabled?: boolean;
   initialTimezone: string | null;
   initialTimes: string[] | null;
   storeId?: string;
@@ -131,7 +129,6 @@ const TIMEZONE_OPTIONS: TimezoneOption[] = [
 export function CompetitorSyncCard({
   planLabel,
   syncsPerDay,
-  initialSyncEnabled,
   initialTimezone,
   initialTimes,
   storeId,
@@ -142,7 +139,6 @@ export function CompetitorSyncCard({
   lastCompetitorSyncUpdatedCount,
 }: Props) {
   const router = useRouter();
-  const [syncEnabled, setSyncEnabled] = useState(initialSyncEnabled ?? true);
   const [timezone, setTimezone] = useState(initialTimezone || "Europe/Prague");
   const [times, setTimes] = useState<string[]>(
     initialTimes && initialTimes.length > 0 ? initialTimes : syncsPerDay > 0 ? ["06:00"] : []
@@ -160,16 +156,13 @@ export function CompetitorSyncCard({
 
   // Sync state when props change (e.g., after refetch)
   useEffect(() => {
-    if (initialSyncEnabled !== undefined) {
-      setSyncEnabled(initialSyncEnabled);
-    }
     if (initialTimezone) {
       setTimezone(initialTimezone);
     }
     if (initialTimes && initialTimes.length > 0) {
       setTimes(initialTimes);
     }
-  }, [initialSyncEnabled, initialTimezone, initialTimes]);
+  }, [initialTimezone, initialTimes]);
 
   const handleTimeChange = (index: number, value: string) => {
     const next = [...times];
@@ -237,7 +230,6 @@ export function CompetitorSyncCard({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sync_enabled: syncEnabled,
           timezone: timezoneValue,
           daily_sync_times: finalTimes,
         }),
@@ -256,7 +248,7 @@ export function CompetitorSyncCard({
       // Refetch settings and rehydrate UI state without remounting
       const { data: refreshed, error: fetchError } = await supabase
         .from("store_sync_settings")
-        .select("sync_enabled, timezone, daily_sync_times")
+        .select("timezone, daily_sync_times")
         .eq("store_id", storeId)
         .maybeSingle();
 
@@ -267,7 +259,6 @@ export function CompetitorSyncCard({
 
       if (refreshed) {
         // Update local state with refreshed data from DB
-        setSyncEnabled(refreshed.sync_enabled ?? true);
         setTimezone(refreshed.timezone);
         setTimes(refreshed.daily_sync_times || []);
       }
@@ -298,33 +289,56 @@ export function CompetitorSyncCard({
       </CardHeader>
       <CardContent>
         {/* Last competitor sync status */}
-        {(lastCompetitorSyncAt || lastCompetitorSyncStatus) && (
-          <div className="mb-6 space-y-2 pb-6 border-b border-border">
-            <div className="text-xs text-muted-foreground">
-              Last competitor sync: {formatLastSync(lastCompetitorSyncAt || null)}
-            </div>
-            {lastCompetitorSyncStatus && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Status:</span>
-                <span
-                  className={cn(
-                    "text-xs font-medium",
-                    lastCompetitorSyncStatus === "success"
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  )}
-                >
-                  {lastCompetitorSyncStatus === "success" ? "Synced" : "Failed"}
-                </span>
-              </div>
-            )}
-            {lastCompetitorSyncUpdatedCount !== null && lastCompetitorSyncUpdatedCount !== undefined && (
-              <div className="text-xs text-muted-foreground">
-                Updated prices: {lastCompetitorSyncUpdatedCount}
-              </div>
-            )}
+        <div className="mb-6 space-y-2 pb-6 border-b border-border">
+          <div className="text-xs text-muted-foreground">
+            Last competitor sync: {formatLastSync(lastCompetitorSyncAt || null)}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Status:</span>
+            {(() => {
+              // Determine status and color based on logic
+              let statusText: string;
+              let statusColor: string;
+              
+              if (!lastCompetitorSyncAt || lastCompetitorSyncAt === null) {
+                statusText = "Never";
+                statusColor = "text-gray-600 dark:text-gray-400";
+              } else if (
+                lastCompetitorSyncStatus === "ok" ||
+                (lastCompetitorSyncUpdatedCount !== null && lastCompetitorSyncUpdatedCount > 0)
+              ) {
+                statusText = "OK";
+                statusColor = "text-green-600 dark:text-green-400";
+              } else if (lastCompetitorSyncStatus === "partial") {
+                statusText = "Partial";
+                statusColor = "text-yellow-600 dark:text-yellow-400";
+              } else if (lastCompetitorSyncStatus === "error") {
+                statusText = "Failed";
+                statusColor = "text-red-600 dark:text-red-400";
+              } else if (
+                lastCompetitorSyncUpdatedCount !== null &&
+                lastCompetitorSyncUpdatedCount >= 0
+              ) {
+                statusText = "OK";
+                statusColor = "text-green-600 dark:text-green-400";
+              } else {
+                statusText = "Unknown";
+                statusColor = "text-gray-600 dark:text-gray-400";
+              }
+              
+              return (
+                <span className={cn("text-xs font-medium", statusColor)}>
+                  {statusText}
+                </span>
+              );
+            })()}
+          </div>
+          {lastCompetitorSyncUpdatedCount !== null && lastCompetitorSyncUpdatedCount !== undefined && (
+            <div className="text-xs text-muted-foreground">
+              Updated prices: {lastCompetitorSyncUpdatedCount}
+            </div>
+          )}
+        </div>
         {isReadOnly ? (
           <p className="text-sm text-muted-foreground">
             Upgrade your plan to configure automatic competitor sync times.
@@ -332,18 +346,6 @@ export function CompetitorSyncCard({
         ) : (
           <div className="space-y-6">
             <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <div className="space-y-0.5">
-                  <Label htmlFor="sync-enabled" className="text-sm font-medium">Enable competitor sync</Label>
-                  <p className="text-xs text-muted-foreground">Automatically sync competitor prices at scheduled times</p>
-                </div>
-                <Switch
-                  id="sync-enabled"
-                  checked={syncEnabled}
-                  onCheckedChange={setSyncEnabled}
-                />
-              </div>
-
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Timezone

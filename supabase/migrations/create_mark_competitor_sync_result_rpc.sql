@@ -74,3 +74,4 @@ COMMENT ON FUNCTION public.mark_competitor_sync_result(UUID, TEXT, INTEGER) IS
   'Records the result of a competitor price sync run. Updates last_competitor_sync_at, last_competitor_sync_status, and last_competitor_sync_updated_count.';
 
 
+

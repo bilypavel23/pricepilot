@@ -23,17 +23,16 @@ export default async function SettingsPage() {
   // Get store with sync settings
   const store = await getOrCreateStore();
 
-  // Load sync settings directly from store_sync_settings (includes sync_enabled)
+  // Load sync settings directly from store_sync_settings
   const supabase = await createClient();
   const { data: syncSettingsData } = await supabase
     .from("store_sync_settings")
-    .select("sync_enabled, timezone, daily_sync_times, last_competitor_sync_at, last_competitor_sync_status, last_competitor_sync_updated_count")
+    .select("timezone, daily_sync_times, last_competitor_sync_at, last_competitor_sync_status, last_competitor_sync_updated_count")
     .eq("store_id", store.id)
     .maybeSingle();
 
   // If row doesn't exist, create it with defaults
   let syncSettings: {
-    sync_enabled: boolean;
     timezone: string;
     daily_sync_times: string[];
   };
@@ -54,21 +53,18 @@ export default async function SettingsPage() {
       .from("store_sync_settings")
       .upsert({
         store_id: store.id,
-        sync_enabled: true,
         timezone: "Europe/Prague", // Store as IANA in DB
         daily_sync_times: defaultTimes,
       }, { onConflict: "store_id" })
-      .select("sync_enabled, timezone, daily_sync_times")
+      .select("timezone, daily_sync_times")
       .single();
 
     syncSettings = created || {
-      sync_enabled: true,
       timezone: "Europe/Prague",
       daily_sync_times: defaultTimes,
     };
   } else {
     syncSettings = {
-      sync_enabled: syncSettingsData.sync_enabled ?? true,
       timezone: syncSettingsData.timezone,
       daily_sync_times: syncSettingsData.daily_sync_times,
     };
@@ -87,7 +83,6 @@ export default async function SettingsPage() {
       currentPlan={normalizedPlan}
       planLabel={planConfig.label}
       syncsPerDay={planConfig.syncsPerDay}
-      initialSyncEnabled={syncSettings.sync_enabled}
       initialTimezone={syncSettings.timezone}
       initialTimes={syncSettings.daily_sync_times}
       lastCompetitorSyncAt={syncResults?.last_competitor_sync_at || null}
