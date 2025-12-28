@@ -13,23 +13,19 @@ import { MatchActions } from "@/components/competitors/match-actions";
 import { AutoMatchButton } from "@/components/competitors/auto-match-button";
 import { ManualMatchForm } from "@/components/competitors/manual-match-form";
 
-interface Match {
+type ProductRow = {
   id: string;
-  match_score: number;
-  status: string;
-  products: {
-    id: string;
-    name: string;
-    sku: string;
-    price: number;
-  };
-  competitor_products: {
-    id: string;
-    name: string;
-    sku: string;
-    price: number;
-  };
-}
+  name: string;
+  sku: string | null;
+  price: number | null;
+};
+
+type CompetitorProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number | null;
+};
 
 export default async function CompetitorMatchesPage({
   params,
@@ -71,13 +67,15 @@ export default async function CompetitorMatchesPage({
   }
 
   // Get all competitor_products for this competitor
-  const { data: competitorProducts = [] } = await supabase
+  const { data: competitorProducts } = await supabase
     .from("competitor_products")
     .select("id, name, sku, price")
     .eq("competitor_id", competitorId);
 
+  const safeCompetitorProducts = competitorProducts ?? [];
+
   // If no competitor products exist, show empty state
-  if (competitorProducts.length === 0) {
+  if (safeCompetitorProducts.length === 0) {
     return (
       <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-6">
         <div className="flex items-center gap-4">
@@ -107,16 +105,18 @@ export default async function CompetitorMatchesPage({
   }
 
   // Get all my products for the store
-  const { data: myProducts = [] } = await supabase
+  const { data: myProducts } = await supabase
     .from("products")
     .select("id, name, sku, price")
     .eq("store_id", store.id)
     .eq("is_demo", false);
 
-  const competitorProductIds = competitorProducts.map((cp) => cp.id);
+  const safeMyProducts = myProducts ?? [];
+
+  const competitorProductIds = safeCompetitorProducts.map((cp) => cp.id);
 
   // Get all product_matches for this store + competitor
-  const { data: matches = [], error: matchesError } = await supabase
+  const { data: matches, error: matchesError } = await supabase
     .from("product_matches")
     .select(`
       id,
@@ -138,6 +138,8 @@ export default async function CompetitorMatchesPage({
     .eq("store_id", store.id)
     .in("competitor_product_id", competitorProductIds.length > 0 ? competitorProductIds : [""])
     .order("created_at", { ascending: false });
+
+  const safeMatches = matches ?? [];
 
   if (matchesError) {
     console.error("Error loading matches:", matchesError);
@@ -181,7 +183,7 @@ export default async function CompetitorMatchesPage({
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Product Matches</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {competitor.name} • {matches.length} matches
+            {competitor.name} • {safeMatches.length} matches
           </p>
         </div>
       </div>
@@ -200,7 +202,7 @@ export default async function CompetitorMatchesPage({
       </div>
 
       {/* Matches List */}
-      {matches.length === 0 ? (
+      {safeMatches.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No products found yet.</p>
@@ -211,9 +213,9 @@ export default async function CompetitorMatchesPage({
         </Card>
       ) : (
         <div className="space-y-4">
-          {(matches as Match[]).map((match) => {
-            const product = match.products as Match["products"];
-            const competitorProduct = match.competitor_products as Match["competitor_products"];
+          {safeMatches.map((match) => {
+            const product = (Array.isArray(match.products) ? match.products[0] : match.products) as ProductRow | null;
+            const competitorProduct = (Array.isArray(match.competitor_products) ? match.competitor_products[0] : match.competitor_products) as CompetitorProductRow | null;
 
             if (!product || !competitorProduct) {
               return null;
@@ -238,8 +240,8 @@ export default async function CompetitorMatchesPage({
                       <h3 className="text-sm font-semibold text-muted-foreground">YOUR PRODUCT</h3>
                       <div className="space-y-1">
                         <p className="font-semibold">{product.name}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
-                        <p className="text-lg font-semibold">${product.price.toFixed(2)}</p>
+                        <p className="text-sm text-muted-foreground">SKU: {product.sku || "N/A"}</p>
+                        <p className="text-lg font-semibold">${(product.price ?? 0).toFixed(2)}</p>
                       </div>
                     </div>
 
@@ -248,8 +250,8 @@ export default async function CompetitorMatchesPage({
                       <h3 className="text-sm font-semibold text-muted-foreground">SUGGESTED COMPETITOR PRODUCT</h3>
                       <div className="space-y-1">
                         <p className="font-semibold">{competitorProduct.name}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {competitorProduct.sku}</p>
-                        <p className="text-lg font-semibold">${competitorProduct.price.toFixed(2)}</p>
+                        <p className="text-sm text-muted-foreground">SKU: {competitorProduct.sku || "N/A"}</p>
+                        <p className="text-lg font-semibold">${(competitorProduct.price ?? 0).toFixed(2)}</p>
                       </div>
                     </div>
                   </div>
@@ -260,7 +262,7 @@ export default async function CompetitorMatchesPage({
                     <MatchActions
                       matchId={match.id}
                       status={match.status}
-                      competitorProducts={competitorProducts}
+                      competitorProducts={safeCompetitorProducts}
                       onStatusChange={() => {
                         // This will be handled by client component refresh
                       }}
@@ -275,12 +277,12 @@ export default async function CompetitorMatchesPage({
 
       {/* Manual Match Form */}
       <ManualMatchForm
-        myProducts={myProducts.map((p) => ({
+        myProducts={safeMyProducts.map((p) => ({
           id: p.id,
           name: p.name,
           sku: p.sku || "",
         }))}
-        competitorProducts={competitorProducts.map((cp) => ({
+        competitorProducts={safeCompetitorProducts.map((cp) => ({
           id: cp.id,
           name: cp.name,
           sku: cp.sku || null,

@@ -4,12 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-export function DeleteCompetitorButton({ competitorId }: { competitorId: string }) {
+export function DeleteCompetitorButton({ competitorId, competitorName }: { competitorId: string; competitorName?: string }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("Do you really want to delete this competitor store?")) return;
+    const confirmMessage = competitorName
+      ? `Do you really want to delete "${competitorName}"?`
+      : "Do you really want to delete this competitor store?";
+    if (!confirm(confirmMessage)) return;
 
     try {
       setIsLoading(true);

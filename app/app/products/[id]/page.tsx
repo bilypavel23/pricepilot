@@ -54,10 +54,25 @@ export default async function ProductDetailPage({
   // Load recent activity for this product
   const activityEvents = await getProductActivityEvents(store.id, id, 3);
 
+  // Filter out competitors with null competitorId to match Competitor type
+  const safeCompetitors = (productData.competitors ?? []).filter(
+    (c) => c.competitorId !== null
+  ) as Array<{
+    matchId: string;
+    competitorId: string;
+    competitorName: string;
+    competitorUrl: string | null;
+    competitorProductId: string;
+    competitorProductName: string | null;
+    competitorProductUrl: string | null;
+    competitorPrice: number | null;
+    lastSyncAt: string | null;
+  }>;
+
   return (
     <ProductDetailClient
       product={productData.product}
-      competitors={productData.competitors}
+      competitors={safeCompetitors}
       competitorAvg={productData.competitorAvg}
       margin={margin}
       activityEvents={activityEvents}

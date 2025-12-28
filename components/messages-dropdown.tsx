@@ -208,11 +208,9 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
   return (
     <>
       <DropdownMenu open={openDropdown} onOpenChange={setOpenDropdown}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 h-9 w-9 p-0"
+        <DropdownMenuTrigger>
+          <div
+            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 h-9 w-9 p-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent hover:text-accent-foreground dark:hover:bg-white/5 dark:text-gray-200"
             aria-label="Open messages"
           >
             <Mail className="h-5 w-5" />
@@ -221,13 +219,11 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
                 {unreadCount}
               </span>
             )}
-          </Button>
+          </div>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent
-          align="end"
-          sideOffset={8}
-          className="z-[100] w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900"
+          className="z-[100] w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900 right-0 origin-top-right mt-2"
         >
           <DropdownMenuLabel className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
             <span>Messages</span>

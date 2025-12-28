@@ -22,41 +22,27 @@ export async function getProductActivityEvents(
       .order("created_at", { ascending: false })
       .limit(limit * 10); // Fetch more to account for filtering
 
-    if (error) {
-      // Gracefully handle errors
-      if (
-        error.message?.includes("does not exist") ||
-        error.code === "42P01"
-      ) {
-        return [];
-      }
-      console.warn("Failed to fetch product activity events:", error);
-      return [];
+    // Null guard: if no error, process data and return early
+    if (!error) {
+      // Filter events where meta.productId matches
+      const filteredEvents = (allEvents || [])
+        .filter((event) => {
+          if (!event.meta || typeof event.meta !== "object") return false;
+          return (event.meta as any).productId === productId;
+        })
+        .slice(0, limit);
+      return filteredEvents;
     }
 
-    // Filter events where meta.productId matches
-    const filteredEvents = (allEvents || [])
-      .filter((event) => {
-        if (!event.meta || typeof event.meta !== "object") return false;
-        return (event.meta as any).productId === productId;
-      })
-      .slice(0, limit);
-
-    return filteredEvents;
-
-    if (error) {
-      // Gracefully handle errors
-      if (
-        error.message?.includes("does not exist") ||
-        error.code === "42P01"
-      ) {
-        return [];
-      }
-      console.warn("Failed to fetch product activity events:", error);
+    // Gracefully handle errors (error is non-null here)
+    if (
+      error.message?.includes("does not exist") ||
+      error.code === "42P01"
+    ) {
       return [];
     }
-
-    return data || [];
+    console.warn("Failed to fetch product activity events:", error);
+    return [];
   } catch (err: any) {
     console.warn("Exception fetching product activity events:", err);
     return [];

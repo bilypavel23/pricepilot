@@ -57,16 +57,12 @@ export function Topbar({ plan }: { plan: Plan }) {
         
         {/* Profile Dropdown */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="relative h-10 w-10 rounded-full hover:scale-105 transition-transform duration-200 border-2 border-border hover:border-primary dark:border-white/10 dark:hover:border-white/20"
-            >
+          <DropdownMenuTrigger>
+            <div className="relative h-10 w-10 rounded-full hover:scale-105 transition-transform duration-200 border-2 border-border hover:border-primary dark:border-white/10 dark:hover:border-white/20 inline-flex items-center justify-center hover:bg-accent hover:text-accent-foreground dark:hover:bg-white/5 dark:text-gray-200 cursor-pointer">
               <User className="h-5 w-5" />
-            </Button>
+            </div>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 rounded-xl border-border shadow-lg">
+          <DropdownMenuContent className="w-56 rounded-xl border-border shadow-lg right-0 origin-top-right">
             <DropdownMenuSeparator className="my-1" />
             <DropdownMenuLabel className="flex items-center gap-2">
               <span className="text-base">{badge.emoji}</span>
@@ -75,19 +71,19 @@ export function Topbar({ plan }: { plan: Plan }) {
                 {badge.label}
               </Badge>
             </DropdownMenuLabel>
-            <DropdownMenuItem asChild>
+            <DropdownMenuItem>
               <Link href="/app/pricing" className="flex items-center cursor-pointer">
                 <CreditCard className="mr-2 h-4 w-4" />
                 <span>Manage plan</span>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
+            <DropdownMenuItem>
               <Link href="/app/settings" className="flex items-center cursor-pointer">
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
+            <DropdownMenuItem>
               <Link href="/app/settings" className="flex items-center cursor-pointer">
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>

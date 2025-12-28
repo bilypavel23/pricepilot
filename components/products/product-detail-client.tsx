@@ -52,6 +52,7 @@ interface Competitor {
 
 interface ActivityEvent {
   id: string;
+  type: string;
   title: string;
   created_at: string;
 }
@@ -275,7 +276,7 @@ export function ProductDetailClient({
           message: hasWarning 
             ? data.warning 
             : "Competitor product added.",
-          type: hasWarning ? "warning" : "success",
+          type: hasWarning ? "info" : "success",
         },
       ]);
 

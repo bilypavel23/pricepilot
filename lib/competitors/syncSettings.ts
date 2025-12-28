@@ -85,13 +85,14 @@ export async function getOrCreateStoreSyncSettings(
   if (error || !upserted) {
     // If upsert fails (e.g., RLS policy, table doesn't exist), just return defaults
     // This allows the app to continue working even if sync settings table isn't set up yet
+    const errorStatus = (error as any)?.status ?? null;
     console.warn("Failed to upsert store_sync_settings, using defaults:", {
       storeId,
       message: error?.message || "Unknown error",
       code: error?.code || "NO_CODE",
       details: error?.details || null,
       hint: error?.hint || null,
-      status: error?.status || null,
+      status: errorStatus,
     });
     return defaults;
   }

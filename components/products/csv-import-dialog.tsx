@@ -5,7 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Upload, ArrowRight, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { autoMapCsvColumns, validateMapping, type CsvColumnMapping } from "@/lib/csvMapping";
 import { parseCSV } from "@/lib/csvParser";
@@ -222,16 +228,20 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     Name <span className="text-red-400">*</span>
                   </Label>
                   <Select
-                    id="map-name"
                     value={mapping.name || ""}
-                    onChange={(e) => handleMappingChange("name", e.target.value)}
+                    onValueChange={(value) => handleMappingChange("name", value)}
                   >
-                    <option value="">-- Select column --</option>
-                    {csvHeaders.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
+                    <SelectTrigger id="map-name">
+                      <SelectValue placeholder="-- Select column --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">-- Select column --</SelectItem>
+                      {csvHeaders.map((header) => (
+                        <SelectItem key={header} value={header}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -241,16 +251,20 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     SKU <span className="text-red-400">*</span>
                   </Label>
                   <Select
-                    id="map-sku"
                     value={mapping.sku || ""}
-                    onChange={(e) => handleMappingChange("sku", e.target.value)}
+                    onValueChange={(value) => handleMappingChange("sku", value)}
                   >
-                    <option value="">-- Select column --</option>
-                    {csvHeaders.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
+                    <SelectTrigger id="map-sku">
+                      <SelectValue placeholder="-- Select column --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">-- Select column --</SelectItem>
+                      {csvHeaders.map((header) => (
+                        <SelectItem key={header} value={header}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -260,16 +274,20 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     Price <span className="text-red-400">*</span>
                   </Label>
                   <Select
-                    id="map-price"
                     value={mapping.price || ""}
-                    onChange={(e) => handleMappingChange("price", e.target.value)}
+                    onValueChange={(value) => handleMappingChange("price", value)}
                   >
-                    <option value="">-- Select column --</option>
-                    {csvHeaders.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
+                    <SelectTrigger id="map-price">
+                      <SelectValue placeholder="-- Select column --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">-- Select column --</SelectItem>
+                      {csvHeaders.map((header) => (
+                        <SelectItem key={header} value={header}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -277,16 +295,20 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                 <div>
                   <Label htmlFor="map-cost">Cost (optional)</Label>
                   <Select
-                    id="map-cost"
                     value={mapping.cost || ""}
-                    onChange={(e) => handleMappingChange("cost", e.target.value)}
+                    onValueChange={(value) => handleMappingChange("cost", value)}
                   >
-                    <option value="">-- Select column (optional) --</option>
-                    {csvHeaders.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
+                    <SelectTrigger id="map-cost">
+                      <SelectValue placeholder="-- Select column (optional) --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">-- Select column (optional) --</SelectItem>
+                      {csvHeaders.map((header) => (
+                        <SelectItem key={header} value={header}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -294,16 +316,20 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                 <div>
                   <Label htmlFor="map-inventory">Inventory (optional)</Label>
                   <Select
-                    id="map-inventory"
                     value={mapping.inventory || ""}
-                    onChange={(e) => handleMappingChange("inventory", e.target.value)}
+                    onValueChange={(value) => handleMappingChange("inventory", value)}
                   >
-                    <option value="">-- Select column (optional) --</option>
-                    {csvHeaders.map((header) => (
-                      <option key={header} value={header}>
-                        {header}
-                      </option>
-                    ))}
+                    <SelectTrigger id="map-inventory">
+                      <SelectValue placeholder="-- Select column (optional) --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">-- Select column (optional) --</SelectItem>
+                      {csvHeaders.map((header) => (
+                        <SelectItem key={header} value={header}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
