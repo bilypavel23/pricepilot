@@ -68,12 +68,12 @@ export default function ForgotPasswordPage() {
               <p className="text-sm text-slate-300">
                 Please check your inbox and click the link to reset your password. The link will expire in 1 hour.
               </p>
-              <Button
-                asChild
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+              <Link
+                href="/login"
+                className="w-full inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 h-10"
               >
-                <Link href="/login">Back to login</Link>
-              </Button>
+                Back to login
+              </Link>
             </div>
           </CardContent>
         </Card>
