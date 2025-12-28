@@ -1,0 +1,49 @@
+[33mda6593c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m settings fixed
+[33m07a74a6[m sync times fix
+[33mfa00999[m compet URL sync
+[33me0a36e2[m sync comp
+[33m40ec85d[m sync
+[33m9006c92[m shopify scrap
+[33mf249dca[m Competitor store working
+[33me1fc7ac[m competitor store tracking
+[33m5848d62[m Competitor store,recommendations
+[33mf3dfd37[m tracing recommandations
+[33m544d446[m tracking
+[33m6b568ba[m matches dropdown menu
+[33m14205de[m Matches
+[33m565eb93[m competitor stre
+[33m0b9a91b[m competitor store matches
+[33m13958d8[m semi ffunctional competitor store
+[33m69f62f8[m 6000 products card
+[33maa68c3d[m Competitor product store scrap
+[33mef85068[m Finishing rest of pages and landing page
+[33m76d41fe[m Dashboard,products finishing touches
+[33m06146b3[m Forgot password implementation
+[33m091634e[m Dashboard graph fixed
+[33m11fb8d0[m Competitors adding URLs
+[33m6774830[m Competitors fixing
+[33m13c176d[m Add competitor URl fixed
+[33m9679785[m Pricing, sync fix
+[33m9d1e3b7[m landing page fixed
+[33m9bd24bc[m landing page UI
+[33m3c31f36[m landing page UX
+[33m6f0f532[m Landing page fix
+[33m8b9a62c[m Fixing minor changes text,grapgs,overview
+[33m50dc3ae[m product info
+[33mf3c5104[m Fixing graphs,Fix setting page
+[33m517c6bf[m Fixed whole app
+[33maf5256b[m Recommandation page logic
+[33m6b9e971[m Competitors scraping,recommandation UI
+[33m2768bbc[m CHat messages works
+[33m663820a[m Fixed bugs with shopify,moved from dashboard to prducts
+[33mf2baee5[m shopify product fix
+[33m92cd846[m shopify added
+[33m9ff321f[m fixed errors
+[33md8928e5[m add Settings Competitors, fix competitors
+[33md39a43a[m Dashboard real data,Fixed products, Add data competitors
+[33mc34fd22[m Pricing page finished
+[33me0584c3[m Pricing fixed
+[33mf48f11d[m Login/reggister, pro plan
+[33macb4ad0[m Added Del/EDIT at products,URL add
+[33m3afc877[m DB Products added ,CSV file added
+[33m2c443d4[m Initial PricePilot UI baseline

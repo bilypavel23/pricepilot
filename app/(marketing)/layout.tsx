@@ -11,11 +11,11 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-50">
+    <div className="min-h-screen w-full overflow-x-hidden bg-slate-950 text-slate-50">
       {/* Navbar */}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
-          <Link href="/" className="flex items-center">
+          <Link href="/" prefetch={false} className="flex items-center">
             <Image
               src="/landing/pricepilot.png"
               alt="PricePilot"
@@ -28,13 +28,13 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
           {/* Desktop Navigation */}
           <nav className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
-            <Link href="#features" className="hover:text-white transition-colors">
+            <Link href="/#features" className="hover:text-white transition-colors">
               Features
             </Link>
-            <Link href="#how-it-works" className="hover:text-white transition-colors">
+            <Link href="/#how-it-works" className="hover:text-white transition-colors">
               How it works
             </Link>
-            <Link href="#pricing" className="hover:text-white transition-colors">
+            <Link href="/#pricing" className="hover:text-white transition-colors">
               Pricing
             </Link>
           </nav>
@@ -73,21 +73,21 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <div className="md:hidden border-t border-slate-800 bg-slate-950/95 backdrop-blur">
             <nav className="mx-auto max-w-7xl px-4 py-4 space-y-3">
               <Link
-                href="#features"
+                href="/#features"
                 className="block text-sm text-slate-300 hover:text-white transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Features
               </Link>
               <Link
-                href="#how-it-works"
+                href="/#how-it-works"
                 className="block text-sm text-slate-300 hover:text-white transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 How it works
               </Link>
               <Link
-                href="#pricing"
+                href="/#pricing"
                 className="block text-sm text-slate-300 hover:text-white transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
@@ -118,7 +118,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       </header>
 
       {/* Content */}
-      <main className="flex-1 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-950">
+      <main className="w-full bg-gradient-to-b from-slate-950 via-slate-950 to-slate-950">
         {children}
       </main>
 
@@ -127,20 +127,11 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         <div className="mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-8 text-sm text-slate-500 sm:flex-row">
           <span>© {new Date().getFullYear()} PricePilot. All rights reserved.</span>
           <div className="flex flex-wrap items-center justify-center gap-6">
-            <Link href="#pricing" className="hover:text-slate-300 transition-colors">
+            <Link href="/pricing" className="hover:text-slate-300 transition-colors">
               Pricing
             </Link>
-            <Link href="#features" className="hover:text-slate-300 transition-colors">
+            <Link href="/features" className="hover:text-slate-300 transition-colors">
               Features
-            </Link>
-            <Link href="#" className="hover:text-slate-300 transition-colors">
-              Privacy
-            </Link>
-            <Link href="#" className="hover:text-slate-300 transition-colors">
-              Terms
-            </Link>
-            <Link href="#" className="hover:text-slate-300 transition-colors">
-              Contact
             </Link>
           </div>
         </div>

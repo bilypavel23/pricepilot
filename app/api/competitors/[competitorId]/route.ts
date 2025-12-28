@@ -1,128 +1,214 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { findBestMatches } from "@/lib/competitors/matching";
+import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
+import { isAmazonUrl } from "@/lib/competitors/validation";
+import { getHoursBetweenSyncs, getSyncsPerDay } from "@/lib/plans";
+import { checkSyncLimit, recordSyncRun } from "@/lib/enforcement/syncLimits";
 
-// Test GET endpoint to verify route is working
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ competitorId: string }> }
-) {
-  const { competitorId } = await params;
-  return NextResponse.json({ message: "Route is working", competitorId });
+interface Params {
+  params: Promise<{ competitorId: string }>;
 }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ competitorId: string }> }
-) {
-  const { competitorId } = await params;
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
+export async function POST(_req: Request, { params }: Params) {
+  try {
+    const supabase = await createClient();
+    const { competitorId } = await params;
+
+    // 1) Auth
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-  );
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+    // 2) Find competitor store + its store_id
+    const { data: competitor, error: compError } = await supabase
+      .from("competitors")
+      .select("id, store_id, url, last_sync_at")
+      .eq("id", competitorId)
+      .single();
 
-  if (userError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (compError || !competitor) {
+      return NextResponse.json(
+        { error: "Competitor not found" },
+        { status: 404 }
+      );
+    }
+
+    const storeId = competitor.store_id;
+
+    // Block Amazon URLs
+    if (isAmazonUrl(competitor.url as string)) {
+      return NextResponse.json(
+        { error: "Amazon is not supported." },
+        { status: 400 }
+      );
+    }
+
+    // 3) Get plan and enforce sync limits
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .single();
+
+    const plan = profile?.plan;
+
+    // Check daily sync limit
+    const syncLimitCheck = await checkSyncLimit(storeId, plan);
+    if (!syncLimitCheck.allowed) {
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: true,
+          reason: syncLimitCheck.reason || "Sync limit reached for today.",
+          todayCount: syncLimitCheck.todayCount,
+          limit: syncLimitCheck.limit,
+          nextAllowedAt: syncLimitCheck.nextAllowedAt?.toISOString(),
+        },
+        { status: 200 }
+      );
+    }
+
+    // Check cooldown between syncs
+    const hoursBetweenSync = getHoursBetweenSyncs(plan);
+
+    if (competitor.last_sync_at) {
+      const last = new Date(competitor.last_sync_at);
+      const nextAllowed = new Date(
+        last.getTime() + hoursBetweenSync * 60 * 60 * 1000
+      );
+      if (nextAllowed > new Date()) {
+        return NextResponse.json(
+          {
+            ok: true,
+            skipped: true,
+            reason: `Sync already run recently. Next sync available at ${nextAllowed.toISOString()}`,
+            nextAllowedAt: nextAllowed.toISOString(),
+          },
+          { status: 200 }
+        );
+      }
+    }
+
+    // 4) Load my products for this store
+    const { data: myProducts, error: myErr } = await supabase
+      .from("products")
+      .select("id, name, sku")
+      .eq("store_id", storeId)
+      .eq("status", "active");
+
+    if (myErr) {
+      console.error("My products load error:", myErr);
+      return NextResponse.json(
+        { error: "Failed to load products" },
+        { status: 500 }
+      );
+    }
+
+    // 5) Scrape competitor
+    const competitorUrl = competitor.url as string;
+    const scraped = await scrapeCompetitorProducts(competitorUrl);
+
+    // 6) Upsert competitor_products
+    const upsertPayload = (scraped ?? []).map((p) => ({
+      competitor_id: competitorId,
+      external_id: p.external_id ?? null,
+      name: p.name,
+      sku: null,
+      price: p.price ?? null,
+      currency: "USD",
+      url: p.url ?? null,
+      raw: p.raw ?? null,
+    }));
+
+    const { data: competitorProducts, error: cpErr } = await supabase
+      .from("competitor_products")
+      .upsert(upsertPayload, {
+        onConflict: "competitor_id,name,sku",
+        ignoreDuplicates: false,
+      })
+      .select("id, name, sku");
+
+    if (cpErr) {
+      console.error("Upsert competitor_products error:", cpErr);
+      return NextResponse.json(
+        { error: "Failed to save competitor products" },
+        { status: 500 }
+      );
+    }
+
+    // 7) Find best matches
+    const matches = findBestMatches(
+      (myProducts ?? []).map((p) => ({
+        id: p.id as string,
+        name: p.name as string,
+        sku: (p.sku as string | null) ?? undefined,
+      })),
+      (competitorProducts ?? []).map((p) => ({
+        id: p.id as string,
+        name: p.name as string,
+        sku: (p.sku as string | null) ?? undefined,
+      })),
+      60 // minScore
+    );
+
+    // 8) Save to product_matches (pending / auto_confirmed)
+    const now = new Date().toISOString();
+    const rows = matches.map((m) => ({
+      store_id: storeId,
+      product_id: m.productId,
+      competitor_product_id: m.competitorProductId,
+      similarity: m.similarity,
+      status: m.similarity >= 90 ? "auto_confirmed" : "pending",
+      created_at: now,
+      updated_at: now,
+    }));
+
+    if (rows.length) {
+      const { error: pmErr } = await supabase
+        .from("product_matches")
+        .upsert(rows, {
+          onConflict: "product_id,competitor_product_id",
+        });
+
+      if (pmErr) {
+        console.error("product_matches upsert error:", pmErr);
+        return NextResponse.json(
+          { error: "Failed to save matches" },
+          { status: 500 }
+        );
+      }
+    }
+
+    // 9) Update last_sync_at
+    await supabase
+      .from("competitors")
+      .update({ last_sync_at: now })
+      .eq("id", competitorId);
+
+    // 10) Record sync run for daily limit tracking
+    await recordSyncRun(storeId);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        matched: rows.length,
+        autoConfirmed: rows.filter((r) => r.status === "auto_confirmed")
+          .length,
+        syncsRemaining: syncLimitCheck.remaining - 1,
+      },
+      { status: 200 }
+    );
+  } catch (e) {
+    console.error("Competitor sync error:", e);
+    return NextResponse.json(
+      { error: "Unexpected error" },
+      { status: 500 }
+    );
   }
-
-  // Try to load competitor and ensure it belongs to one of the user's stores
-  const { data: competitor, error: competitorError } = await supabase
-    .from("competitors")
-    .select("id, store_id")
-    .eq("id", competitorId)
-    .single();
-
-  if (competitorError || !competitor) {
-    // Competitor not found in DB or not visible due to RLS
-    return NextResponse.json({ error: "Competitor not found" }, { status: 404 });
-  }
-
-  // Verify competitor belongs to user's store
-  const { data: store } = await supabase
-    .from("stores")
-    .select("id, owner_id")
-    .eq("owner_id", user.id)
-    .eq("id", competitor.store_id)
-    .single();
-
-  if (!store) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const storeId = competitor.store_id;
-
-  // Step 1: Delete competitor_product_matches ONLY for this competitor_id + store_id
-  // CRITICAL: Must filter by BOTH store_id AND competitor_id to avoid deleting other competitors' matches
-  const { error: matchesDeleteError } = await supabaseAdmin
-    .from("competitor_product_matches")
-    .delete()
-    .eq("store_id", storeId)
-    .eq("competitor_id", competitorId);
-
-  if (matchesDeleteError) {
-    console.error("Error deleting competitor_product_matches:", JSON.stringify(matchesDeleteError, null, 2));
-    // Continue anyway - competitor deletion should proceed
-  } else {
-    console.log(`[delete-competitor] Deleted competitor_product_matches for competitor_id=${competitorId}, store_id=${storeId}`);
-  }
-
-  // Step 2: Delete competitor_match_candidates ONLY for this competitor_id + store_id
-  const { error: candidatesDeleteError } = await supabaseAdmin
-    .from("competitor_match_candidates")
-    .delete()
-    .eq("store_id", storeId)
-    .eq("competitor_id", competitorId);
-
-  if (candidatesDeleteError) {
-    console.error("Error deleting competitor_match_candidates:", JSON.stringify(candidatesDeleteError, null, 2));
-    // Continue anyway - competitor deletion should proceed
-  } else {
-    console.log(`[delete-competitor] Deleted competitor_match_candidates for competitor_id=${competitorId}, store_id=${storeId}`);
-  }
-
-  // Step 3: Delete competitor_store_products (staging) ONLY for this competitor_id + store_id
-  const { error: stagingDeleteError } = await supabaseAdmin
-    .from("competitor_store_products")
-    .delete()
-    .eq("store_id", storeId)
-    .eq("competitor_id", competitorId);
-
-  if (stagingDeleteError) {
-    console.error("Error deleting competitor_store_products:", JSON.stringify(stagingDeleteError, null, 2));
-    // Continue anyway - competitor deletion should proceed
-  } else {
-    console.log(`[delete-competitor] Deleted competitor_store_products for competitor_id=${competitorId}, store_id=${storeId}`);
-  }
-
-  // Step 4: Delete competitor (RLS on competitors must allow delete for this store_id)
-  // This should be last, as it may trigger CASCADE deletes if foreign keys are set up
-  const { error: deleteError } = await supabase
-    .from("competitors")
-    .delete()
-    .eq("id", competitorId);
-
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
-  }
-
-  console.log(`[delete-competitor] Successfully deleted competitor_id=${competitorId} and all related data`);
-
-  return NextResponse.json({ success: true });
 }
-

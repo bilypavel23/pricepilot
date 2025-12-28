@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { User, LogOut, CreditCard, Settings } from "lucide-react";
 import { PLAN_BADGES, type Plan } from "@/lib/planLimits";
 import { MessagesDropdown } from "@/components/messages-dropdown";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { cn } from "@/lib/utils";
 
 export function Topbar({ plan }: { plan: Plan }) {
@@ -50,6 +51,9 @@ export function Topbar({ plan }: { plan: Plan }) {
         
         {/* Messages Dropdown */}
         <MessagesDropdown plan={plan} />
+        
+        {/* Notifications Bell */}
+        <NotificationsBell />
         
         {/* Profile Dropdown */}
         <DropdownMenu>
