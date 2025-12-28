@@ -3,9 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -41,21 +39,18 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
           {/* Desktop CTA Buttons */}
           <div className="hidden items-center gap-3 md:flex">
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="text-sm text-slate-200 hover:bg-slate-900 hover:text-white"
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 h-9 px-3 text-xs text-slate-200 hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <Link href="/login">Log in</Link>
-            </Button>
-            <Button
-              asChild
-              size="sm"
-              className="text-sm rounded-full bg-blue-500 px-5 font-medium text-white hover:bg-blue-600"
+              Log in
+            </Link>
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center rounded-full text-sm font-medium transition-all duration-200 h-9 px-5 text-xs bg-blue-500 text-white hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <Link href="/register">Get started</Link>
-            </Button>
+              Get started
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -94,23 +89,20 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                 Pricing
               </Link>
               <div className="pt-3 space-y-2 border-t border-slate-800">
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-sm text-slate-200 hover:bg-slate-900 hover:text-white"
+                <Link
+                  href="/login"
                   onClick={() => setMobileMenuOpen(false)}
+                  className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 h-9 px-3 text-xs w-full text-slate-200 hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <Link href="/login">Log in</Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="w-full text-sm rounded-full bg-blue-500 font-medium text-white hover:bg-blue-600"
+                  Log in
+                </Link>
+                <Link
+                  href="/register"
                   onClick={() => setMobileMenuOpen(false)}
+                  className="inline-flex items-center justify-center rounded-full text-sm font-medium transition-all duration-200 h-9 px-3 text-xs w-full bg-blue-500 text-white hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <Link href="/register">Get started</Link>
-                </Button>
+                  Get started
+                </Link>
               </div>
             </nav>
           </div>
