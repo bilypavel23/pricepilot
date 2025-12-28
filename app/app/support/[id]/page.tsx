@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import SupportReplyForm from "./reply-form";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function SupportConversationPage({ params }: PageProps) {
@@ -29,7 +29,8 @@ export default async function SupportConversationPage({ params }: PageProps) {
     return <div>Unauthorized</div>;
   }
 
-  const conversationId = params.id;
+  const { id } = await params;
+  const conversationId = id;
 
   const { data: conversation } = await supabase
     .from("support_conversations")
