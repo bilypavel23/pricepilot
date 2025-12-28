@@ -1,23 +1,14 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { getOrCreateStore } from "@/lib/store";
 
 export async function GET(req: Request) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  // Require authentication for OAuth callback
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) {
+    return authResult; // 401 response
+  }
+  const { supabase } = authResult;
 
   const url = new URL(req.url);
   const shop = url.searchParams.get("shop");

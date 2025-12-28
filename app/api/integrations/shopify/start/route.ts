@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 
 export async function GET(req: Request) {
+  // Require authentication before initiating OAuth flow
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) {
+    return authResult; // 401 response
+  }
+
   const { searchParams } = new URL(req.url);
   const shop = searchParams.get("shop_domain");
 
