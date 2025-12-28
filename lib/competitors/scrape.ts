@@ -7,6 +7,7 @@ export type RawScrapedProduct = {
   url: string;
   price: number | null;
   currency: string;
+  external_id?: string | null;
   raw?: any;
 };
 
@@ -75,6 +76,7 @@ export async function scrapeCompetitorProducts(storeUrl: string): Promise<RawScr
       url: p.url,
       price: p.price ?? null,
       currency: (p.raw?.currency as string) || "USD",
+      external_id: p.external_id ?? null,
       raw: p.raw,
     }));
   }
