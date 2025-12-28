@@ -92,7 +92,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ success: true, created: matchesToInsert.length });
+    return NextResponse.json({ success: true, created: candidatesToInsert.length });
   } catch (err: any) {
     console.error("Error in POST /api/competitors/[competitorId]/auto-match:", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
