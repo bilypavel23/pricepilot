@@ -252,23 +252,22 @@ function PricingSection() {
                       </>
                     )}
                   </ul>
-                  <Button
-                    className={cn(
-                      "w-full shadow-lg",
-                      (isPopular || isScale) && "opacity-60 cursor-not-allowed"
-                    )}
-                    variant="default"
-                    disabled={isPopular || isScale}
-                    asChild={!isPopular && !isScale}
-                  >
-                    {isPopular ? (
-                      <span>Current plan</span>
-                    ) : isScale ? (
-                      <span>Coming Soon</span>
-                    ) : (
-                      <Link href="/register">Upgrade</Link>
-                    )}
-                  </Button>
+                  {(isPopular || isScale) ? (
+                    <Button
+                      className="w-full shadow-lg opacity-60 cursor-not-allowed"
+                      variant="default"
+                      disabled
+                    >
+                      {isPopular ? "Current plan" : "Coming Soon"}
+                    </Button>
+                  ) : (
+                    <Link
+                      href="/register"
+                      className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 w-full shadow-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg hover:scale-[1.02] h-10 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      Upgrade
+                    </Link>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -303,9 +302,12 @@ export default function LandingPage() {
             PricePilot tracks competitor prices, analyzes your margins and market trends, and gives you clear, data-backed price recommendations – so you can increase profit without losing customers.
           </p>
           <div className="flex gap-4 justify-center mb-4">
-            <Button asChild size="lg" className="bg-blue-500 hover:bg-blue-600 text-white text-lg px-8">
-              <Link href="/register">Get started <ArrowRight className="ml-2 h-5 w-5 inline" /></Link>
-            </Button>
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center rounded-lg text-base font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white px-8 h-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Get started <ArrowRight className="ml-2 h-5 w-5 inline" />
+            </Link>
             </div>
           <p className="text-sm text-slate-500 mb-2">No credit card required</p>
           <p className="text-xs text-slate-500">PricePilot is currently in beta. Features and pricing may change.</p>
@@ -457,9 +459,12 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><X className="h-5 w-5 text-slate-500" /><span className="text-slate-500">No automation</span></li>
               <li className="flex items-center gap-2"><Check className="h-5 w-5 text-blue-400" /><span className="text-slate-300">Support: Email</span></li>
             </ul>
-            <Button asChild className="w-full bg-blue-500 hover:bg-blue-600 text-white">
-              <Link href="/register">Upgrade</Link>
-            </Button>
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 w-full bg-blue-500 hover:bg-blue-600 text-white h-10 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Upgrade
+            </Link>
           </div>
           <div className="p-8 rounded-xl bg-blue-900/50 border-2 border-blue-500 relative">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-medium">Most Popular</div>
@@ -477,9 +482,12 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><Check className="h-5 w-5 text-blue-400" /><span className="text-slate-300">Competitor out-of-stock alerts</span></li>
               <li className="flex items-center gap-2"><Check className="h-5 w-5 text-blue-400" /><span className="text-slate-300">Support: Priority</span></li>
             </ul>
-            <Button asChild className="w-full bg-blue-500 hover:bg-blue-600 text-white">
-              <Link href="/register">Get started</Link>
-            </Button>
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 w-full bg-blue-500 hover:bg-blue-600 text-white h-10 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Get started
+            </Link>
           </div>
           <div className="p-8 rounded-xl bg-slate-900/50 border border-slate-800 relative">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-slate-700 text-white px-4 py-1 rounded-full text-sm font-medium">Coming Soon</div>
@@ -497,8 +505,11 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><Check className="h-5 w-5 text-blue-400" /><span className="text-slate-300">Dedicated onboarding</span></li>
               <li className="flex items-center gap-2"><Check className="h-5 w-5 text-blue-400" /><span className="text-slate-300">Support: Dedicated</span></li>
             </ul>
-            <Button asChild disabled className="w-full bg-slate-700 text-slate-400 cursor-not-allowed">
-              <Link href="#">Coming Soon</Link>
+            <Button
+              disabled
+              className="w-full bg-slate-700 text-slate-400 cursor-not-allowed"
+            >
+              Coming Soon
             </Button>
           </div>
         </div>
@@ -535,9 +546,12 @@ export default function LandingPage() {
         <div className="max-w-3xl mx-auto text-center p-12 rounded-2xl bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border border-blue-500/20">
           <h2 className="text-4xl font-bold text-white mb-4">Ready to stop leaving money on the table?</h2>
           <p className="text-xl text-slate-300 mb-8">Start a 14-day free trial, connect your store in minutes, and see how much profit you&apos;re missing today.</p>
-          <Button asChild size="lg" className="bg-blue-500 hover:bg-blue-600 text-white text-lg px-8">
-            <Link href="/register">Get started <ArrowRight className="ml-2 h-5 w-5 inline" /></Link>
-          </Button>
+          <Link
+            href="/register"
+            className="inline-flex items-center justify-center rounded-lg text-base font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white px-8 h-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Get started <ArrowRight className="ml-2 h-5 w-5 inline" />
+          </Link>
           <p className="text-sm text-slate-400 mt-4">No credit card required • Cancel anytime</p>
             </div>
       </section>
