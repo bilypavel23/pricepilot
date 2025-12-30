@@ -13,26 +13,18 @@ import { MatchActions } from "@/components/competitors/match-actions";
 import { AutoMatchButton } from "@/components/competitors/auto-match-button";
 import { ManualMatchForm } from "@/components/competitors/manual-match-form";
 
-type MatchProduct = { 
-  id: string; 
-  name: string; 
-  sku: string | null; 
-  price: number | null;
-};
-
-type MatchCompetitorProduct = { 
-  id: string; 
-  name: string; 
-  sku: string | null; 
-  price: number | null;
-};
-
-type Match = {
+type ProductRow = {
   id: string;
-  match_score: number | null;
-  status: string | null;
-  products: MatchProduct[]; // array
-  competitor_products: MatchCompetitorProduct[]; // array
+  name: string;
+  sku: string | null;
+  price: number | null;
+};
+
+type CompetitorProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number | null;
 };
 
 export default async function CompetitorMatchesPage({
@@ -80,10 +72,10 @@ export default async function CompetitorMatchesPage({
     .select("id, name, sku, price")
     .eq("competitor_id", competitorId);
 
-  const competitorProductsSafe = competitorProducts ?? [];
+  const safeCompetitorProducts = competitorProducts ?? [];
 
   // If no competitor products exist, show empty state
-  if (competitorProductsSafe.length === 0) {
+  if (safeCompetitorProducts.length === 0) {
     return (
       <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-6">
         <div className="flex items-center gap-4">
@@ -119,9 +111,9 @@ export default async function CompetitorMatchesPage({
     .eq("store_id", store.id)
     .eq("is_demo", false);
 
-  const myProductsSafe = myProducts ?? [];
+  const safeMyProducts = myProducts ?? [];
 
-  const competitorProductIds = competitorProductsSafe.map((cp) => cp.id);
+  const competitorProductIds = safeCompetitorProducts.map((cp) => cp.id);
 
   // Get all product_matches for this store + competitor
   const { data: matches, error: matchesError } = await supabase
@@ -147,13 +139,13 @@ export default async function CompetitorMatchesPage({
     .in("competitor_product_id", competitorProductIds.length > 0 ? competitorProductIds : [""])
     .order("created_at", { ascending: false });
 
-  const matchesSafe = matches ?? [];
+  const safeMatches = matches ?? [];
 
   if (matchesError) {
     console.error("Error loading matches:", matchesError);
   }
 
-  const getStatusBadge = (status: string | null) => {
+  const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       auto_matched: "bg-emerald-500/20 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
       pending: "bg-amber-500/20 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
@@ -168,13 +160,12 @@ export default async function CompetitorMatchesPage({
       rejected: "Rejected",
     };
 
-    const statusKey = (status || "pending").toLowerCase();
     return (
       <Badge
         variant="outline"
-        className={cn("text-xs font-medium", variants[statusKey] || variants.pending)}
+        className={cn("text-xs font-medium", variants[status.toLowerCase()] || variants.pending)}
       >
-        {labels[statusKey] || status || "Pending"}
+        {labels[status.toLowerCase()] || status}
       </Badge>
     );
   };
@@ -192,7 +183,7 @@ export default async function CompetitorMatchesPage({
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Product Matches</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {competitor.name} • {matchesSafe.length} matches
+            {competitor.name} • {safeMatches.length} matches
           </p>
         </div>
       </div>
@@ -211,7 +202,7 @@ export default async function CompetitorMatchesPage({
       </div>
 
       {/* Matches List */}
-      {matchesSafe.length === 0 ? (
+      {safeMatches.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No products found yet.</p>
@@ -222,16 +213,13 @@ export default async function CompetitorMatchesPage({
         </Card>
       ) : (
         <div className="space-y-4">
-          {matchesSafe.map((match) => {
-            const product = match.products?.[0] ?? null;
-            const competitorProduct = match.competitor_products?.[0] ?? null;
+          {safeMatches.map((match) => {
+            const product = (Array.isArray(match.products) ? match.products[0] : match.products) as ProductRow | null;
+            const competitorProduct = (Array.isArray(match.competitor_products) ? match.competitor_products[0] : match.competitor_products) as CompetitorProductRow | null;
 
             if (!product || !competitorProduct) {
               return null;
             }
-
-            const matchScore = match.match_score ?? 0;
-            const matchStatus = match.status ?? "pending";
 
             return (
               <Card key={match.id} className="p-6">
@@ -240,9 +228,9 @@ export default async function CompetitorMatchesPage({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Match Score</span>
-                      <span className="font-medium">{matchScore}%</span>
+                      <span className="font-medium">{match.match_score}%</span>
                     </div>
-                    <Progress value={matchScore} className="h-2" />
+                    <Progress value={match.match_score} className="h-2" />
                   </div>
 
                   {/* Products Comparison */}
@@ -251,11 +239,9 @@ export default async function CompetitorMatchesPage({
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold text-muted-foreground">YOUR PRODUCT</h3>
                       <div className="space-y-1">
-                        <p className="font-semibold">{product.name || "Unknown"}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {product.sku || "-"}</p>
-                        <p className="text-lg font-semibold">
-                          {product.price != null ? `$${product.price.toFixed(2)}` : "-"}
-                        </p>
+                        <p className="font-semibold">{product.name}</p>
+                        <p className="text-sm text-muted-foreground">SKU: {product.sku || "N/A"}</p>
+                        <p className="text-lg font-semibold">${(product.price ?? 0).toFixed(2)}</p>
                       </div>
                     </div>
 
@@ -263,22 +249,20 @@ export default async function CompetitorMatchesPage({
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold text-muted-foreground">SUGGESTED COMPETITOR PRODUCT</h3>
                       <div className="space-y-1">
-                        <p className="font-semibold">{competitorProduct.name || "Unknown"}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {competitorProduct.sku || "-"}</p>
-                        <p className="text-lg font-semibold">
-                          {competitorProduct.price != null ? `$${competitorProduct.price.toFixed(2)}` : "-"}
-                        </p>
+                        <p className="font-semibold">{competitorProduct.name}</p>
+                        <p className="text-sm text-muted-foreground">SKU: {competitorProduct.sku || "N/A"}</p>
+                        <p className="text-lg font-semibold">${(competitorProduct.price ?? 0).toFixed(2)}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Status and Actions */}
                   <div className="flex items-center justify-between pt-4 border-t">
-                    <div>{getStatusBadge(matchStatus)}</div>
+                    <div>{getStatusBadge(match.status)}</div>
                     <MatchActions
                       matchId={match.id}
-                      status={matchStatus}
-                      competitorProducts={competitorProductsSafe}
+                      status={match.status}
+                      competitorProducts={safeCompetitorProducts}
                       onStatusChange={() => {
                         // This will be handled by client component refresh
                       }}
@@ -293,12 +277,12 @@ export default async function CompetitorMatchesPage({
 
       {/* Manual Match Form */}
       <ManualMatchForm
-        myProducts={myProductsSafe.map((p) => ({
+        myProducts={safeMyProducts.map((p) => ({
           id: p.id,
           name: p.name,
           sku: p.sku || "",
         }))}
-        competitorProducts={competitorProductsSafe.map((cp) => ({
+        competitorProducts={safeCompetitorProducts.map((cp) => ({
           id: cp.id,
           name: cp.name,
           sku: cp.sku || null,

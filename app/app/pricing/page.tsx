@@ -86,11 +86,11 @@ export default function PricingPage() {
         {plans.map((plan) => {
           const priceInfo = getPrice(plan.monthlyPrice);
           // Map plan names to currentPlan values for comparison
-          // STARTER -> STARTER, PRO -> PRO, SCALE -> SCALE
+          // STARTER -> STARTER, PRO -> pro, SCALE -> ultra
           const planMap: Record<typeof plan.name, Plan> = {
             STARTER: "STARTER",
-            PRO: "PRO",
-            SCALE: "SCALE",
+            PRO: "pro",
+            SCALE: "ultra",
           };
           const isCurrent = planMap[plan.name] === currentPlan;
           const isPopular = plan.name === "PRO";

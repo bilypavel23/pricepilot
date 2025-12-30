@@ -70,19 +70,11 @@ export default async function DashboardPage() {
   const productsCount = products.length;
   const competitorsCount = competitors.length;
 
-  // Count competitor URLs (product_matches) for the store
+  // Count competitor URLs tracked for the store
   let competitorUrlsCount = 0;
   if (!isDemo) {
-    const { count: urlsCount, error: urlsError } = await supabase
-      .from("product_matches")
-      .select("*", { count: "exact", head: true })
-      .eq("store_id", store.id);
-    
-    if (urlsError) {
-      console.error("Error counting competitor URLs:", urlsError);
-    } else {
-      competitorUrlsCount = urlsCount || 0;
-    }
+    const { getCompetitorUrlsCount } = await import("@/lib/dashboard/getCompetitorUrlsCount");
+    competitorUrlsCount = await getCompetitorUrlsCount(store.id);
   }
 
   // Calculate inventory worth (sum of price * inventory, or just price if no inventory)

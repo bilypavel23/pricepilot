@@ -35,13 +35,15 @@ export default async function MatchesReviewPage({
     .single();
 
   if (competitorError || !competitor) {
+    const errorStatus = (competitorError as any)?.status ?? null;
     console.error("[matches-review] Error loading competitor:", {
       competitorId,
       storeId: store.id,
       message: competitorError?.message || "Unknown error",
-      code: competitorError?.code || null,
+      code: competitorError?.code || "NO_CODE",
       details: competitorError?.details || null,
       hint: competitorError?.hint || null,
+      status: errorStatus,
     });
     redirect("/app/competitors");
   }
@@ -91,14 +93,16 @@ export default async function MatchesReviewPage({
     console.log('[matches-review] candidates length:', candidates.length, 'first:', candidates[0]);
 
     if (candidatesError) {
+      const errorStatus = (candidatesError as any)?.status ?? null;
       console.error("[matches-review] Error loading match candidates:", {
         competitorId,
         storeId: store.id,
         payload: loadPayload,
         message: candidatesError?.message || "Unknown error",
-        code: candidatesError?.code || null,
+        code: candidatesError?.code || "NO_CODE",
         details: candidatesError?.details || null,
         hint: candidatesError?.hint || null,
+        status: errorStatus,
       });
     }
 
@@ -111,13 +115,15 @@ export default async function MatchesReviewPage({
       .order("name");
 
     if (productsError) {
+      const errorStatus = (productsError as any)?.status ?? null;
       console.error("[matches-review] Error loading products:", {
         competitorId,
         storeId: store.id,
         message: productsError?.message || "Unknown error",
-        code: productsError?.code || null,
+        code: productsError?.code || "NO_CODE",
         details: productsError?.details || null,
         hint: productsError?.hint || null,
+        status: errorStatus,
       });
     }
 
@@ -242,6 +248,8 @@ export default async function MatchesReviewPage({
       .eq("store_id", store.id)
       .eq("competitor_id", competitorId);
 
+    const safeMatches = matchesData ?? [];
+
     if (matchesError) {
       console.error("[matches-tracking] Error loading tracked products:", {
         competitorId,
@@ -251,7 +259,7 @@ export default async function MatchesReviewPage({
     }
 
     // Load products separately (for store product info)
-    const productIds = (matchesData || []).map((m: any) => m.product_id).filter(Boolean);
+    const productIds = safeMatches.map((m: any) => m.product_id).filter(Boolean);
     let productsMap = new Map<string, any>();
 
     if (productIds.length > 0) {
@@ -270,7 +278,7 @@ export default async function MatchesReviewPage({
 
     // Transform to tracking format
     // All competitor data comes directly from competitor_product_matches (fully self-contained)
-    const trackedProducts = (matchesData || []).map((row: any) => {
+    const trackedProducts = safeMatches.map((row: any) => {
       const product = productsMap.get(row.product_id);
       
       return {

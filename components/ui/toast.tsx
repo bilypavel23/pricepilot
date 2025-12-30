@@ -8,7 +8,7 @@ import { Button } from "./button";
 export interface Toast {
   id: string;
   message: string;
-  type?: "success" | "error" | "info" | "warning";
+  type?: "success" | "error" | "info";
 }
 
 interface ToastContainerProps {
@@ -25,9 +25,7 @@ export function ToastContainer({ toasts = [], onRemove }: ToastContainerProps) {
           className={cn(
             "flex items-center gap-2 rounded-lg border bg-background p-4 shadow-lg",
             toast.type === "success" && "border-green-500",
-            toast.type === "error" && "border-red-500",
-            toast.type === "info" && "border-blue-500",
-            toast.type === "warning" && "border-yellow-500"
+            toast.type === "error" && "border-red-500"
           )}
         >
           <span className="text-sm">{toast.message}</span>

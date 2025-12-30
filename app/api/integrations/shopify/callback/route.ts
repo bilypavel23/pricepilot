@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { createRouteSupabaseClient } from "@/lib/supabase/route";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { getOrCreateStore } from "@/lib/store";
 
 export async function GET(req: Request) {
-  const supabase = await createRouteSupabaseClient();
+  // Require authentication for OAuth callback
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) {
+    return authResult; // 401 response
+  }
+  const { supabase } = authResult;
 
   const url = new URL(req.url);
   const shop = url.searchParams.get("shop");
@@ -74,9 +79,22 @@ export async function GET(req: Request) {
       );
     }
 
-    // Redirect to integrations page
+    // Determine redirect target with safe returnTo handling
+    const returnTo = url.searchParams.get("returnTo");
+    let redirectPath = "/app/products"; // default to settings page
+    
+    if (returnTo) {
+      // Only allow internal paths starting with "/app/"
+      // Disallow full URLs, protocol-relative URLs, and paths outside /app/
+      const sanitized = returnTo.trim();
+      if (sanitized.startsWith("/app/") && !sanitized.includes("://")) {
+        redirectPath = sanitized;
+      }
+    }
+
+    // Redirect to settings page (or returnTo if valid)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL!.replace(/\/+$/, "");
-    return NextResponse.redirect(`${baseUrl}/app/integrations`, 302);
+    return NextResponse.redirect(`${baseUrl}${redirectPath}`, 302);
   } catch (error: any) {
     console.error("OAuth callback error:", error);
     return NextResponse.json(

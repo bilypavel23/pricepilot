@@ -1,274 +1,305 @@
-export type Plan = "free_demo" | "STARTER" | "PRO" | "SCALE";
+export type PlanId = "FREE" | "STARTER" | "PRO";
+export type Plan = "free_demo" | "STARTER" | "pro" | "ultra";
 
-export const PLAN_LIMITS = {
-  free_demo: {
-    products: 10,
-    competitorsPerProduct: 1,
-    stores: 1,
-    syncsPerDay: 1,
-    aiChat: false,
-    alerts: "Basic",
-    support: "Email",
-  },
-  STARTER: {
-    products: 100,
-    competitorsPerProduct: 2,
-    stores: 3,
-    syncsPerDay: 1,
-    aiChat: false,
-    alerts: "Basic",
-    support: "Email",
-  },
-  PRO: {
-    products: 500,
-    competitorsPerProduct: 3,
-    stores: 5,
-    syncsPerDay: 4,
-    aiChat: true,
-    alerts: "Priority",
-    support: "Priority",
-  },
-  SCALE: {
-    products: 1000,
-    competitorsPerProduct: 5,
-    stores: 10,
-    syncsPerDay: 6,
-    aiChat: true,
-    alerts: "Fast / Premium",
-    support: "Dedicated",
-  },
+// ============================================================================
+// CENTRAL PRODUCT LIMITS CONFIGURATION
+// ============================================================================
+// This is the single source of truth for product limits per plan.
+// All other files should import from here.
+
+export const PLAN_PRODUCT_LIMITS = {
+  starter: 50,
+  pro: 150,
+  scale: 300,
+} as const;
+
+export type PlanKey = keyof typeof PLAN_PRODUCT_LIMITS;
+
+/**
+ * Get product limit for a plan
+ * Normalizes plan names to match PLAN_PRODUCT_LIMITS keys
+ */
+export function getProductLimit(plan: string | null | undefined): number {
+  if (!plan) return PLAN_PRODUCT_LIMITS.starter;
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  // Map plan values to keys
+  if (normalized === "starter" || normalized === "basic" || normalized === "free_demo" || normalized === "demo" || normalized === "free") {
+    return PLAN_PRODUCT_LIMITS.starter;
+  }
+  if (normalized === "pro" || normalized === "professional") {
+    return PLAN_PRODUCT_LIMITS.pro;
+  }
+  if (normalized === "scale" || normalized === "ultra" || normalized === "enterprise" || normalized === "SCALE") {
+    return PLAN_PRODUCT_LIMITS.scale;
+  }
+  
+  // Try uppercase match
+  const upper = plan.toUpperCase();
+  if (upper === "STARTER") {
+    return PLAN_PRODUCT_LIMITS.starter;
+  }
+  if (upper === "PRO") {
+    return PLAN_PRODUCT_LIMITS.pro;
+  }
+  if (upper === "SCALE" || upper === "ULTRA") {
+    return PLAN_PRODUCT_LIMITS.scale;
+  }
+  
+  // Default fallback
+  return PLAN_PRODUCT_LIMITS.starter;
+}
+
+/**
+ * Check if product limit is reached
+ */
+export function isLimitReached(plan: string | null | undefined, productCount: number): boolean {
+  const limit = getProductLimit(plan);
+  return limit > 0 && productCount >= limit;
+}
+
+export type PlanBadge = {
+  emoji: string;
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+  color?: string;
 };
 
-export const PLAN_BADGES = {
+export const PLAN_BADGES: Record<string, PlanBadge> = {
   free_demo: {
-    emoji: "🆓",
-    label: "FREE DEMO",
-    variant: "outline" as const,
-    color: "text-slate-600 dark:text-slate-400",
+    emoji: "🎯",
+    label: "Free Demo",
+    variant: "outline",
+    color: "text-muted-foreground",
   },
   STARTER: {
-    emoji: "💠",
-    label: "STARTER",
-    variant: "outline" as const,
-    color: "text-slate-600 dark:text-slate-400",
+    emoji: "🚀",
+    label: "Starter",
+    variant: "default",
   },
   PRO: {
     emoji: "⭐",
-    label: "PRO",
-    variant: "default" as const,
-    color: "text-blue-600 dark:text-blue-400",
+    label: "Pro",
+    variant: "default",
   },
   SCALE: {
-    emoji: "🚀",
-    label: "SCALE",
-    variant: "default" as const,
-    color: "text-emerald-600 dark:text-emerald-400",
+    emoji: "💎",
+    label: "Scale",
+    variant: "default",
+  },
+  pro: {
+    emoji: "⭐",
+    label: "Pro",
+    variant: "default",
+  },
+  ultra: {
+    emoji: "💎",
+    label: "Scale",
+    variant: "default",
   },
 };
 
-export interface PlanStats {
-  totalProducts: number;
-  competitorStores: number;
-  competitorsPerProduct?: number;
-}
+export type PlanLimits = {
+  products: number;
+  competitorsPerProduct: number;
+  stores: number;
+  syncsPerDay: number;
+  autoPricing: boolean;
+  bulkApply: boolean;
+};
 
-export function isPlanLimitExceeded(
-  plan: Plan,
-  stats: PlanStats
-): {
-  exceeded: boolean;
-  limitType?: "products" | "stores" | "competitorsPerProduct";
-  current: number;
-  limit: number;
-} {
-  const limits = PLAN_LIMITS[plan];
-
-  // Check products limit
-  if (stats.totalProducts >= limits.products) {
-    return {
-      exceeded: true,
-      limitType: "products",
-      current: stats.totalProducts,
-      limit: limits.products,
-    };
-  }
-
-  // Check competitor stores limit
-  if (stats.competitorStores >= limits.stores) {
-    return {
-      exceeded: true,
-      limitType: "stores",
-      current: stats.competitorStores,
-      limit: limits.stores,
-    };
-  }
-
-  // Check competitors per product limit
-  if (
-    stats.competitorsPerProduct !== undefined &&
-    stats.competitorsPerProduct >= limits.competitorsPerProduct
-  ) {
-    return {
-      exceeded: true,
-      limitType: "competitorsPerProduct",
-      current: stats.competitorsPerProduct,
-      limit: limits.competitorsPerProduct,
-    };
-  }
-
-  return { exceeded: false, current: 0, limit: 0 };
-}
-
-export function canAddProduct(currentCount: number, plan: Plan): boolean {
-  return currentCount < PLAN_LIMITS[plan].products;
-}
-
-/**
- * Check if a limit has been reached for a given plan and current count.
- * @param plan - Plan type
- * @param currentCount - Current count of items (e.g., products)
- * @returns True if the limit has been reached or exceeded
- */
-export function isLimitReached(plan: Plan, currentCount: number): boolean {
-  return currentCount >= PLAN_LIMITS[plan].products;
-}
-
-export function canAddCompetitorStore(currentCount: number, plan: Plan): boolean {
-  return currentCount < PLAN_LIMITS[plan].stores;
-}
-
-export function hasAiChatAccess(plan: Plan): boolean {
-  return PLAN_LIMITS[plan].aiChat;
-}
-
-export function canSync(plan: Plan, lastSyncTime?: Date): boolean {
-  const limits = PLAN_LIMITS[plan];
-  if (!lastSyncTime) return true;
-  
-  const hoursSinceLastSync = (Date.now() - lastSyncTime.getTime()) / (1000 * 60 * 60);
-  const minHoursBetweenSyncs = 24 / limits.syncsPerDay;
-  
-  return hoursSinceLastSync >= minHoursBetweenSyncs;
-}
-
-/**
- * Normalize unknown plan input to a valid Plan type.
- * @param input - Plan value (string, null, undefined, etc.)
- * @returns Normalized Plan value
- */
-export function normalizePlan(input: unknown): Plan {
-  const raw = String(input ?? "").toLowerCase().trim();
-
-  // Common aliases
-  if (raw === "basic" || raw === "trial") return "STARTER";
-  if (raw === "premium") return "PRO";
-  if (raw === "enterprise") return "SCALE";
-
-  // Direct matches (case-insensitive)
-  if (raw === "free_demo" || raw === "demo" || raw === "free") return "free_demo";
-  if (raw === "starter") return "STARTER";
-  if (raw === "pro" || raw === "professional") return "PRO";
-  if (raw === "scale" || raw === "ultra") return "SCALE";
-
-  // Uppercase matches (for existing data)
-  const upper = String(input ?? "").toUpperCase().trim();
-  if (upper === "FREE_DEMO" || upper === "DEMO" || upper === "FREE") return "free_demo";
-  if (upper === "STARTER") return "STARTER";
-  if (upper === "PRO" || upper === "PROFESSIONAL") return "PRO";
-  if (upper === "SCALE" || upper === "ULTRA" || upper === "ENTERPRISE") return "SCALE";
-
-  // Fallback to STARTER (safest default)
-  return "STARTER";
-}
-
-/**
- * Get the maximum number of products allowed for a given plan.
- * @param plan - Plan type
- * @returns Maximum number of products
- */
-export function getProductLimit(plan: Plan): number {
-  return PLAN_LIMITS[plan].products;
-}
-
-/**
- * Get the maximum number of competitors allowed per product for a given plan.
- * @param plan - Plan name (case-insensitive, will be normalized)
- * @returns Maximum competitors per product
- */
-export function getCompetitorLimit(plan?: string | null): number {
-  if (!plan) {
-    return PLAN_LIMITS.STARTER.competitorsPerProduct; // Default to STARTER
-  }
-
-  const normalized = plan.trim();
-
-  // Direct match for PLAN_LIMITS keys (case-sensitive)
-  if (normalized === "free_demo") {
-    return PLAN_LIMITS.free_demo.competitorsPerProduct;
-  }
-  if (normalized === "STARTER") {
-    return PLAN_LIMITS.STARTER.competitorsPerProduct;
-  }
-  if (normalized === "PRO") {
-    return PLAN_LIMITS.PRO.competitorsPerProduct;
-  }
-  if (normalized === "SCALE") {
-    return PLAN_LIMITS.SCALE.competitorsPerProduct;
-  }
-
-  // Case-insensitive fallback
-  const lower = normalized.toLowerCase();
-  if (lower === "free_demo" || lower === "demo" || lower === "free") {
-    return PLAN_LIMITS.free_demo.competitorsPerProduct;
-  }
-  if (lower === "starter" || lower === "basic") {
-    return PLAN_LIMITS.STARTER.competitorsPerProduct;
-  }
-  if (lower === "pro" || lower === "professional") {
-    return PLAN_LIMITS.PRO.competitorsPerProduct;
-  }
-  if (lower === "scale" || lower === "ultra" || lower === "enterprise") {
-    return PLAN_LIMITS.SCALE.competitorsPerProduct;
-  }
-
-  // Default fallback to STARTER
-  return PLAN_LIMITS.STARTER.competitorsPerProduct;
-}
-// Legacy function for backward compatibility
-export const planLimits: Record<
-  Plan,
-  { maxProducts: number; competitorTracking: boolean; reports: boolean; support: string }
-> = {
-  free_demo: {
-    maxProducts: PLAN_LIMITS.free_demo.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.free_demo.support,
-  },
+export const PLAN_LIMITS: Record<string, PlanLimits> = {
   STARTER: {
-    maxProducts: PLAN_LIMITS.STARTER.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.STARTER.support,
+    products: PLAN_PRODUCT_LIMITS.starter, // 50
+    competitorsPerProduct: 2,
+    stores: 1,
+    syncsPerDay: 1,
+    autoPricing: false,
+    bulkApply: false,
   },
   PRO: {
-    maxProducts: PLAN_LIMITS.PRO.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.PRO.support,
+    products: PLAN_PRODUCT_LIMITS.pro, // 150
+    competitorsPerProduct: 5,
+    stores: 3,
+    syncsPerDay: 2,
+    autoPricing: true,
+    bulkApply: true,
   },
   SCALE: {
-    maxProducts: PLAN_LIMITS.SCALE.products,
-    competitorTracking: true,
-    reports: true,
-    support: PLAN_LIMITS.SCALE.support,
+    products: PLAN_PRODUCT_LIMITS.scale, // 300
+    competitorsPerProduct: 10,
+    stores: 10,
+    syncsPerDay: 4,
+    autoPricing: true,
+    bulkApply: true,
+  },
+  free_demo: {
+    products: PLAN_PRODUCT_LIMITS.starter, // 50
+    competitorsPerProduct: 1,
+    stores: 1,
+    syncsPerDay: 0,
+    autoPricing: false,
+    bulkApply: false,
+  },
+  pro: {
+    products: PLAN_PRODUCT_LIMITS.pro, // 150
+    competitorsPerProduct: 5,
+    stores: 3,
+    syncsPerDay: 2,
+    autoPricing: true,
+    bulkApply: true,
+  },
+  ultra: {
+    products: PLAN_PRODUCT_LIMITS.scale, // 300
+    competitorsPerProduct: 10,
+    stores: 10,
+    syncsPerDay: 4,
+    autoPricing: true,
+    bulkApply: true,
   },
 };
 
-// Export product limits in lowercase format for marketing pages
-export const PLAN_PRODUCT_LIMITS = {
-  starter: PLAN_LIMITS.STARTER.products,
-  pro: PLAN_LIMITS.PRO.products,
-  scale: PLAN_LIMITS.SCALE.products,
-} as const;
+export const PLAN_COMPETITOR_LIMIT: Record<PlanId, number> = {
+  FREE: 0,
+  STARTER: 2,
+  PRO: 5,
+};
 
+export function getCompetitorLimit(plan?: string | null): number {
+  if (!plan) return PLAN_COMPETITOR_LIMIT.STARTER;
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  // Map Plan values to limits
+  if (normalized === "free_demo" || normalized === "demo" || normalized === "free") {
+    return PLAN_COMPETITOR_LIMIT.FREE;
+  }
+  if (normalized === "starter" || normalized === "basic") {
+    return PLAN_COMPETITOR_LIMIT.STARTER;
+  }
+  if (normalized === "pro" || normalized === "professional") {
+    return PLAN_COMPETITOR_LIMIT.PRO;
+  }
+  // Scale/Ultra plans get 10 competitors per product
+  if (normalized === "ultra" || normalized === "scale" || normalized === "enterprise") {
+    return 10;
+  }
+  
+  // Try direct uppercase match
+  const upper = plan.toUpperCase();
+  if (upper === "SCALE" || upper === "ULTRA") {
+    return 10;
+  }
+  if (upper in PLAN_COMPETITOR_LIMIT) {
+    return PLAN_COMPETITOR_LIMIT[upper as PlanId];
+  }
+  
+  return PLAN_COMPETITOR_LIMIT.STARTER;
+}
+
+/**
+ * Check if a plan has access to AI chat feature
+ * Typically available for PRO and ultra plans
+ */
+export function hasAiChatAccess(plan: Plan): boolean {
+  const normalized = plan.toLowerCase().trim();
+  return normalized === "pro" || normalized === "ultra" || normalized === "scale" || normalized === "enterprise";
+}
+
+/**
+ * Normalize plan string from database to Plan type
+ * Maps various plan strings to standard Plan values
+ */
+export function normalizePlan(plan?: string | null): Plan {
+  if (!plan) return "free_demo";
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  // Map to standard plan values
+  if (normalized === "free_demo" || normalized === "demo" || normalized === "free") {
+    return "free_demo";
+  }
+  if (normalized === "starter" || normalized === "basic") {
+    return "STARTER";
+  }
+  if (normalized === "pro" || normalized === "professional") {
+    return "pro";
+  }
+  if (normalized === "ultra" || normalized === "scale" || normalized === "enterprise") {
+    return "ultra";
+  }
+  
+  // Try direct match (case-sensitive)
+  if (plan === "STARTER" || plan === "pro" || plan === "ultra" || plan === "free_demo") {
+    return plan as Plan;
+  }
+  
+  // Default fallback
+  return "free_demo";
+}
+
+export type LimitCheckResult = {
+  exceeded: boolean;
+  limitType?: "products" | "competitors" | "stores";
+  current: number;
+  limit: number;
+};
+
+/**
+ * Check if plan limits are exceeded
+ */
+export function isPlanLimitExceeded(
+  plan: Plan,
+  counts: {
+    totalProducts?: number;
+    competitorStores?: number;
+    stores?: number;
+  }
+): LimitCheckResult {
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free_demo;
+  
+  // Check products limit
+  if (counts.totalProducts !== undefined) {
+    if (counts.totalProducts >= limits.products) {
+      return {
+        exceeded: true,
+        limitType: "products",
+        current: counts.totalProducts,
+        limit: limits.products,
+      };
+    }
+  }
+  
+  // Check competitor stores limit (using competitorsPerProduct as a proxy)
+  if (counts.competitorStores !== undefined) {
+    // For now, use a reasonable default limit
+    const competitorLimit = getCompetitorLimit(plan);
+    if (counts.competitorStores >= competitorLimit) {
+      return {
+        exceeded: true,
+        limitType: "competitors",
+        current: counts.competitorStores,
+        limit: competitorLimit,
+      };
+    }
+  }
+  
+  // Check stores limit
+  if (counts.stores !== undefined && limits.stores !== undefined) {
+    if (counts.stores >= limits.stores) {
+      return {
+        exceeded: true,
+        limitType: "stores",
+        current: counts.stores,
+        limit: limits.stores,
+      };
+    }
+  }
+  
+  return {
+    exceeded: false,
+    current: 0,
+    limit: 0,
+  };
+}

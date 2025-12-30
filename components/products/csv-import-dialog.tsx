@@ -232,7 +232,7 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     onValueChange={(value) => handleMappingChange("name", value)}
                   >
                     <SelectTrigger id="map-name">
-                      <SelectValue placeholder="Select column" />
+                      <SelectValue placeholder="-- Select column --" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">-- Select column --</SelectItem>
@@ -255,7 +255,7 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     onValueChange={(value) => handleMappingChange("sku", value)}
                   >
                     <SelectTrigger id="map-sku">
-                      <SelectValue placeholder="Select column" />
+                      <SelectValue placeholder="-- Select column --" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">-- Select column --</SelectItem>
@@ -278,7 +278,7 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     onValueChange={(value) => handleMappingChange("price", value)}
                   >
                     <SelectTrigger id="map-price">
-                      <SelectValue placeholder="Select column" />
+                      <SelectValue placeholder="-- Select column --" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">-- Select column --</SelectItem>
@@ -299,7 +299,7 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     onValueChange={(value) => handleMappingChange("cost", value)}
                   >
                     <SelectTrigger id="map-cost">
-                      <SelectValue placeholder="Select column (optional)" />
+                      <SelectValue placeholder="-- Select column (optional) --" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">-- Select column (optional) --</SelectItem>
@@ -320,7 +320,7 @@ Laptop Stand,LS-001,49.99,25.00,15`;
                     onValueChange={(value) => handleMappingChange("inventory", value)}
                   >
                     <SelectTrigger id="map-inventory">
-                      <SelectValue placeholder="Select column (optional)" />
+                      <SelectValue placeholder="-- Select column (optional) --" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">-- Select column (optional) --</SelectItem>

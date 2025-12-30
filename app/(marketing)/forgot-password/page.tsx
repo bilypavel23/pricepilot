@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -71,11 +70,7 @@ export default function ForgotPasswordPage() {
               </p>
               <Link
                 href="/login"
-                className={cn(
-                  "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-                  "h-10 px-4 py-2",
-                  "w-full bg-blue-500 hover:bg-blue-600 text-white"
-                )}
+                className="w-full inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 h-10"
               >
                 Back to login
               </Link>

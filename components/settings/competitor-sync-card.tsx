@@ -296,6 +296,9 @@ export function CompetitorSyncCard({
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Status:</span>
             {(() => {
+              // Normalize updatedCount to safe number
+              const updatedCount = lastCompetitorSyncUpdatedCount ?? 0;
+              
               // Determine status and color based on logic
               let statusText: string;
               let statusColor: string;
@@ -305,7 +308,7 @@ export function CompetitorSyncCard({
                 statusColor = "text-gray-600 dark:text-gray-400";
               } else if (
                 lastCompetitorSyncStatus === "ok" ||
-                (lastCompetitorSyncUpdatedCount != null && lastCompetitorSyncUpdatedCount > 0)
+                updatedCount > 0
               ) {
                 statusText = "OK";
                 statusColor = "text-green-600 dark:text-green-400";
@@ -315,10 +318,7 @@ export function CompetitorSyncCard({
               } else if (lastCompetitorSyncStatus === "error") {
                 statusText = "Failed";
                 statusColor = "text-red-600 dark:text-red-400";
-              } else if (
-                lastCompetitorSyncUpdatedCount != null &&
-                lastCompetitorSyncUpdatedCount >= 0
-              ) {
+              } else if (updatedCount >= 0) {
                 statusText = "OK";
                 statusColor = "text-green-600 dark:text-green-400";
               } else {
@@ -333,11 +333,14 @@ export function CompetitorSyncCard({
               );
             })()}
           </div>
-          {lastCompetitorSyncUpdatedCount !== null && lastCompetitorSyncUpdatedCount !== undefined && (
-            <div className="text-xs text-muted-foreground">
-              Updated prices: {lastCompetitorSyncUpdatedCount}
-            </div>
-          )}
+          {(() => {
+            const updatedCount = lastCompetitorSyncUpdatedCount ?? 0;
+            return updatedCount > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Updated prices: {updatedCount}
+              </div>
+            );
+          })()}
         </div>
         {isReadOnly ? (
           <p className="text-sm text-muted-foreground">
@@ -389,8 +392,8 @@ export function CompetitorSyncCard({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-red-400 h-8 w-8"
+                          size="sm"
+                          className="text-muted-foreground hover:text-red-400 h-8 w-8 p-0"
                           onClick={() => handleRemoveTime(index)}
                         >
                           ✕

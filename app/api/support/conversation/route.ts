@@ -27,17 +27,20 @@ export async function GET(req: Request) {
   if (!profile?.is_admin)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  // Use service role client for database operations (bypasses RLS)
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+  // Check for service role key
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Server configuration error: Service role key missing" },
+      { status: 500 }
+    );
   }
 
+  // Use service role client for database operations (bypasses RLS)
   const adminSupabase: SupabaseClient = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
+    serviceRoleKey,
+    { auth: { persistSession: false } }
   );
 
   const { data: messages } = await adminSupabase

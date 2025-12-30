@@ -7,9 +7,10 @@ function logSupabaseError(context: string, error: any) {
   const errorDetails = {
     context,
     message: error?.message || "Unknown error",
-    code: error?.code || null,
+    code: error?.code || "NO_CODE",
     details: error?.details || null,
     hint: error?.hint || null,
+    status: error?.status || null,
     raw: error,
   };
 
@@ -54,12 +55,14 @@ export async function getUrlCompetitorProductsCount(
 
     if (error) {
       // Improved error logging with message, details, hint, code
+      const errorStatus = (error as any)?.status ?? null;
       const errorDetails = {
         context: "getUrlCompetitorProductsCount: count query failed",
         message: error.message || "Unknown error",
-        code: error.code || null,
+        code: error.code || "NO_CODE",
         details: error.details || null,
         hint: error.hint || null,
+        status: errorStatus,
         raw: error,
       };
       console.error("[getUrlCompetitorProductsCount]", JSON.stringify(errorDetails, null, 2));

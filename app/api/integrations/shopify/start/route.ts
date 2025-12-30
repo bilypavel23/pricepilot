@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 
 function normalizeShopDomain(input: string): string {
   const raw = (input ?? "").trim();
@@ -25,6 +26,12 @@ function isValidShopifyShop(host: string): boolean {
 }
 
 export async function GET(req: Request) {
+  // Require authentication before initiating OAuth flow
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) {
+    return authResult; // 401 response
+  }
+
   const { searchParams } = new URL(req.url);
   const rawShopDomain = searchParams.get("shop_domain") ?? "";
 
@@ -43,15 +50,15 @@ export async function GET(req: Request) {
 
   const clientId = process.env.SHOPIFY_CLIENT_ID!;
 
-  const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL;
-  if (!baseUrlRaw) {
-    return NextResponse.json(
-      { error: "Missing NEXT_PUBLIC_APP_URL env var" },
-      { status: 500 }
-    );
-  }
-  const baseUrl = baseUrlRaw.replace(/\/+$/, "");
+  const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL!;
+  const baseUrl = baseUrlRaw.replace(/\/+$/, ""); // remove trailing slash
   const redirectUri = `${baseUrl}/api/integrations/shopify/callback`;
+
+  console.log("Shopify OAuth redirect:", {
+    shop_domain_raw: rawShopDomain,
+    shop_domain_normalized: shop,
+    redirect_uri: redirectUri,
+  });
 
   const scopes = [
     "read_products",
@@ -60,26 +67,11 @@ export async function GET(req: Request) {
     "write_inventory",
   ].join(",");
 
-  // Build authorizeUrl using URL constructor
   const authorizeUrl = new URL(`https://${shop}/admin/oauth/authorize`);
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("scope", scopes);
   authorizeUrl.searchParams.set("redirect_uri", redirectUri);
 
-  const authorizeUrlString = authorizeUrl.toString();
-
-  // Redact client_secret if present in URL
-  const redactedUrl = authorizeUrlString.replace(/client_secret=[^&]*/gi, "client_secret=***REDACTED***");
-
-  console.log("Shopify OAuth redirect:", {
-    authorizeUrl: redactedUrl,
-    shop_domain_raw: rawShopDomain,
-    shop_domain_normalized: shop,
-    redirect_uri: redirectUri,
-  });
-
-  console.log("Shopify redirect_uri used:", redirectUri);
-
-  return NextResponse.redirect(authorizeUrlString, 307);
+  return NextResponse.redirect(authorizeUrl.toString());
 }
 

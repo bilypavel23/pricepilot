@@ -1,26 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Get or create a store for the current authenticated user.
  * If no store exists, automatically creates a default store.
  */
 export async function getOrCreateStore() {
-  const cookieStore = await cookies();
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
+  const supabase = await createClient();
 
   const {
     data: { user },

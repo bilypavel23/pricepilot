@@ -151,7 +151,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
   const productCount = initialProductCount ?? products.length;
   const productLimit = getProductLimit(plan);
   const limitReached = isLimitReached(plan, productCount);
-  const limitDisplay = plan.toUpperCase() === "SCALE" || plan.toLowerCase() === "scale" || plan.toLowerCase() === "ultra" 
+  const limitDisplay = plan === "ultra" 
     ? `${productLimit}+` 
     : String(productLimit);
   const [searchQuery, setSearchQuery] = useState("");
@@ -545,7 +545,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                     limitReached && "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800"
                   )}
                 >
-                  {productCount} / {limitDisplay} {plan !== "SCALE" && plan.toUpperCase() !== "SCALE" && plan.toLowerCase() !== "scale" && plan.toLowerCase() !== "ultra" ? `(${plan})` : ""}
+                  {productCount} / {limitDisplay} {plan !== "ultra" ? `(${plan})` : ""}
                   {limitReached && " — Reached"}
                 </Badge>
               )}
@@ -593,23 +593,37 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                 <TooltipTrigger asChild>
                   <div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button disabled={!isDemo && limitReached}>
-                          Add Products
-                          <ChevronDown className="ml-2 h-4 w-4" />
-                        </Button>
+                      <DropdownMenuTrigger>
+                        {(() => {
+                          const triggerDisabled = !isDemo && limitReached;
+                          return (
+                            <div
+                              aria-disabled={triggerDisabled}
+                              className={cn(
+                                "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                                "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg hover:scale-[1.02] dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white dark:shadow-md dark:shadow-blue-700/20",
+                                "h-10 px-4 py-2",
+                                triggerDisabled && "pointer-events-none opacity-50"
+                              )}
+                            >
+                              Add Products
+                              <ChevronDown className="ml-2 h-4 w-4" />
+                            </div>
+                          );
+                        })()}
                       </DropdownMenuTrigger>
               <DropdownMenuContent 
-                align="end" 
-                className="min-w-[210px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-card shadow-[0_18px_45px_rgba(15,23,42,0.14)] p-1 z-50"
+                className="min-w-[210px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-card shadow-[0_18px_45px_rgba(15,23,42,0.14)] p-1 z-50 right-0 origin-top-right"
               >
                 <DropdownMenuItem 
                   className={cn(
                     "flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 outline-none transition-colors",
                     (!isDemo && limitReached) && "opacity-50 cursor-not-allowed"
                   )}
+                  aria-disabled={!isDemo && limitReached}
                   onClick={() => {
-                    if (!isDemo && limitReached) {
+                    const addDisabled = !isDemo && limitReached;
+                    if (addDisabled) {
                       setUpgradeModalData({
                         limitType: "products",
                         current: productCount,
@@ -886,7 +900,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select column" />
+                    <SelectValue placeholder="— Select —" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">— Select —</SelectItem>
@@ -907,7 +921,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select column" />
+                    <SelectValue placeholder="— Select —" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">— Select —</SelectItem>
@@ -928,7 +942,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select column" />
+                    <SelectValue placeholder="— Select —" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">— Select —</SelectItem>
@@ -949,7 +963,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select column (optional)" />
+                    <SelectValue placeholder="— Select —" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">— Select —</SelectItem>
@@ -970,7 +984,7 @@ export function ProductsClient({ initialProducts, isDemo, store, productCount: i
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select column (optional)" />
+                    <SelectValue placeholder="— Select —" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">— Select —</SelectItem>

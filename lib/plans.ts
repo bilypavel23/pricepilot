@@ -28,7 +28,7 @@ export interface PlanConfig {
 // ============================================================================
 
 // Import central product limits
-import { PLAN_PRODUCT_LIMITS, getProductLimit, normalizePlan } from "./planLimits";
+import { PLAN_PRODUCT_LIMITS, getProductLimit } from "./planLimits";
 
 export const PLANS: Record<PlanName, PlanConfig> = {
   free_demo: {
@@ -121,7 +121,7 @@ export function getPlanConfig(plan: string | null | undefined): PlanConfig {
  */
 export function getMaxProducts(plan: string | null | undefined): number {
   // Use central product limits from planLimits.ts
-  return getProductLimit(normalizePlan(plan));
+  return getProductLimit(plan);
 }
 
 /**
