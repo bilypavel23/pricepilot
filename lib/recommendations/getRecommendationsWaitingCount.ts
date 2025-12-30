@@ -2,15 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 
 /**
  * Calculate the number of products that have recommendations waiting.
- * 
  * A product has a recommendation waiting if:
- * - It has at least 1 competitor (from competitor_url_products or competitor_product_matches)
- * - It has competitor prices (competitor_avg > 0)
- * - The competitor average differs from the product's current price
- * 
- * Uses the same data sources as getRecommendationsForStore:
- * - competitor_url_products (URL competitors)
- * - competitor_product_matches (Store competitors)
+ * - It has at least 1 competitor price (competitor_avg > 0)
+ * - The competitor average differs from the product's current price by at least 0.01 (or 0.1%)
  */
 export async function getRecommendationsWaitingCount(storeId: string): Promise<number> {
   const supabase = await createClient();
@@ -26,65 +20,48 @@ export async function getRecommendationsWaitingCount(storeId: string): Promise<n
     return 0;
   }
 
-  const productIds = products.map((p) => p.id).filter(Boolean);
+  const productIds = products.map((p) => p.id);
 
-  if (productIds.length === 0) {
-    return 0;
-  }
-
-  // 2) Load competitors from competitor_url_products and competitor_product_matches
-  // Same approach as getRecommendationsForStore
+  // 2) Load competitors ONLY from v_product_competitor_links view
+  // DO NOT query competitors table - check competitors via v_product_competitor_links
+  // NOTE: URL competitors have competitor_id = null, Store competitors have competitor_id set
+  // Product has competitors if EXISTS (select 1 from v_product_competitor_links where product_id = p.id and store_id = p.store_id)
   const productCompetitorPrices = new Map<string, number[]>();
 
-  try {
-    // Query competitor_product_matches
-    const { data: matches, error: matchesError } = await supabase
-      .from("competitor_product_matches")
-      .select("product_id, last_price")
-      .eq("store_id", storeId)
-      .in("product_id", productIds);
+  if (productIds.length > 0) {
+    try {
+      // Query v_product_competitor_links view
+      // NOTE: competitor_id can be null for URL competitors - this is expected and correct
+      const { data: linksData, error: linksError } = await supabase
+        .from("v_product_competitor_links")
+        .select("product_id, competitor_price")
+        .eq("store_id", storeId)
+        .in("product_id", productIds);
 
-    if (matchesError) {
-      console.error("[reco-count] Error querying competitor_product_matches:", matchesError);
-    } else {
-      const matchesRows = matches ?? [];
-      for (const row of matchesRows) {
-        const productId = String(row.product_id);
-        const price = row.last_price != null ? Number(row.last_price) : null;
+      if (linksError) {
+        console.error("getRecommendationsWaitingCount: v_product_competitor_links error", JSON.stringify(linksError, null, 2));
+      } else {
+        const rows = linksData ?? [];
         
-        if (productId && price != null && price > 0) {
-          const prices = productCompetitorPrices.get(productId) || [];
-          prices.push(price);
-          productCompetitorPrices.set(productId, prices);
+        // Add tracked competitor prices from v_product_competitor_links
+        // Only add prices (not count competitors) - competitors are counted separately
+        for (const row of rows) {
+          const productId = row.product_id as string;
+          const competitorPrice = row.competitor_price != null ? Number(row.competitor_price) : null;
+          
+          // Only add to prices array if price is available and > 0
+          // But DO NOT filter out competitors - they are counted separately
+          if (productId && competitorPrice != null && competitorPrice > 0) {
+            const prices = productCompetitorPrices.get(productId) || [];
+            prices.push(competitorPrice);
+            productCompetitorPrices.set(productId, prices);
+          }
         }
       }
+    } catch (err) {
+      console.error("getRecommendationsWaitingCount: exception loading competitors", err);
+      // Continue execution even if query fails
     }
-
-    // Query competitor_url_products
-    const { data: urlRows, error: urlRowsError } = await supabase
-      .from("competitor_url_products")
-      .select("product_id, last_price")
-      .eq("store_id", storeId)
-      .in("product_id", productIds);
-
-    if (urlRowsError) {
-      console.error("[reco-count] Error querying competitor_url_products:", urlRowsError);
-    } else {
-      const urlCompetitorRows = urlRows ?? [];
-      for (const row of urlCompetitorRows) {
-        const productId = String(row.product_id);
-        const price = row.last_price != null ? Number(row.last_price) : null;
-        
-        if (productId && price != null && price > 0) {
-          const prices = productCompetitorPrices.get(productId) || [];
-          prices.push(price);
-          productCompetitorPrices.set(productId, prices);
-        }
-      }
-    }
-  } catch (err) {
-    console.error("getRecommendationsWaitingCount: exception loading competitors", err);
-    // Continue execution even if query fails
   }
 
   // If no competitors found at all, return 0
@@ -92,7 +69,7 @@ export async function getRecommendationsWaitingCount(storeId: string): Promise<n
     return 0;
   }
 
-  // 3) Count products where competitor_avg differs from my price
+  // 6) Count products where competitor_avg differs from my price
   let recommendationsWaiting = 0;
   const TOLERANCE = 0.01; // Minimum difference to count as a recommendation
 

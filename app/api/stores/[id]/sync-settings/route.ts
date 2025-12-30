@@ -148,14 +148,12 @@ export async function PUT(req: Request, { params }: Params) {
       .single();
 
     if (error) {
-      const errorStatus = (error as any)?.status ?? null;
       console.error("store_sync_settings upsert error:", {
         storeId,
         message: error?.message || "Unknown error",
-        code: error?.code || "NO_CODE",
+        code: error?.code || null,
         details: error?.details || null,
         hint: error?.hint || null,
-        status: errorStatus,
       });
       return NextResponse.json(
         { error: error.message || "Failed to save sync settings" },

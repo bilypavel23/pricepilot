@@ -54,10 +54,8 @@ export default async function ProductDetailPage({
   // Load recent activity for this product
   const activityEvents = await getProductActivityEvents(store.id, id, 3);
 
-  // Filter out competitors with null competitorId to match Competitor type
-  const safeCompetitors = (productData.competitors ?? []).filter(
-    (c) => c.competitorId !== null
-  ) as Array<{
+  // Filter out competitors where competitorId is null to match Competitor type
+  type Competitor = {
     matchId: string;
     competitorId: string;
     competitorName: string;
@@ -67,12 +65,26 @@ export default async function ProductDetailPage({
     competitorProductUrl: string | null;
     competitorPrice: number | null;
     lastSyncAt: string | null;
-  }>;
+  };
+  const competitorsSafe: Competitor[] = (productData.competitors ?? []).filter(
+    (c): c is typeof c & { competitorId: string; competitorProductId: string } =>
+      c.competitorId !== null && c.competitorProductId !== null
+  ).map((c) => ({
+    matchId: c.matchId,
+    competitorId: c.competitorId,
+    competitorName: c.competitorName,
+    competitorUrl: c.competitorUrl,
+    competitorProductId: c.competitorProductId,
+    competitorProductName: c.competitorProductName,
+    competitorProductUrl: c.competitorProductUrl,
+    competitorPrice: c.competitorPrice,
+    lastSyncAt: c.lastSyncAt,
+  }));
 
   return (
     <ProductDetailClient
       product={productData.product}
-      competitors={safeCompetitors}
+      competitors={competitorsSafe}
       competitorAvg={productData.competitorAvg}
       margin={margin}
       activityEvents={activityEvents}

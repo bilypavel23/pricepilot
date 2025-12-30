@@ -380,10 +380,9 @@ export async function POST(
     } catch (error: any) {
       console.error("Error in discovery scrape:", JSON.stringify({
         message: error?.message || "Unknown error",
-        code: error?.code || "NO_CODE",
+        code: error?.code || null,
         details: error?.details || null,
         hint: error?.hint || null,
-        status: error?.status || null,
         stack: error?.stack || null,
       }, null, 2));
       await supabaseAdmin

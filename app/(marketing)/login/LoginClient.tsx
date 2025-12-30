@@ -57,11 +57,8 @@ export default function LoginClient() {
       // Wait a bit for cookies to be set, then redirect
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Get redirect URL from search params, default to /app/dashboard
-      const redirectTo = searchParams.get("redirect") ?? "/app/dashboard";
-      
       // Force a full page reload to ensure cookies are available server-side
-      window.location.href = redirectTo;
+      window.location.href = "/app/dashboard";
     } catch (err: any) {
       console.error("Sign in error:", err);
       setError(err.message || "An unexpected error occurred");
@@ -147,5 +144,4 @@ export default function LoginClient() {
     </div>
   );
 }
-
 

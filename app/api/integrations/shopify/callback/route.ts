@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/require-auth";
+import { createRouteSupabaseClient } from "@/lib/supabase/route";
 import { getOrCreateStore } from "@/lib/store";
 
 export async function GET(req: Request) {
-  // Require authentication for OAuth callback
-  const authResult = await requireAuth();
-  if (authResult instanceof NextResponse) {
-    return authResult; // 401 response
-  }
-  const { supabase } = authResult;
+  const supabase = await createRouteSupabaseClient();
 
   const url = new URL(req.url);
   const shop = url.searchParams.get("shop");
@@ -79,9 +74,9 @@ export async function GET(req: Request) {
       );
     }
 
-    // Redirect to dashboard
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${baseUrl}/app/dashboard`);
+    // Redirect to integrations page
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL!.replace(/\/+$/, "");
+    return NextResponse.redirect(`${baseUrl}/app/integrations`, 302);
   } catch (error: any) {
     console.error("OAuth callback error:", error);
     return NextResponse.json(

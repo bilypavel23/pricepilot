@@ -132,18 +132,19 @@ export default function ResetPasswordClient() {
                 Password reset links expire after 1 hour. Please request a new one.
               </p>
               <div className="flex gap-3">
-                <Link
-                  href="/forgot-password"
-                  className="flex-1 inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white h-10 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                <Button
+                  asChild
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
                 >
-                  Request new link
-                </Link>
-                <Link
-                  href="/login"
-                  className="flex-1 inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-200 border border-slate-700 bg-card text-slate-300 hover:bg-slate-800 h-10 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  <Link href="/forgot-password">Request new link</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
                 >
-                  Back to login
-                </Link>
+                  <Link href="/login">Back to login</Link>
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -221,5 +222,4 @@ export default function ResetPasswordClient() {
     </div>
   );
 }
-
 

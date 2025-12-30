@@ -52,8 +52,8 @@ interface Competitor {
 
 interface ActivityEvent {
   id: string;
-  type: string;
   title: string;
+  type: string;
   created_at: string;
 }
 

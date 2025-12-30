@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/require-auth";
+import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
 import { createActivityEvent } from "@/lib/activity-events/createActivityEvent";
 
 export async function POST(req: Request) {
   try {
-    // Require authentication
-    const authResult = await requireAuth();
-    if (authResult instanceof NextResponse) {
-      return authResult; // 401 response
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const { supabase } = authResult;
 
     const body = await req.json();
     const { productId, newPrice, recommendedPrice } = body as {

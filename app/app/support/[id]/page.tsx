@@ -9,6 +9,8 @@ interface PageProps {
 
 export default async function SupportConversationPage({ params }: PageProps) {
   const supabase = await createClient();
+  const { id } = await params;
+  const conversationId = id;
 
   const {
     data: { user },
@@ -28,9 +30,6 @@ export default async function SupportConversationPage({ params }: PageProps) {
   if (profileError || !profile?.is_admin) {
     return <div>Unauthorized</div>;
   }
-
-  const { id } = await params;
-  const conversationId = id;
 
   const { data: conversation } = await supabase
     .from("support_conversations")

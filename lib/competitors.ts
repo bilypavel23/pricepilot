@@ -93,10 +93,9 @@ export async function getMatchCountForCompetitor(
       competitorId,
       storeId,
       message: error?.message || "Unknown error",
-      code: error?.code || "NO_CODE",
+      code: error?.code || null,
       details: error?.details || null,
       hint: error?.hint || null,
-      status: error?.status || null,
     });
     
     // Fallback: return 0 without crashing

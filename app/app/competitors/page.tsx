@@ -22,7 +22,6 @@ import {
   computeNextSyncDate,
   formatNextSyncDistance,
   formatTimeHM,
-  type StoreSyncSettings,
 } from "@/lib/competitors/syncSettings";
 import { getUrlCompetitorProductsCount } from "@/lib/competitors/url-count";
 
@@ -131,14 +130,12 @@ export default async function CompetitorsPage() {
 
   if (trackedError) {
     // Structured error logging for tracked competitors
-    const errorStatus = (trackedError as any)?.status ?? null;
     const errorDetails = {
       context: "CompetitorsPage: loading tracked competitors",
       message: trackedError?.message || "Unknown error",
-      code: trackedError?.code || "NO_CODE",
+      code: trackedError?.code || null,
       details: trackedError?.details || null,
       hint: trackedError?.hint || null,
-      status: errorStatus,
       raw: trackedError,
     };
     console.error("[CompetitorsPage]", JSON.stringify(errorDetails, null, 2));
@@ -167,14 +164,12 @@ export default async function CompetitorsPage() {
       discoveryQuota = await getDiscoveryQuota(store.id, profile?.plan);
     } catch (error: any) {
       // Structured error logging for discovery quota
-      const errorStatus = (error as any)?.status ?? null;
       const errorDetails = {
         context: "CompetitorsPage: loading discovery quota",
         message: error?.message || "Unknown error",
-        code: error?.code || "NO_CODE",
+        code: error?.code || null,
         details: error?.details || null,
         hint: error?.hint || null,
-        status: errorStatus,
         raw: error,
       };
       console.error("[CompetitorsPage]", JSON.stringify(errorDetails, null, 2));
@@ -204,15 +199,13 @@ export default async function CompetitorsPage() {
                 );
                 
                 if (candidateError) {
-                  const errorStatus = (candidateError as any)?.status ?? null;
                   console.error(
                     `[CompetitorsPage] Error getting candidate count for competitor ${competitor.id}:`,
                     {
                       message: candidateError?.message || "Unknown error",
-                      code: candidateError?.code || "NO_CODE",
+                      code: candidateError?.code || null,
                       details: candidateError?.details || null,
                       hint: candidateError?.hint || null,
-                      status: errorStatus,
                     }
                   );
                 } else {
@@ -284,13 +277,11 @@ export default async function CompetitorsPage() {
   } catch (error) {
     console.warn("Failed to load sync settings, using defaults:", error);
     // Use defaults if sync settings fail to load
-    const fallbackSettings: StoreSyncSettings = {
+    settings = {
       store_id: store.id,
       timezone: "Europe/Prague",
       daily_sync_times: ["06:00"],
-      sync_enabled: true,
     };
-    settings = fallbackSettings;
     nextSyncDate = computeNextSyncDate(settings, now);
     nextSyncText = formatNextSyncDistance(nextSyncDate, now);
     nextSyncTimeLabel = nextSyncDate ? formatTimeHM(nextSyncDate) : null;
@@ -476,15 +467,12 @@ export default async function CompetitorsPage() {
                 </div>
                 
                 {/* Updated prices */}
-                {(() => {
-                  const updatedCount = syncStatus?.last_competitor_sync_updated_count;
-                  return updatedCount != null && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Updated prices:</span>
-                      <span className="font-medium">{updatedCount}</span>
-                    </div>
-                  );
-                })()}
+                {syncStatus?.last_competitor_sync_updated_count != null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Updated prices:</span>
+                    <span className="font-medium">{syncStatus?.last_competitor_sync_updated_count}</span>
+                  </div>
+                )}
                 
                 {/* Next sync - keep existing format */}
                 {nextSyncDate && (
