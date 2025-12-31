@@ -158,6 +158,7 @@ export async function getDiscoveryQuota(
 
 /**
  * Consume discovery quota (returns success status and remaining quota)
+ * Uses direct queries instead of RPC to ensure compatibility with period_start schema
  */
 export async function consumeDiscoveryQuota(
   storeId: string,
@@ -168,23 +169,63 @@ export async function consumeDiscoveryQuota(
   limit_products: number;
   used_products: number;
 } | null> {
+  if (!storeId || amount < 0) {
+    return null;
+  }
+
   const supabase = await createClient();
-  
-  const { data, error } = await supabase.rpc('consume_discovery_products', {
-    p_store_id: storeId,
-    p_amount: amount,
-  });
-  
-  if (error) {
-    console.error('Error consuming discovery quota:', JSON.stringify(error, null, 2));
+  const period_start = monthStartISODate(); // First day of current month as YYYY-MM-DD
+
+  // 1) Get or create quota record for current month
+  const quota = await getDiscoveryQuota(storeId);
+  if (!quota) {
+    console.error('Error: Failed to get or create discovery quota');
     return null;
   }
-  
-  if (!data || data.length === 0) {
+
+  // 2) Check if consumption is allowed
+  const newUsed = quota.used + amount;
+  const allowed = newUsed <= quota.limit_amount;
+  const remaining = allowed ? quota.limit_amount - newUsed : quota.limit_amount - quota.used;
+
+  if (!allowed) {
+    // Quota exceeded - return current state without updating
+    return {
+      allowed: false,
+      remaining_products: remaining,
+      limit_products: quota.limit_amount,
+      used_products: quota.used,
+    };
+  }
+
+  // 3) Update used_products in database
+  const { error: updateError } = await supabase
+    .from("competitor_discovery_quota")
+    .update({
+      used_products: newUsed,
+    })
+    .eq("store_id", storeId)
+    .eq("period_start", period_start);
+
+  if (updateError) {
+    console.error('Error consuming discovery quota:', JSON.stringify({
+      error: updateError,
+      storeId,
+      period_start,
+      amount,
+      currentUsed: quota.used,
+      newUsed,
+    }, null, 2));
     return null;
   }
-  
-  return data[0];
+
+  // 4) Return success result
+  return {
+    allowed: true,
+    remaining_products: remaining,
+    limit_products: quota.limit_amount,
+    used_products: newUsed,
+  };
 }
 
 
