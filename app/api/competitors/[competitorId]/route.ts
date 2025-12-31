@@ -212,3 +212,81 @@ export async function POST(_req: Request, { params }: Params) {
     );
   }
 }
+
+export async function DELETE(_req: Request, { params }: Params) {
+  try {
+    const supabase = await createClient();
+    const { competitorId } = await params;
+
+    if (!competitorId) {
+      return NextResponse.json(
+        { error: "Competitor ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // 1) Auth
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 2) Find competitor and verify it exists
+    const { data: competitor, error: compError } = await supabase
+      .from("competitors")
+      .select("id, store_id")
+      .eq("id", competitorId)
+      .single();
+
+    if (compError || !competitor) {
+      return NextResponse.json(
+        { error: "Competitor not found" },
+        { status: 404 }
+      );
+    }
+
+    // 3) Verify store belongs to user
+    const { data: store, error: storeError } = await supabase
+      .from("stores")
+      .select("id, owner_id")
+      .eq("id", competitor.store_id)
+      .eq("owner_id", user.id)
+      .single();
+
+    if (storeError || !store) {
+      return NextResponse.json(
+        { error: "Unauthorized: Store does not belong to user" },
+        { status: 403 }
+      );
+    }
+
+    // 4) Delete the competitor
+    const { error: deleteError } = await supabase
+      .from("competitors")
+      .delete()
+      .eq("id", competitorId)
+      .eq("store_id", store.id);
+
+    if (deleteError) {
+      console.error("[delete-competitor] Error deleting competitor:", deleteError);
+      return NextResponse.json(
+        { error: deleteError.message || "Failed to delete competitor" },
+        { status: 500 }
+      );
+    }
+
+    console.log("[delete-competitor] Successfully deleted competitor:", { competitorId, storeId: store.id });
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("[delete-competitor] Unexpected error:", err);
+    return NextResponse.json(
+      { error: err?.message || "An unexpected error occurred" },
+      { status: 500 }
+    );
+  }
+}

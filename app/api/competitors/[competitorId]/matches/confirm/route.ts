@@ -208,7 +208,6 @@ export async function POST(
         // Copy full competitor data directly into competitor_product_matches
         competitor_name: candidate.competitor_name,
         competitor_url: candidate.competitor_url,
-        competitor_price: candidate.competitor_price,
         last_price: lastPrice, // Use last_price from competitor_store_products (via join)
         currency: candidate.currency || "USD",
         last_checked_at: candidate.last_checked_at || new Date().toISOString(),

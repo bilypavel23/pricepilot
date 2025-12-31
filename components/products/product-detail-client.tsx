@@ -39,15 +39,16 @@ interface Product {
 }
 
 interface Competitor {
-  matchId: string; // product_matches.id for delete operations
-  competitorId: string;
+  matchId: string; // product_matches.id for delete operations, or "url-${url}" for URL competitors
+  competitorId: string | null; // null for URL competitors
   competitorName: string;
   competitorUrl: string | null;
-  competitorProductId: string;
+  competitorProductId: string | null; // null for URL competitors
   competitorProductName: string | null;
   competitorProductUrl: string | null;
   competitorPrice: number | null;
   lastSyncAt: string | null;
+  source?: "Store" | "URL"; // Optional source indicator
 }
 
 interface ActivityEvent {
@@ -346,6 +347,19 @@ export function ProductDetailClient({
     }
   };
 
+  // Debug log to verify competitors data in component
+  console.log("[ProductDetailClient] Received competitors:", {
+    count: competitors.length,
+    competitors: competitors.map(c => ({
+      matchId: c.matchId,
+      competitorId: c.competitorId,
+      competitorName: c.competitorName,
+      source: c.source,
+      competitorPrice: c.competitorPrice,
+      hasPrice: c.competitorPrice != null,
+    })),
+  });
+
   // Calculate price difference for each competitor
   const competitorsWithDiff = competitors.map((comp) => {
     if (!comp.competitorPrice || !product.price) {
@@ -451,8 +465,9 @@ export function ProductDetailClient({
           {competitors.length > 0 ? (
             <div className="space-y-4">
               {competitorsWithDiff.map((comp, idx) => {
-                // Check if this is a URL competitor (competitorId starts with "url-")
-                const isUrlCompetitor = comp.competitorId?.startsWith("url-");
+                // Determine competitor type: URL (competitorId is null or source is "URL") vs Store
+                const isUrlCompetitor = comp.competitorId === null || comp.source === "URL" || comp.matchId.startsWith("url-");
+                const isStoreCompetitor = !isUrlCompetitor && (comp.source === "Store" || comp.competitorId !== null);
                 
                 return (
                 <div
@@ -462,6 +477,11 @@ export function ProductDetailClient({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="text-sm font-medium">{comp.competitorName}</p>
+                      {isStoreCompetitor && (
+                        <Badge variant="secondary" className="text-[10px] px-2 py-0">
+                          Store
+                        </Badge>
+                      )}
                       {isUrlCompetitor && (
                         <Badge variant="secondary" className="text-[10px] px-2 py-0">
                           Added by URL

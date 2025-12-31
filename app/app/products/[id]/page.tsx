@@ -54,25 +54,25 @@ export default async function ProductDetailPage({
   // Load recent activity for this product
   const activityEvents = await getProductActivityEvents(store.id, id, 3);
 
-  // Filter out competitors with null competitorId to match Competitor type
-  const safeCompetitors = (productData.competitors ?? []).filter(
-    (c) => c.competitorId !== null
-  ) as Array<{
-    matchId: string;
-    competitorId: string;
-    competitorName: string;
-    competitorUrl: string | null;
-    competitorProductId: string;
-    competitorProductName: string | null;
-    competitorProductUrl: string | null;
-    competitorPrice: number | null;
-    lastSyncAt: string | null;
-  }>;
+  // Use the unified competitors list (includes both Store and URL competitors from linked view + fallback)
+  const allCompetitors = productData.competitors ?? [];
+  
+  // Debug log to verify competitors data
+  console.log("[product-detail-page] Competitors data:", {
+    total: allCompetitors.length,
+    competitors: allCompetitors.map(c => ({
+      matchId: c.matchId,
+      competitorId: c.competitorId,
+      competitorName: c.competitorName,
+      source: c.source,
+      hasPrice: c.competitorPrice != null,
+    })),
+  });
 
   return (
     <ProductDetailClient
       product={productData.product}
-      competitors={safeCompetitors}
+      competitors={allCompetitors}
       competitorAvg={productData.competitorAvg}
       margin={margin}
       activityEvents={activityEvents}

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCompetitorsForProduct } from "@/lib/competitors/getCompetitorsForProduct";
 
 export interface ProductWithCompetitors {
   product: {
@@ -18,7 +19,7 @@ export interface ProductWithCompetitors {
     competitorProductId: string | null; // null for URL competitors
     competitorProductName: string | null;
     competitorProductUrl: string | null;
-    competitorPrice: number | null; // Use last_price ?? competitor_price
+    competitorPrice: number | null; // Use last_price from DB
     lastSyncAt: string | null;
     source: "Store" | "URL";
   }>;
@@ -46,65 +47,39 @@ export async function getProductWithCompetitors(
     return null;
   }
 
-  // 2) Load competitors ONLY from v_product_competitor_links
-  // This view contains both Store competitors (competitor_id set) and URL competitors (competitor_id null)
-  // DO NOT read from competitor_product_matches, competitor_url_products, or competitor_products_view
-  const { data: competitorLinks, error: linksError } = await supabase
-    .from("v_product_competitor_links")
-    .select("source, competitor_id, competitor_name, competitor_url, last_price, competitor_price, currency, last_checked_at")
-    .eq("store_id", storeId)
-    .eq("product_id", productId)
-    .order("competitor_price", { ascending: true, nullsFirst: false }); // Order by competitor_price asc nulls last
+  // 2) Load competitors using the same data source and mapping as Recommendations
+  const { competitors: allCompetitors, storeCompetitors, urlCompetitors } = await getCompetitorsForProduct(
+    supabase,
+    storeId,
+    productId
+  );
 
-  if (linksError) {
-    console.error("[getProductWithCompetitors] Error loading competitors from v_product_competitor_links:", linksError);
-    // Return empty competitors array, not error
-  }
+  // Map to ProductWithCompetitors format
+  const competitorList: ProductWithCompetitors["competitors"] = allCompetitors.map((comp) => ({
+    matchId: comp.matchId,
+    competitorId: comp.competitorId,
+    competitorName: comp.competitorName,
+    competitorUrl: comp.competitorUrl,
+    competitorProductId: comp.competitorProductId,
+    competitorProductName: comp.competitorName, // Use competitorName for product name
+    competitorProductUrl: comp.competitorUrl, // Use competitorUrl for product URL
+    competitorPrice: comp.competitorPrice,
+    lastSyncAt: comp.lastChecked,
+    source: comp.source,
+  }));
 
-  // 3) Build competitor list with prices
-  const competitorList: ProductWithCompetitors["competitors"] = [];
-  const prices: number[] = [];
-
-  const links = competitorLinks ?? [];
-  
-  for (const link of links) {
-    // Use last_price ?? competitor_price for price
-    const price = link.last_price ?? link.competitor_price;
-    const competitorPrice = price != null ? Number(price) : null;
-
-    if (competitorPrice != null && competitorPrice > 0) {
-      prices.push(competitorPrice);
-    }
-
-    // For matchId, use competitor_id if available, otherwise generate a virtual ID
-    // For URL competitors, we don't have a direct match ID, so we'll use a combination
-    const matchId = link.competitor_id 
-      ? `match-${link.competitor_id}` 
-      : `url-${link.competitor_url}`;
-
-    competitorList.push({
-      matchId,
-      competitorId: link.competitor_id || null, // null for URL competitors
-      competitorName: link.competitor_name || "Unknown",
-      competitorUrl: link.competitor_url || null,
-      competitorProductId: link.competitor_id || null, // null for URL competitors (no product_id in view)
-      competitorProductName: link.competitor_name || null,
-      competitorProductUrl: link.competitor_url || null,
-      competitorPrice,
-      lastSyncAt: link.last_checked_at || null,
-      source: (link.source as "Store" | "URL") || (link.competitor_id ? "Store" : "URL"),
-    });
-  }
-
-  console.log("[getProductWithCompetitors] Built competitor list from v_product_competitor_links:", competitorList.length, {
-    storeCompetitors: links.filter(l => l.competitor_id != null).length,
-    urlCompetitors: links.filter(l => l.competitor_id == null).length,
-  });
-
-  // 6) Calculate competitor average
+  // Calculate competitor average from prices
+  const prices = allCompetitors
+    .map((c) => c.competitorPrice)
+    .filter((p): p is number => p != null && p > 0);
   const competitorAvg = prices.length > 0
     ? prices.reduce((sum, v) => sum + v, 0) / prices.length
     : 0;
+
+  console.log(`[getProductWithCompetitors] Competitors loaded: ${allCompetitors.length} total`, {
+    storeCompetitors: storeCompetitors.length,
+    urlCompetitors: urlCompetitors.length,
+  });
 
   return {
     product,

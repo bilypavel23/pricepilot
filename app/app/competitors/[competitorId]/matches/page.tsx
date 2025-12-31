@@ -244,7 +244,7 @@ export default async function MatchesReviewPage({
     // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
     const { data: matchesData, error: matchesError } = await supabase
       .from("competitor_product_matches")
-      .select("product_id, competitor_product_id, competitor_name, competitor_url, competitor_price, currency")
+      .select("product_id, competitor_product_id, competitor_name, competitor_url, last_price, currency")
       .eq("store_id", store.id)
       .eq("competitor_id", competitorId);
 
@@ -289,7 +289,7 @@ export default async function MatchesReviewPage({
         competitor_product_id: row.competitor_product_id,
         competitor_name: row.competitor_name || "",
         competitor_url: row.competitor_url || "",
-        competitor_price: row.competitor_price ?? null,
+        competitor_price: row.last_price ?? null,
         currency: row.currency || "USD",
       };
     });
