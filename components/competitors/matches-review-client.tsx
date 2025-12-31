@@ -764,9 +764,13 @@ export function MatchesReviewClient({
                 </Button>
               </div>
             </div>
-          ) : isProcessing || currentStatus === "processing" ? (
-            // E) Safe fallback: If candidates.length > 0, never show "No matches found" even during processing
-            groupedMatches.length === 0 ? (
+          ) : myProducts.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>No products found. Add products first to create matches.</p>
+            </div>
+          ) : groupedMatches.length === 0 ? (
+            // Show loader only if processing AND no matches yet
+            isProcessing || currentStatus === "processing" ? (
               <div className="text-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -776,17 +780,24 @@ export function MatchesReviewClient({
                   Matches will appear here once scanning is complete.
                 </p>
               </div>
-            ) : null
-          ) : myProducts.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No products found. Add products first to create matches.</p>
-            </div>
-          ) : groupedMatches.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p>No matches found. The competitor store may not have overlapping products.</p>
-            </div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No matches found. The competitor store may not have overlapping products.</p>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
+              {/* Show "Still scanning..." banner when processing AND matches exist */}
+              {(isProcessing || currentStatus === "processing") && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Still scanning for more matches...
+                    </p>
+                  </div>
+                </div>
+              )}
               {(() => {
                 // Log before render - verify candidates array
                 console.log('[matches-review] candidates length:', groupedMatches.length, 'first:', groupedMatches[0]);
