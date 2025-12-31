@@ -54,21 +54,44 @@ export function AddCompetitorModal({ open, onClose, storeId, onSuccess }: AddCom
         return;
       }
 
+      const competitorId = data.competitor?.id || data.competitorId;
+      if (!competitorId) {
+        setError("Failed to get competitor ID from response");
+        setLoading(false);
+        return;
+      }
+
+      // After successful competitor creation, trigger discovery
+      console.log("[add-competitor] Triggering discovery for competitor:", competitorId);
+      try {
+        const discoverResponse = await fetch(`/api/competitors/${competitorId}/discover`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        const discoverData = await discoverResponse.json();
+
+        if (!discoverResponse.ok) {
+          console.error("[add-competitor] Discovery failed:", discoverData);
+          // Continue anyway - user can retry discovery manually
+          // Discovery endpoint may have already started in background
+        } else {
+          console.log("[add-competitor] Discovery triggered successfully:", discoverData);
+        }
+      } catch (discoverErr: any) {
+        console.error("[add-competitor] Error triggering discovery:", discoverErr);
+        // Continue anyway - user can retry discovery manually
+      }
+
       setStoreName("");
       setStoreUrl("");
       onClose();
       
-      // After successful competitor creation, redirect to matches page
-      // The matches page will show "Processing..." and poll for completion
-      const competitorId = data.competitor?.id || data.competitorId;
-      if (competitorId) {
-        // Add cache-buster to prevent stale data
-        router.push(`/app/competitors/${competitorId}/matches?ts=${Date.now()}`);
-        router.refresh();
-      } else {
-        router.refresh();
-        onSuccess();
-      }
+      // Navigate to matches page after discovery is triggered
+      router.push(`/app/competitors/${competitorId}/matches?ts=${Date.now()}`);
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to add competitor");
     } finally {
