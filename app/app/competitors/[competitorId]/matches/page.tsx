@@ -27,6 +27,11 @@ export default async function MatchesReviewPage({
 
   // Load competitor store
   // Note: error_message column doesn't exist, so we don't select it
+  console.log("[matches-review] Server: Loading competitor", {
+    competitorId,
+    storeId: store.id,
+  });
+  
   const { data: competitor, error: competitorError } = await supabase
     .from("competitors")
     .select("id, name, url, status")
@@ -36,7 +41,7 @@ export default async function MatchesReviewPage({
 
   if (competitorError || !competitor) {
     const errorStatus = (competitorError as any)?.status ?? null;
-    console.error("[matches-review] Error loading competitor:", {
+    console.error("[matches-review] Server: Error loading competitor:", {
       competitorId,
       storeId: store.id,
       message: competitorError?.message || "Unknown error",
@@ -47,6 +52,12 @@ export default async function MatchesReviewPage({
     });
     redirect("/app/competitors");
   }
+
+  console.log("[matches-review] Server: Competitor loaded", {
+    competitorId,
+    competitorName: competitor.name,
+    status: competitor.status,
+  });
 
   // Determine mode based on confirmed matches count
   const confirmedCount = await getMatchCountForCompetitor(store.id, competitorId);
@@ -81,16 +92,28 @@ export default async function MatchesReviewPage({
       loadPayload
     );
 
-    // Log the raw RPC response
-    console.log("[matches-review] rpc error:", candidatesError);
-    console.log("[matches-review] rpc data:", matchCandidates?.length, matchCandidates?.[0]);
+    // Log the raw RPC response (server-side, once per request)
+    console.log("[matches-review] Server: RPC response", {
+      competitorId,
+      storeId: store.id,
+      rpcError: candidatesError ? {
+        message: candidatesError.message,
+        code: candidatesError.code,
+        details: candidatesError.details,
+        hint: candidatesError.hint,
+      } : null,
+      candidatesCount: Array.isArray(matchCandidates) ? matchCandidates.length : 0,
+      firstCandidate: Array.isArray(matchCandidates) && matchCandidates[0] ? {
+        candidate_id: matchCandidates[0].candidate_id,
+        product_id: matchCandidates[0].product_id,
+        competitor_id: matchCandidates[0].competitor_id,
+        similarity_score: matchCandidates[0].similarity_score,
+      } : null,
+    });
     
     // Ensure matchCandidates is an array (not count or single object)
     const candidatesData = Array.isArray(matchCandidates) ? matchCandidates : [];
     const candidates = candidatesData ?? [];
-    
-    // Log candidates before transformation
-    console.log('[matches-review] candidates length:', candidates.length, 'first:', candidates[0]);
 
     if (candidatesError) {
       const errorStatus = (candidatesError as any)?.status ?? null;
@@ -228,6 +251,12 @@ export default async function MatchesReviewPage({
         if (b.max_similarity_score === null) return -1;
         return b.max_similarity_score - a.max_similarity_score;
       });
+
+    console.log("[matches-review] Server: Transformed matches", {
+      competitorId,
+      groupedMatchesCount: groupedMatches.length,
+      totalCandidates: groupedMatches.reduce((sum, g) => sum + g.candidates.length, 0),
+    });
   }
 
   // Derive error message from status if needed

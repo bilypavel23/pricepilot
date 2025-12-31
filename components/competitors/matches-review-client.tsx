@@ -318,12 +318,15 @@ export function MatchesReviewClient({
       
       // Initialize selections will be handled by useEffect when groupedMatches changes
       
-      // Stop processing if we have candidates, or if status is not processing
-      if (transformed.length > 0 || status !== "processing") {
-        setIsProcessing(false);
+      // Update status state - do NOT stop processing based on matches count
+      // Let status be the source of truth - polling will stop when status changes from 'processing'
+      // Only update state if status actually changed
+      if (status && status !== currentStatus) {
+        setCurrentStatus(status);
+        setIsProcessing(status === "processing");
       }
       
-      return { matches: transformed, products, status };
+      return { matches: transformed, products, status: status || currentStatus };
     } catch (err) {
       console.error("[matches-review] Error loading data:", err);
       return { matches: null, products: null, status: null };
@@ -366,26 +369,23 @@ export function MatchesReviewClient({
     }
   };
 
-  // Load data on mount and when storeId changes (client-side, no cache)
+  // Load data on mount and when storeId/competitorId changes (client-side, no cache)
+  // Only run once per storeId/competitorId change - do not depend on status or matches
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId || !competitorId) return;
     
-    // Load data immediately
+    // Load data immediately on mount or when IDs change
     loadMatchesAndProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, competitorId]);
+  }, [storeId, competitorId]); // Do NOT add loadMatchesAndProducts to deps - it would cause loops
   
-  // Polling: Start when status is 'processing' OR when no matches found
+  // Polling: Controlled polling only when status is 'processing'
+  // CRITICAL: Do NOT include groupedMatches.length in dependencies to avoid re-render loops
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId || !competitorId) return;
     
-    // Determine if we should poll
-    // Don't poll if status is 'empty', 'error', 'failed', or 'blocked'
-    const shouldPoll = (isProcessing || currentStatus === "processing") && 
-      currentStatus !== "empty" &&
-      currentStatus !== "error" && 
-      currentStatus !== "failed" &&
-      currentStatus !== "blocked";
+    // Only poll when status is explicitly 'processing'
+    const shouldPoll = currentStatus === "processing";
     
     if (!shouldPoll) {
       // Stop polling if not needed
@@ -394,6 +394,8 @@ export function MatchesReviewClient({
         pollingTimeoutRef.current = null;
       }
       pollingStartTimeRef.current = null;
+      pollingTimeoutMessageRef.current = false;
+      setIsProcessing(false);
       return;
     }
     
@@ -402,11 +404,11 @@ export function MatchesReviewClient({
       return;
     }
     
-    console.log("[matches-review] Starting polling for competitor_id=", competitorId, "isProcessing:", isProcessing, "status:", currentStatus);
+    console.log("[matches-review] Starting controlled polling for competitor_id=", competitorId, "status:", currentStatus);
     
     let cancelled = false;
     let timeoutId: NodeJS.Timeout | null = null;
-    const POLL_INTERVAL = 2000; // 2 seconds
+    const POLL_INTERVAL = 2500; // 2.5 seconds (slightly longer to reduce load)
     const MAX_POLL_TIME = 120000; // 120 seconds (2 minutes)
     
     // Record start time
@@ -417,7 +419,7 @@ export function MatchesReviewClient({
     const poll = async () => {
       if (cancelled) return;
       
-      // Check timeout (90 seconds)
+      // Check timeout
       const elapsed = pollingStartTimeRef.current 
         ? Date.now() - pollingStartTimeRef.current 
         : 0;
@@ -436,28 +438,28 @@ export function MatchesReviewClient({
       
       if (cancelled) return;
       
-      // Stop polling if:
-      // 1. We have matches (RPC returns >0 rows)
-      // 2. Status is 'active' (scanning complete)
-      // 3. Status is 'empty' (no products found)
-      // 4. Status is 'error', 'failed', or 'blocked'
+      // Stop polling if status is no longer 'processing'
+      // Don't stop based on matches count - let status be the source of truth
       const shouldStop = 
-        (result.matches && result.matches.length > 0) ||
+        result.status !== "processing" ||
         result.status === "active" ||
+        result.status === "ready" || // Discovery completes with 'ready' status
         result.status === "empty" ||
         result.status === "error" ||
         result.status === "failed" ||
         result.status === "blocked";
       
       if (shouldStop) {
-        console.log("[matches-review] Stopping polling - matches:", result.matches?.length || 0, "status:", result.status);
+        console.log("[matches-review] Stopping polling - status changed to:", result.status);
         setIsProcessing(false);
+        setCurrentStatus(result.status || currentStatus);
         pollingTimeoutRef.current = null;
         pollingStartTimeRef.current = null;
+        pollingTimeoutMessageRef.current = false;
         return;
       }
       
-      // Continue polling if still processing (use result.status, not closure variable)
+      // Continue polling only if status is still 'processing'
       if (!cancelled && storeId && result.status === "processing") {
         timeoutId = setTimeout(poll, POLL_INTERVAL);
         pollingTimeoutRef.current = timeoutId;
@@ -481,8 +483,9 @@ export function MatchesReviewClient({
         pollingTimeoutRef.current = null;
       }
       pollingStartTimeRef.current = null;
+      pollingTimeoutMessageRef.current = false;
     };
-  }, [isProcessing, storeId, competitorId, currentStatus, groupedMatches.length]);
+  }, [storeId, competitorId, currentStatus]); // REMOVED groupedMatches.length to prevent re-render loop
   
   // Update isProcessing when status changes
   useEffect(() => {
@@ -599,9 +602,8 @@ export function MatchesReviewClient({
       // Show success toast
       alert(`Matches confirmed`);
       
-      // Navigate to competitors page
+      // Navigate to competitors page (navigation will refresh automatically)
       router.push("/app/competitors");
-      router.refresh();
     } catch (error: any) {
       alert(`Error: ${error.message || "Failed to confirm matches"}`);
     } finally {
