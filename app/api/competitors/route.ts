@@ -81,14 +81,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Insert new competitor store with status 'processing' and source='store'
+    // 3) Insert new competitor store with status 'ready' initially (will change to 'processing' when discovery starts)
+    // CRITICAL: Use server-side Supabase, return the REAL DB id from select('*')
     const { data: inserted, error: insertErr } = await supabase
       .from("competitors")
       .insert({
         store_id: store.id,
         url: url.trim(),
         name: name?.trim() ?? null,
-        status: "processing",
+        status: "ready", // Initial status - will be set to 'processing' when discovery starts
         source: "store",
         is_tracked: true,
       })
@@ -96,47 +97,39 @@ export async function POST(req: Request) {
       .single();
 
     if (insertErr) {
-      console.error("competitor insert error:", JSON.stringify(insertErr, null, 2));
+      console.error("[POST /api/competitors] competitor insert error:", JSON.stringify({
+        error: insertErr,
+        storeId: store.id,
+        url: url.trim(),
+        name: name?.trim() ?? null,
+      }, null, 2));
       return NextResponse.json(
         { error: "Failed to create competitor" },
         { status: 500 }
       );
     }
 
-    // 4) Trigger discovery scrape asynchronously (don't wait)
-    // Use internal function to avoid HTTP overhead
-    console.log("[POST /api/competitors] Starting discovery scrape", {
+    if (!inserted || !inserted.id) {
+      console.error("[POST /api/competitors] Insert succeeded but no data returned:", {
+        storeId: store.id,
+        url: url.trim(),
+      });
+      return NextResponse.json(
+        { error: "Failed to create competitor: no data returned" },
+        { status: 500 }
+      );
+    }
+
+    console.log("[POST /api/competitors] Competitor created successfully:", {
       competitorId: inserted.id,
       storeId: store.id,
       url: url.trim(),
+      name: inserted.name,
+      status: inserted.status,
     });
 
-    // Run discovery in background (don't await)
-    import("@/lib/competitors/discovery")
-      .then(({ runCompetitorDiscovery }) => {
-        return runCompetitorDiscovery({
-          storeId: store.id,
-          competitorId: inserted.id,
-          competitorUrl: url.trim(),
-          plan: plan,
-        });
-      })
-      .then((result) => {
-        console.log("[POST /api/competitors] Discovery completed", {
-          competitorId: inserted.id,
-          success: result.success,
-          productsScraped: result.productsScraped,
-          error: result.error,
-        });
-      })
-      .catch((err) => {
-        console.error("[POST /api/competitors] Failed to trigger discovery scrape:", {
-          competitorId: inserted.id,
-          error: err.message || "Unknown error",
-          stack: err.stack,
-        });
-      });
-
+    // Return the inserted competitor with REAL DB id
+    // DO NOT trigger discovery here - frontend will call /api/competitors/[id]/discover
     return NextResponse.json(
       {
         ok: true,

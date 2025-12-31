@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
-import { scrapeCompetitorProducts, ScrapingBlockedError } from "@/lib/scrapers/scrapeCompetitorProducts";
+import { scrapeCompetitorProducts, ScrapingBlockedError, type ScrapedProduct } from "@/lib/scrapers/scrapeCompetitorProducts";
 import { consumeDiscoveryQuota } from "@/lib/discovery-quota";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -16,7 +16,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  *    - Computes similarity
  *    - Inserts matched items directly into competitor_match_candidates
  * 5. Keeps competitor_store_products for fallback builds (deletion disabled)
- * 6. Updates competitor status to 'active' and last_sync_at
+ * 6. Updates competitor status to 'ready' and last_sync_at
  * 
  * CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
  * - All persistent logic must rely on: competitor_match_candidates and competitor_product_matches
@@ -48,28 +48,47 @@ export async function POST(
 
     const store = await getOrCreateStore();
 
-    // Load competitor - CRITICAL: Use competitor.id from DB for all FK fields
-    const { data: competitor, error: competitorError } = await supabaseAdmin
+    // CRITICAL: Validate competitor exists BEFORE scraping
+    // Use supabaseAdmin to ensure we can verify existence even with RLS
+    const { data: competitorCheck, error: competitorCheckError } = await supabaseAdmin
       .from("competitors")
       .select("id, name, url, store_id, status")
       .eq("id", competitorId)
       .eq("store_id", store.id)
       .single();
 
-    if (competitorError || !competitor) {
-      console.error("[discover] Error loading competitor:", {
+    if (competitorCheckError || !competitorCheck) {
+      console.error("[discover] VALIDATE: Competitor not found in DB:", {
+        stage: "validate",
         competitorIdParam: competitorId,
         storeId: store.id,
-        error: competitorError ? JSON.stringify(competitorError, null, 2) : null,
+        error: competitorCheckError ? JSON.stringify(competitorCheckError, null, 2) : null,
       });
+      
+      // Set status to 'failed' if competitor record somehow doesn't exist
+      try {
+        await supabaseAdmin
+          .from("competitors")
+          .update({
+            status: "failed",
+            last_sync_at: new Date().toISOString(),
+          })
+          .eq("id", competitorId);
+      } catch (updateErr) {
+        // Ignore update error - competitor doesn't exist anyway
+      }
+      
       return NextResponse.json(
         { error: "Competitor not found" },
         { status: 404 }
       );
     }
 
+    const competitor = competitorCheck;
+
     // Log competitor.id from DB - this is the ID we'll use for FK fields
-    console.log("[discover] Competitor loaded from DB:", {
+    console.log("[discover] VALIDATE: Competitor loaded from DB:", {
+      stage: "validate",
       competitorIdParam: competitorId,
       competitorIdDb: competitor.id,
       competitorName: competitor.name,
@@ -78,21 +97,89 @@ export async function POST(
     });
 
     // Step 1: Scrape competitor catalog (always do this, even in dry-run)
+    // Add timeout + retry wrapper for production resilience
     let scrapedProducts;
     let discoveredCount = 0;
     
+    async function scrapeWithRetry(url: string, maxRetries = 2): Promise<ScrapedProduct[]> {
+      const TIMEOUT_MS = 15000; // 15 second timeout
+      
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+          
+          console.log(`[discover] SCRAPE: Attempt ${attempt + 1}/${maxRetries + 1}`, {
+            stage: "scrape",
+            competitorId: competitor.id,
+            url,
+            attempt: attempt + 1,
+          });
+          
+          // Wrap scraping in Promise with timeout
+          const scrapePromise = scrapeCompetitorProducts(url);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              controller.abort();
+              reject(new Error('Scraping timeout after 15s'));
+            }, TIMEOUT_MS);
+          });
+          
+          const result = await Promise.race([scrapePromise, timeoutPromise]);
+          clearTimeout(timeoutId);
+          return result;
+        } catch (error: any) {
+          const errorMessage = error?.message || String(error || "");
+          const errorCode = error?.code || "";
+          const isNetworkError = 
+            errorMessage.includes("fetch failed") ||
+            errorMessage.includes("UND_ERR_SOCKET") ||
+            errorMessage.includes("ECONNRESET") ||
+            errorMessage.includes("ETIMEDOUT") ||
+            errorCode === "UND_ERR_SOCKET" ||
+            errorCode === "ECONNRESET" ||
+            errorCode === "ETIMEDOUT" ||
+            errorMessage.includes("timeout");
+          
+          if (isNetworkError && attempt < maxRetries) {
+            console.warn(`[discover] SCRAPE: Network error on attempt ${attempt + 1}, retrying...`, {
+              stage: "scrape",
+              competitorId: competitor.id,
+              attempt: attempt + 1,
+              error: errorMessage,
+              errorCode,
+            });
+            // Wait a bit before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            continue;
+          }
+          
+          // Not a network error or max retries reached
+          throw error;
+        }
+      }
+      
+      throw new Error("Max retries exceeded");
+    }
+    
     try {
-      scrapedProducts = await scrapeCompetitorProducts(competitor.url);
+      scrapedProducts = await scrapeWithRetry(competitor.url);
       discoveredCount = scrapedProducts.length;
       
-      console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`, {
-        dryRun,
+      console.log(`[discover] SCRAPE: Successfully scraped ${discoveredCount} products`, {
+        stage: "scrape",
         competitorId: competitor.id,
+        discoveredCount,
       });
     } catch (error: any) {
       // Handle blocked sites
       if (error instanceof ScrapingBlockedError || error?.message?.includes("blocks automated scraping")) {
         const now = new Date().toISOString();
+        console.error("[discover] SCRAPE: Site blocked", {
+          stage: "scrape",
+          competitorId: competitor.id,
+          error: error.message,
+        });
         await supabaseAdmin
           .from("competitors")
           .update({
@@ -108,7 +195,25 @@ export async function POST(
           message: "Site blocks automated scraping",
         }, { status: 200 });
       }
-      // Re-throw other errors
+      
+      // Other errors - set status to failed
+      const now = new Date().toISOString();
+      console.error("[discover] SCRAPE: Scraping failed", {
+        stage: "scrape",
+        competitorId: competitor.id,
+        error: error?.message || String(error),
+        errorCode: error?.code,
+      });
+      await supabaseAdmin
+        .from("competitors")
+        .update({
+          status: "failed",
+          last_sync_at: now,
+          updated_at: now,
+        })
+        .eq("id", competitor.id);
+      
+      // Re-throw to be caught by outer try/catch
       throw error;
     }
 
@@ -128,6 +233,10 @@ export async function POST(
     }
 
     // Update status to 'processing' (discovery in progress) - only if not dry-run
+    console.log("[discover] VALIDATE: Setting status to 'processing'", {
+      stage: "validate",
+      competitorId: competitor.id,
+    });
     await supabaseAdmin
       .from("competitors")
       .update({ status: "processing" })
@@ -249,48 +358,25 @@ export async function POST(
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
 
+      // Define price column name constant (DB uses 'last_price')
+      const PRICE_COL = 'last_price' as const;
+      
       // Log which competitor_id will be used for upsert
-      console.log("[discover] Preparing to upsert competitor_store_products:", {
+      console.log("[discover] UPSERT: Preparing to upsert competitor_store_products", {
+        stage: "upsert",
         competitorIdParam: competitorId,
         competitorIdDb: competitor.id,
         competitorIdUsedForUpsert: competitor.id, // CRITICAL: Always use competitor.id from DB
         storeId: store.id,
         productsToInsert: competitorProductsToInsert.length,
+        priceColumn: PRICE_COL,
         sampleProduct: competitorProductsToInsert[0] ? {
           competitor_id: competitorProductsToInsert[0].competitor_id,
           store_id: competitorProductsToInsert[0].store_id,
           competitor_url: competitorProductsToInsert[0].competitor_url,
+          [PRICE_COL]: competitorProductsToInsert[0][PRICE_COL],
         } : null,
       });
-
-      // Verify competitor exists in DB before upsert (fail-fast check)
-      const { data: competitorCheck, error: competitorCheckError } = await supabaseAdmin
-        .from("competitors")
-        .select("id")
-        .eq("id", competitor.id)
-        .single();
-
-      if (competitorCheckError || !competitorCheck) {
-        console.error("[discover] FK check failed: competitor not found in DB before upsert", {
-          competitorIdParam: competitorId,
-          competitorIdDb: competitor.id,
-          competitorIdUsedForUpsert: competitor.id,
-          storeId: store.id,
-          error: competitorCheckError ? JSON.stringify(competitorCheckError, null, 2) : null,
-        });
-        await supabaseAdmin
-          .from("competitors")
-          .update({
-            status: "failed",
-            last_sync_at: now,
-            updated_at: now,
-          })
-          .eq("id", competitor.id);
-        return NextResponse.json(
-          { ok: false, error: "Competitor record not found in database" },
-          { status: 500 }
-        );
-      }
 
       // Upsert using competitor.id from DB (NOT competitorId param)
       const { data: insertedProducts, error: insertError } = await supabaseAdmin
@@ -434,13 +520,19 @@ export async function POST(
         console.error(`[discover] ERROR: No products found for store_id=${store.id}! Matching cannot happen. Ensure you imported products for this store.`);
       }
 
-      // Step 5: Call RPC build_match_candidates_for_competitor_store
+      // Step 5: RPC - Call build_match_candidates_for_competitor_store
       // This RPC:
       // - Deletes old candidates for (store_id, competitor_id)
       // - Computes similarity between scraped products and store products using pg_trgm
       // - Inserts matched items directly into competitor_match_candidates (top-1 per competitor product)
       // - Returns inserted count
       // - Does NOT persist unmatched competitor products
+      console.log("[discover] RPC: Calling build_match_candidates_for_competitor_store", {
+        stage: "rpc",
+        competitorId: competitor.id,
+        storeId: store.id,
+      });
+      
       const { data: rpcResult, error: rpcError } = await supabase.rpc(
         "build_match_candidates_for_competitor_store",
         {
@@ -450,7 +542,11 @@ export async function POST(
       );
 
       if (rpcError) {
-        console.error("Error calling build_match_candidates_for_competitor_store:", JSON.stringify(rpcError, null, 2));
+        console.error("[discover] RPC: Error calling build_match_candidates_for_competitor_store", {
+          stage: "rpc",
+          competitorId: competitor.id,
+          error: rpcError,
+        });
         // Continue anyway - match candidates can be built later
       } else {
         // Log the returned count from RPC
@@ -473,7 +569,7 @@ export async function POST(
           // Dump sample rows from staging and products for debugging
           const { data: stagingSamples, error: stagingSamplesError } = await supabaseAdmin
             .from("competitor_store_products")
-            .select("id, store_id, competitor_id, competitor_name, competitor_url, competitor_price, currency, created_at")
+            .select("id, store_id, competitor_id, competitor_name, competitor_url, last_price, currency, created_at")
             .eq("store_id", store.id)
             .eq("competitor_id", competitor.id)
             .order("created_at", { ascending: false })
@@ -523,12 +619,19 @@ export async function POST(
         //   .eq("competitor_id", competitorId);
       }
 
-      // Step 7: Update competitor status to 'active' and set last_sync_at
-      // Status 'active' indicates scraping completed successfully with results
+      // Step 7: FINALIZE - Update competitor status to 'ready' and set last_sync_at
+      // Status 'ready' indicates scraping completed successfully with results
+      console.log("[discover] FINALIZE: Updating competitor status to 'ready'", {
+        stage: "finalize",
+        competitorId: competitor.id,
+        discoveredCount,
+        upsertedCount,
+      });
+      
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "active",
+          status: "ready",
           last_sync_at: now,
           updated_at: now,
         })
