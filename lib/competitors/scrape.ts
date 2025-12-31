@@ -663,10 +663,11 @@ function findNextPageUrl(html: string, currentUrl: string, baseUrl: string): str
  */
 function shouldUseDirectFetch(): boolean {
   // Use direct fetch only in localhost/dev environments
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const isLocalhost = process.env.NODE_ENV === "development" || 
                      process.env.VERCEL_ENV === "development" ||
-                     process.env.NEXT_PUBLIC_APP_URL?.includes("localhost") ||
-                     process.env.NEXT_PUBLIC_APP_URL?.includes("127.0.0.1");
+                     appUrl.includes("localhost") ||
+                     appUrl.includes("127.0.0.1");
   return isLocalhost;
 }
 
