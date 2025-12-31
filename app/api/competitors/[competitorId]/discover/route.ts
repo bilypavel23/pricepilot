@@ -62,27 +62,38 @@ export async function POST(
     await supabaseAdmin
       .from("competitors")
       .update({ status: "processing" })
-      .eq("id", competitorId);
+      .eq("id", competitor.id);
 
     try {
       // Step 1: Scrape competitor catalog
       const scrapedProducts = await scrapeCompetitorProducts(competitor.url);
+      const discoveredCount = scrapedProducts.length;
+      
+      // Track discoveredCount - will be used for status determination
+      console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`);
+      const now = new Date().toISOString();
 
-      if (scrapedProducts.length === 0) {
+      // Early return if no products discovered
+      if (discoveredCount === 0) {
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "failed",
-            last_sync_at: new Date().toISOString(),
+            status: "empty",
+            last_sync_at: now,
+            updated_at: now,
           })
-          .eq("id", competitorId);
+          .eq("id", competitor.id);
         return NextResponse.json({
-          error: "No products found on competitor store",
-        }, { status: 400 });
+          ok: true,
+          status: "empty",
+          discoveredCount: 0,
+          upsertedCount: 0,
+          message: "No products found on the competitor site.",
+        }, { status: 200 });
       }
 
       // Step 2: Check and consume discovery quota
-      const quotaResult = await consumeDiscoveryQuota(store.id, scrapedProducts.length);
+      const quotaResult = await consumeDiscoveryQuota(store.id, discoveredCount);
 
       if (!quotaResult || !quotaResult.allowed) {
         const remaining = quotaResult?.remaining_products ?? 0;
@@ -90,10 +101,12 @@ export async function POST(
           .from("competitors")
           .update({
             status: "failed",
-            last_sync_at: new Date().toISOString(),
+            last_sync_at: now,
+            updated_at: now,
           })
-          .eq("id", competitorId);
+          .eq("id", competitor.id);
         return NextResponse.json({
+          ok: false,
           error: `Discovery quota exceeded. Remaining: ${remaining} products`,
           remaining,
         }, { status: 403 });
@@ -106,7 +119,6 @@ export async function POST(
       // - All persistent logic must rely on competitor_match_candidates and competitor_product_matches
       // Only matched items are persisted in competitor_match_candidates.
       // CRITICAL: Must set store_id and competitor_id
-      const now = new Date().toISOString();
       
       // Helper to detect currency from price/name
       const detectCurrency = (product: { name: string; price: number | null; url: string }): string => {
@@ -164,7 +176,7 @@ export async function POST(
           
           return {
             store_id: store.id, // CRITICAL: Must be set
-            competitor_id: competitorId, // CRITICAL: Must be set
+            competitor_id: competitor.id, // CRITICAL: Use competitor.id from loaded record, not URL param
             competitor_name: competitorName,
             competitor_url: p.url,
             last_price: numericPrice, // Ensure numeric price (or null)
@@ -173,6 +185,34 @@ export async function POST(
           };
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
+
+      // Fail-fast check: Verify competitor exists in DB before upsert
+      const { data: competitorCheck, error: competitorCheckError } = await supabaseAdmin
+        .from("competitors")
+        .select("id")
+        .eq("id", competitor.id)
+        .single();
+
+      if (competitorCheckError || !competitorCheck) {
+        console.error("[discover] FK check failed: competitor not found in DB", {
+          competitorIdParam: competitorId,
+          competitorIdDb: competitor.id,
+          storeId: store.id,
+          error: competitorCheckError,
+        });
+        await supabaseAdmin
+          .from("competitors")
+          .update({
+            status: "failed",
+            last_sync_at: now,
+            updated_at: now,
+          })
+          .eq("id", competitor.id);
+        return NextResponse.json(
+          { ok: false, error: "Competitor record not found in database" },
+          { status: 500 }
+        );
+      }
 
       const { data: insertedProducts, error: insertError } = await supabaseAdmin
         .from("competitor_store_products")
@@ -183,18 +223,53 @@ export async function POST(
         .select("id");
 
       if (insertError) {
-        console.error("Error inserting competitor store products:", JSON.stringify(insertError, null, 2));
+        console.error("[discover] Error inserting competitor store products:", JSON.stringify({
+          error: insertError,
+          competitorIdParam: competitorId,
+          competitorIdDb: competitor.id,
+          storeId: store.id,
+          url: competitor.url,
+          productsCount: competitorProductsToInsert.length,
+          sampleProduct: competitorProductsToInsert[0] ? {
+            competitor_id: competitorProductsToInsert[0].competitor_id,
+            store_id: competitorProductsToInsert[0].store_id,
+            competitor_url: competitorProductsToInsert[0].competitor_url,
+          } : null,
+        }, null, 2));
         await supabaseAdmin
           .from("competitors")
           .update({
             status: "failed",
             last_sync_at: now,
+            updated_at: now,
           })
-          .eq("id", competitorId);
+          .eq("id", competitor.id);
         return NextResponse.json(
-          { error: "Failed to save competitor products" },
+          { ok: false, error: "Failed to save competitor products" },
           { status: 500 }
         );
+      }
+
+      const upsertedCount = insertedProducts?.length || 0;
+      console.log(`[discover] Upserted ${upsertedCount} products into competitor_store_products`);
+
+      // If upsertedCount === 0 (all products were filtered out), treat as empty result
+      if (upsertedCount === 0) {
+        await supabaseAdmin
+          .from("competitors")
+          .update({
+            status: "empty",
+            last_sync_at: now,
+            updated_at: now,
+          })
+          .eq("id", competitor.id);
+        return NextResponse.json({
+          ok: true,
+          status: "empty",
+          discoveredCount,
+          upsertedCount: 0,
+          message: "No products found on the competitor site.",
+        }, { status: 200 });
       }
 
       // Step 3.5: DEBUG - Log price population after insert
@@ -204,7 +279,7 @@ export async function POST(
         .from("competitor_store_products")
         .select("last_price")
         .eq("store_id", store.id)
-        .eq("competitor_id", competitorId);
+        .eq("competitor_id", competitor.id);
       
       if (priceStatsError) {
         console.error(`[discover] ERROR checking price stats:`, JSON.stringify(priceStatsError, null, 2));
@@ -249,12 +324,12 @@ export async function POST(
         .from("competitor_store_products")
         .select("*", { count: "exact", head: true })
         .eq("store_id", store.id)
-        .eq("competitor_id", competitorId);
+        .eq("competitor_id", competitor.id);
       
       console.log(`[discover] DEBUG: competitor_store_products count BEFORE build: ${stagingCount || 0} (error: ${countError ? JSON.stringify(countError) : 'none'})`);
       
       if (stagingCount === 0) {
-        console.error(`[discover] ERROR: competitor_store_products is EMPTY before build call! store_id=${store.id}, competitor_id=${competitorId}`);
+        console.error(`[discover] ERROR: competitor_store_products is EMPTY before build call! store_id=${store.id}, competitor_id=${competitor.id}`);
         console.error(`[discover] This indicates either: 1) premature deletion, 2) RLS blocking, or 3) insert failed silently`);
       }
 
@@ -283,7 +358,7 @@ export async function POST(
         "build_match_candidates_for_competitor_store",
         {
           p_store_id: store.id,
-          p_competitor_id: competitorId,
+          p_competitor_id: competitor.id,
         }
       );
 
@@ -300,12 +375,12 @@ export async function POST(
           .from("competitor_match_candidates")
           .select("*", { count: "exact", head: true })
           .eq("store_id", store.id)
-          .eq("competitor_id", competitorId);
+          .eq("competitor_id", competitor.id);
         
         console.log(`[discover] DEBUG: competitor_match_candidates count AFTER build: ${candidatesCount || 0} (error: ${candidatesCountError ? JSON.stringify(candidatesCountError) : 'none'})`);
         
         if (insertedCount === 0 || candidatesCount === 0) {
-          console.warn(`[discover] No candidates were inserted for store_id=${store.id}, competitor_id=${competitorId}.`);
+          console.warn(`[discover] No candidates were inserted for store_id=${store.id}, competitor_id=${competitor.id}.`);
           console.warn(`[discover] RPC returned: ${insertedCount}, DB has: ${candidatesCount || 0} candidates`);
           
           // Dump sample rows from staging and products for debugging
@@ -313,7 +388,7 @@ export async function POST(
             .from("competitor_store_products")
             .select("id, store_id, competitor_id, competitor_name, competitor_url, competitor_price, currency, created_at")
             .eq("store_id", store.id)
-            .eq("competitor_id", competitorId)
+            .eq("competitor_id", competitor.id)
             .order("created_at", { ascending: false })
             .limit(3);
           
@@ -339,10 +414,10 @@ export async function POST(
           if (stagingSamples && stagingSamples.length > 0) {
             const firstStaging = stagingSamples[0] as any;
             const actualCompetitorId = firstStaging.competitor_id || firstStaging.competitor_store_id;
-            console.log(`[discover] DEBUG: First staging row - competitor_id: ${actualCompetitorId}, expected: ${competitorId}`);
+            console.log(`[discover] DEBUG: First staging row - competitor_id: ${actualCompetitorId}, expected: ${competitor.id}`);
             console.log(`[discover] DEBUG: First staging row - store_id: ${firstStaging.store_id}, expected: ${store.id}`);
-            if (actualCompetitorId !== competitorId) {
-              console.error(`[discover] ERROR: competitor_id mismatch! Staging has: ${actualCompetitorId}, expected: ${competitorId}`);
+            if (actualCompetitorId !== competitor.id) {
+              console.error(`[discover] ERROR: competitor_id mismatch! Staging has: ${actualCompetitorId}, expected: ${competitor.id}`);
               console.error(`[discover] ERROR: Check if table uses competitor_store_id instead of competitor_id`);
             }
             if (firstStaging.store_id !== store.id) {
@@ -361,22 +436,24 @@ export async function POST(
         //   .eq("competitor_id", competitorId);
       }
 
-      // Step 7: Update competitor status to 'ready' and set last_sync_at
-      // Status 'ready' indicates scraping is complete and matches are available for review
+      // Step 7: Update competitor status to 'active' and set last_sync_at
+      // Status 'active' indicates scraping completed successfully with results
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "ready",
+          status: "active",
           last_sync_at: now,
+          updated_at: now,
         })
-        .eq("id", competitorId);
+        .eq("id", competitor.id);
 
       return NextResponse.json({
-        success: true,
-        productsFound: scrapedProducts.length,
-        productsSaved: insertedProducts?.length || 0,
+        ok: true,
+        status: "active",
+        discoveredCount,
+        upsertedCount,
         quotaRemaining: quotaResult.remaining_products,
-      });
+      }, { status: 200 });
     } catch (error: any) {
       console.error("Error in discovery scrape:", JSON.stringify({
         message: error?.message || "Unknown error",
@@ -386,15 +463,17 @@ export async function POST(
         status: error?.status || null,
         stack: error?.stack || null,
       }, null, 2));
+      const now = new Date().toISOString();
       await supabaseAdmin
         .from("competitors")
         .update({
           status: "failed",
-          last_sync_at: new Date().toISOString(),
+          last_sync_at: now,
+          updated_at: now,
         })
-        .eq("id", competitorId);
+        .eq("id", competitor.id);
       return NextResponse.json(
-        { error: error.message || "Failed to discover competitor products" },
+        { ok: false, error: error.message || "Failed to discover competitor products" },
         { status: 500 }
       );
     }

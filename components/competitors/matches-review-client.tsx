@@ -68,7 +68,9 @@ export function MatchesReviewClient({
   const [currentStatus, setCurrentStatus] = useState(competitorStatus);
   const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollingStartTimeRef = useRef<number | null>(null);
+  const pollingTimeoutMessageRef = useRef<boolean>(false);
   const [storeId, setStoreId] = useState<string | null>(propStoreId || null);
+  const [errorState, setErrorState] = useState<string | null>(errorMessage || null);
   
   // Store selection as STRING (candidate_id or "none"), NOT null
   // Key: product_id (my product) -> Value: candidate_id or "none"
@@ -247,6 +249,11 @@ export function MatchesReviewClient({
       if (competitor && status) {
         setCurrentStatus(status);
         setIsProcessing(status === "processing");
+        
+        // Clear error state if status is not failed/error
+        if (status !== "failed" && status !== "error") {
+          setErrorState(null);
+        }
       }
       
       // Load products
@@ -301,8 +308,8 @@ export function MatchesReviewClient({
       
       // Initialize selections will be handled by useEffect when groupedMatches changes
       
-      // If we have candidates, stop processing
-      if (transformed.length > 0) {
+      // Stop processing if we have candidates, or if status is not processing
+      if (transformed.length > 0 || status !== "processing") {
         setIsProcessing(false);
       }
       
@@ -313,6 +320,42 @@ export function MatchesReviewClient({
     }
   };
   
+  // Function to handle discover API response
+  const handleDiscoverResponse = async (response: Response) => {
+    try {
+      const data = await response.json();
+      
+      if (!response.ok || !data.ok) {
+        // Error response
+        setErrorState(data.error || "Failed to start discovery scan");
+        setIsProcessing(false);
+        setCurrentStatus("failed");
+        return;
+      }
+      
+      if (data.status === "empty" || data.discoveredCount === 0 || data.upsertedCount === 0) {
+        // Empty result - stop loading and show empty state
+        setErrorState(null);
+        setIsProcessing(false);
+        setCurrentStatus("empty");
+        // Reload to get updated status
+        await loadMatchesAndProducts();
+        return;
+      }
+      
+      // Success - start polling
+      setErrorState(null);
+      setIsProcessing(true);
+      setCurrentStatus("processing");
+      // Start polling
+      loadMatchesAndProducts();
+    } catch (err) {
+      console.error("[matches-review] Error handling discover response:", err);
+      setErrorState("Failed to process discovery response");
+      setIsProcessing(false);
+    }
+  };
+
   // Load data on mount and when storeId changes (client-side, no cache)
   useEffect(() => {
     if (!storeId) return;
@@ -327,8 +370,11 @@ export function MatchesReviewClient({
     if (!storeId) return;
     
     // Determine if we should poll
-    const shouldPoll = isProcessing || currentStatus === "processing" || 
-      (groupedMatches.length === 0 && currentStatus !== "error" && currentStatus !== "failed");
+    // Don't poll if status is 'empty', 'error', or 'failed'
+    const shouldPoll = (isProcessing || currentStatus === "processing") && 
+      currentStatus !== "empty" &&
+      currentStatus !== "error" && 
+      currentStatus !== "failed";
     
     if (!shouldPoll) {
       // Stop polling if not needed
@@ -350,7 +396,7 @@ export function MatchesReviewClient({
     let cancelled = false;
     let timeoutId: NodeJS.Timeout | null = null;
     const POLL_INTERVAL = 2000; // 2 seconds
-    const MAX_POLL_TIME = 90000; // 90 seconds
+    const MAX_POLL_TIME = 120000; // 120 seconds (2 minutes)
     
     // Record start time
     if (!pollingStartTimeRef.current) {
@@ -366,8 +412,9 @@ export function MatchesReviewClient({
         : 0;
       
       if (elapsed >= MAX_POLL_TIME) {
-        console.log("[matches-review] Polling timeout after 90 seconds");
+        console.log("[matches-review] Polling timeout after 120 seconds");
         setIsProcessing(false);
+        pollingTimeoutMessageRef.current = true;
         pollingTimeoutRef.current = null;
         pollingStartTimeRef.current = null;
         return;
@@ -381,15 +428,18 @@ export function MatchesReviewClient({
       // Stop polling if:
       // 1. We have matches (RPC returns >0 rows)
       // 2. Status is 'active' (scanning complete)
-      // 3. Status is 'error' or 'failed'
+      // 3. Status is 'empty' (no products found)
+      // 4. Status is 'error' or 'failed'
       const shouldStop = 
         (result.matches && result.matches.length > 0) ||
         result.status === "active" ||
+        result.status === "empty" ||
         result.status === "error" ||
         result.status === "failed";
       
       if (shouldStop) {
         console.log("[matches-review] Stopping polling - matches:", result.matches?.length || 0, "status:", result.status);
+        setIsProcessing(false);
         pollingTimeoutRef.current = null;
         pollingStartTimeRef.current = null;
         return;
@@ -604,10 +654,28 @@ export function MatchesReviewClient({
               Review and confirm matches to activate this competitor
             </p>
           )}
-          {errorMessage && (
+          {errorState && (
             <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-              {errorMessage}
+              {errorState}
             </p>
+          )}
+          {pollingTimeoutMessageRef.current && (
+            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-xs">
+              <p className="text-yellow-800 dark:text-yellow-200">
+                Still scanning… You can leave this page; we'll keep working and notify you here when results are ready.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => {
+                  pollingTimeoutMessageRef.current = false;
+                  loadMatchesAndProducts();
+                }}
+              >
+                Refresh
+              </Button>
+            </div>
           )}
         </div>
         <Button
@@ -627,7 +695,41 @@ export function MatchesReviewClient({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isProcessing || currentStatus === "processing" ? (
+          {currentStatus === "empty" ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold mb-2">No matches found</h3>
+              <p className="text-muted-foreground mb-6">
+                We scanned the competitor store but couldn't find matching products. Try a different competitor URL or add matches manually.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/app/products?addCompetitorByUrl=true")}
+                >
+                  Add competitor by URL
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/app/competitors")}
+                >
+                  Back to Competitors
+                </Button>
+              </div>
+            </div>
+          ) : errorState && (currentStatus === "failed" || currentStatus === "error") ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold mb-2 text-red-600 dark:text-red-400">Error</h3>
+              <p className="text-muted-foreground mb-6">{errorState}</p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/app/competitors")}
+                >
+                  Back to Competitors
+                </Button>
+              </div>
+            </div>
+          ) : isProcessing || currentStatus === "processing" ? (
             // E) Safe fallback: If candidates.length > 0, never show "No matches found" even during processing
             groupedMatches.length === 0 ? (
               <div className="text-center py-12">
