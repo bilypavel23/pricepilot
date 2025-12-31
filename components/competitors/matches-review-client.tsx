@@ -655,7 +655,7 @@ export function MatchesReviewClient({
           <p className="text-sm text-muted-foreground mt-1">
             {competitorName}
           </p>
-          {isProcessing && (
+          {isProcessing && groupedMatches.length === 0 && (
             <div className="flex items-center gap-2 mt-2">
               <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
               <p className="text-xs text-blue-600 dark:text-blue-400">
@@ -673,7 +673,7 @@ export function MatchesReviewClient({
               {errorState}
             </p>
           )}
-          {pollingTimeoutMessageRef.current && (
+          {pollingTimeoutMessageRef.current && groupedMatches.length === 0 && (
             <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-xs">
               <p className="text-yellow-800 dark:text-yellow-200">
                 Still scanning… You can leave this page; we'll keep working and notify you here when results are ready.
@@ -787,17 +787,25 @@ export function MatchesReviewClient({
             )
           ) : (
             <div className="space-y-4">
-              {/* Show "Still scanning..." banner when processing AND matches exist */}
-              {(isProcessing || currentStatus === "processing") && (
+              {/* Show banner based on status and matches count */}
+              {currentStatus === "processing" && groupedMatches.length === 0 ? (
+                // Only show "Still scanning..." if processing AND no matches yet
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      Still scanning for more matches...
+                      Still scanning...
                     </p>
                   </div>
                 </div>
-              )}
+              ) : groupedMatches.length > 0 ? (
+                // If matches exist, show calmer info banner (never show infinite scanning once results exist)
+                <div className="p-3 bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-md">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    Scan complete. Review below.
+                  </p>
+                </div>
+              ) : null}
               {(() => {
                 // Log before render - verify candidates array
                 console.log('[matches-review] candidates length:', groupedMatches.length, 'first:', groupedMatches[0]);

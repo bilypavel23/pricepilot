@@ -329,7 +329,7 @@ export async function POST(
       // Continue anyway - matches were already confirmed
     }
 
-    // Optionally set competitors.last_sync_at and status='active'
+    // Update competitor status to 'active' and set last_sync_at after successful confirmation
     await supabaseAdmin
       .from("competitors")
       .update({ 
@@ -337,7 +337,7 @@ export async function POST(
         last_sync_at: new Date().toISOString(),
       })
       .eq("id", competitorId)
-      .eq("store_id", finalStoreId);
+      .eq("store_id", store.id);
 
     return NextResponse.json({
       ok: true,

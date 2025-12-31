@@ -16,7 +16,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  *    - Computes similarity
  *    - Inserts matched items directly into competitor_match_candidates
  * 5. Keeps competitor_store_products for fallback builds (deletion disabled)
- * 6. Updates competitor status to 'ready' and last_sync_at
+ * 6. Updates competitor status to 'active' and last_sync_at
  * 
  * CRITICAL: competitor_store_products is VOLATILE and can be wiped anytime.
  * - All persistent logic must rely on: competitor_match_candidates and competitor_product_matches
@@ -65,15 +65,16 @@ export async function POST(
         error: competitorCheckError ? JSON.stringify(competitorCheckError, null, 2) : null,
       });
       
-      // Set status to 'failed' if competitor record somehow doesn't exist
+      // Try to set status to 'error' if competitor record somehow doesn't exist (will likely fail)
       try {
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "failed",
+            status: "error", // Use 'error' instead of 'failed' (valid enum)
             last_sync_at: new Date().toISOString(),
           })
-          .eq("id", competitorId);
+          .eq("id", competitorId)
+          .eq("store_id", store.id);
       } catch (updateErr) {
         // Ignore update error - competitor doesn't exist anyway
       }
@@ -183,11 +184,12 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "blocked",
+            status: "error", // Use 'error' for blocked sites (valid enum: active, paused, pending, error)
             last_sync_at: now,
             updated_at: now,
           })
-          .eq("id", competitor.id);
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
         
         return NextResponse.json({
           ok: true,
@@ -196,22 +198,24 @@ export async function POST(
         }, { status: 200 });
       }
       
-      // Other errors - set status to failed
+      // Other errors - set status to error
       const now = new Date().toISOString();
       console.error("[discover] SCRAPE: Scraping failed", {
         stage: "scrape",
         competitorId: competitor.id,
+        storeId: store.id,
         error: error?.message || String(error),
         errorCode: error?.code,
       });
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "failed",
+          status: "error", // Use 'error' instead of 'failed' (valid enum: active, paused, pending, error)
           last_sync_at: now,
           updated_at: now,
         })
-        .eq("id", competitor.id);
+        .eq("id", competitor.id)
+        .eq("store_id", store.id);
       
       // Re-throw to be caught by outer try/catch
       throw error;
@@ -232,15 +236,18 @@ export async function POST(
       }, { status: 200 });
     }
 
-    // Update status to 'processing' (discovery in progress) - only if not dry-run
-    console.log("[discover] VALIDATE: Setting status to 'processing'", {
+    // Update status to 'pending' (discovery in progress) - only if not dry-run
+    // Note: 'pending' is used to indicate in-progress state (valid enum: active, paused, pending, error)
+    console.log("[discover] VALIDATE: Setting status to 'pending' (processing)", {
       stage: "validate",
       competitorId: competitor.id,
+      storeId: store.id,
     });
     await supabaseAdmin
       .from("competitors")
-      .update({ status: "processing" })
-      .eq("id", competitor.id);
+      .update({ status: "pending" })
+      .eq("id", competitor.id)
+      .eq("store_id", store.id);
 
     try {
       const now = new Date().toISOString();
@@ -250,11 +257,12 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "empty",
+            status: "active", // Set to 'active' even with 0 products (valid enum)
             last_sync_at: now,
             updated_at: now,
           })
-          .eq("id", competitor.id);
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
         return NextResponse.json({
           ok: true,
           status: "empty",
@@ -272,11 +280,12 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "failed",
+            status: "error", // Use 'error' instead of 'failed' (valid enum: active, paused, pending, error)
             last_sync_at: now,
             updated_at: now,
           })
-          .eq("id", competitor.id);
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
         return NextResponse.json({
           ok: false,
           error: `Discovery quota exceeded. Remaining: ${remaining} products`,
@@ -407,13 +416,14 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "failed",
+            status: "error", // Use 'error' instead of 'failed' (valid enum: active, paused, pending, error)
             last_sync_at: now,
             updated_at: now,
           })
-          .eq("id", competitor.id);
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
         return NextResponse.json(
-          { ok: false, error: "Failed to save competitor products" },
+          { ok: false, error: "Failed to save competitor products", status: "error" },
           { status: 500 }
         );
       }
@@ -431,11 +441,12 @@ export async function POST(
         await supabaseAdmin
           .from("competitors")
           .update({
-            status: "empty",
+            status: "active", // Set to 'active' even with 0 upserted (valid enum)
             last_sync_at: now,
             updated_at: now,
           })
-          .eq("id", competitor.id);
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
         return NextResponse.json({
           ok: true,
           status: "empty",
@@ -619,11 +630,12 @@ export async function POST(
         //   .eq("competitor_id", competitorId);
       }
 
-      // Step 7: FINALIZE - Update competitor status to 'ready' and set last_sync_at
-      // Status 'ready' indicates scraping completed successfully with results
-      console.log("[discover] FINALIZE: Updating competitor status to 'ready'", {
+      // Step 7: FINALIZE - Update competitor status to 'active' and set last_sync_at
+      // Status 'active' indicates discovery completed successfully with results
+      console.log("[discover] FINALIZE: Updating competitor status to 'active'", {
         stage: "finalize",
         competitorId: competitor.id,
+        storeId: store.id,
         discoveredCount,
         upsertedCount,
       });
@@ -631,11 +643,12 @@ export async function POST(
       await supabaseAdmin
         .from("competitors")
         .update({
-          status: "ready",
+          status: "active",
           last_sync_at: now,
           updated_at: now,
         })
-        .eq("id", competitor.id);
+        .eq("id", competitor.id)
+        .eq("store_id", store.id);
 
       return NextResponse.json({
         ok: true,
@@ -644,7 +657,10 @@ export async function POST(
         quotaRemaining: quotaResult.remaining_products,
       }, { status: 200 });
     } catch (error: any) {
-      console.error("Error in discovery scrape:", JSON.stringify({
+      console.error("[discover] ERROR: Error in discovery scrape:", JSON.stringify({
+        stage: "error_handler",
+        competitorId: competitor?.id || competitorId,
+        storeId: store?.id || "unknown",
         message: error?.message || "Unknown error",
         code: error?.code || "NO_CODE",
         details: error?.details || null,
@@ -653,14 +669,18 @@ export async function POST(
         stack: error?.stack || null,
       }, null, 2));
       const now = new Date().toISOString();
-      await supabaseAdmin
-        .from("competitors")
-        .update({
-          status: "failed",
-          last_sync_at: now,
-          updated_at: now,
-        })
-        .eq("id", competitor.id);
+      // Ensure status is never left as 'processing' - set to 'error' on failure
+      if (competitor?.id) {
+        await supabaseAdmin
+          .from("competitors")
+          .update({
+            status: "error", // Use 'error' instead of 'failed' (valid enum: active, paused, pending, error)
+            last_sync_at: now,
+            updated_at: now,
+          })
+          .eq("id", competitor.id)
+          .eq("store_id", store.id);
+      }
       return NextResponse.json(
         { ok: false, error: error.message || "Failed to discover competitor products" },
         { status: 500 }
