@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +13,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate terms acceptance
+    // Validate terms acceptance - return 400 before calling signUp
     if (termsAccepted !== true) {
       return NextResponse.json(
         { error: "You must agree to the Terms of Service and Privacy Policy to continue." },
@@ -44,6 +43,8 @@ export async function POST(req: Request) {
     const origin = req.headers.get("origin") || requestUrl.origin;
 
     // Sign up user
+    // Profile will be created automatically by DB trigger (handle_new_user)
+    // Pass metadata including terms_accepted for the trigger to use
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -52,94 +53,24 @@ export async function POST(req: Request) {
         data: {
           full_name: fullName,
           plan: "free_demo",
+          terms_accepted: true,
         },
       },
     });
 
     // Log signUp result
-    console.log("signUp result", { data, error: signUpError });
+    console.log("signUp result", { 
+      userId: data?.user?.id, 
+      email: data?.user?.email,
+      error: signUpError 
+    });
 
     if (signUpError) {
       console.error("signUp error:", signUpError);
       return NextResponse.json({ error: signUpError.message }, { status: 400 });
     }
 
-    // Verify we have a user id
-    const userId = data?.user?.id ?? data?.session?.user?.id;
-    if (!userId) {
-      console.error("Missing user id after signUp", { data });
-      return NextResponse.json(
-        { error: "Missing user id after signUp" },
-        { status: 500 }
-      );
-    }
-
-    // Get the user's metadata from signup
-    const userMetadata = data.user?.user_metadata || {};
-    const profileFullName = userMetadata.full_name || fullName;
-    const profilePlan = userMetadata.plan || "free_demo";
-    const termsAcceptedAt = new Date().toISOString();
-
-    // Insert/upsert profile with terms acceptance using admin client
-    // Always include terms_accepted: true and terms_accepted_at when checkbox is checked
-    // Note: Trial is computed in app code (lib/billing/trial.ts) from user.created_at, not stored in DB
-    // Retry in case profile hasn't been created yet by trigger
-    let profileUpserted = false;
-    
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const profilePayload = {
-        id: userId,
-        full_name: profileFullName,
-        plan: profilePlan,
-        terms_accepted: true,
-        terms_accepted_at: termsAcceptedAt,
-      };
-
-      const { error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .upsert(profilePayload, {
-          onConflict: "id"
-        });
-
-      if (!profileError) {
-        profileUpserted = true;
-        break;
-      }
-
-      // If profile doesn't exist yet and upsert failed, wait and retry
-      // This can happen if the trigger hasn't run yet or foreign key constraints
-      if (profileError.code === "PGRST116" || profileError.message?.includes("No rows") || 
-          profileError.message?.includes("violates foreign key") || 
-          profileError.message?.includes("does not exist")) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        continue;
-      }
-
-      // For other errors, log the full error and return it
-      console.error("profiles insert error", JSON.stringify(profileError, null, 2));
-      console.error("profilePayload:", JSON.stringify(profilePayload, null, 2));
-      
-      return NextResponse.json(
-        { 
-          error: profileError.message || "Database error saving new user",
-          details: profileError.details,
-          hint: profileError.hint,
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!profileUpserted) {
-      console.error("Signup profile upsert failed after retries", {
-        userId: userId,
-        attempts: 5,
-      });
-      return NextResponse.json(
-        { error: "Database error saving new user. Please try again." },
-        { status: 500 }
-      );
-    }
-
+    // Return success - profile will be created by DB trigger
     return NextResponse.json({
       success: true,
       message: "Account created. Please check your email and click the verification link to activate your account.",

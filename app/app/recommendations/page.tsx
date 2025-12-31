@@ -6,19 +6,20 @@ import { RecommendationsClient } from "@/components/recommendations/recommendati
 import { getRecommendationsForStore } from "@/lib/recommendations/getRecommendations";
 
 export default async function RecommendationsPage() {
-  const { user, profile } = await getProfile();
+  const { user, profile, entitlements } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
   // isDemo is true only if raw plan is free_demo AND trial is NOT active (expired trial)
+  // Use entitlements.trialActive instead of profile.trial_active (which is computed in app code)
   const rawPlan = profile?.plan;
-  const trialActive = profile?.trial_active ?? false;
+  const trialActive = entitlements?.trialActive ?? false;
   const isDemo = rawPlan === "free_demo" && !trialActive;
   
-  // Use effective_plan for limits (maps free_demo with active trial to pro)
-  const effectivePlan = profile?.effective_plan ?? rawPlan ?? "free_demo";
+  // Use effectivePlan from entitlements (maps free_demo with active trial to pro)
+  const effectivePlan = entitlements?.effectivePlan ?? rawPlan ?? "free_demo";
   
   const store = await getOrCreateStore();
   const supabase = await createClient();

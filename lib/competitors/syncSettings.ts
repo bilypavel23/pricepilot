@@ -54,12 +54,12 @@ export async function getOrCreateStoreSyncSettings(
 ): Promise<StoreSyncSettings> {
   const supabase = await createClient();
 
-  // get user profile
+  // get user profile - use maybeSingle() to avoid throwing when profile doesn't exist
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   // Get user created_at for trial calculation
   const { data: { user } } = await supabase.auth.getUser();
