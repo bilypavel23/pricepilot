@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
-import { scrapeCompetitorProducts } from "@/lib/scrapers/scrapeCompetitorProducts";
+import { scrapeCompetitorProducts, ScrapingBlockedError } from "@/lib/scrapers/scrapeCompetitorProducts";
 import { consumeDiscoveryQuota } from "@/lib/discovery-quota";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -78,13 +78,39 @@ export async function POST(
     });
 
     // Step 1: Scrape competitor catalog (always do this, even in dry-run)
-    const scrapedProducts = await scrapeCompetitorProducts(competitor.url);
-    const discoveredCount = scrapedProducts.length;
+    let scrapedProducts;
+    let discoveredCount = 0;
     
-    console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`, {
-      dryRun,
-      competitorId: competitor.id,
-    });
+    try {
+      scrapedProducts = await scrapeCompetitorProducts(competitor.url);
+      discoveredCount = scrapedProducts.length;
+      
+      console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`, {
+        dryRun,
+        competitorId: competitor.id,
+      });
+    } catch (error: any) {
+      // Handle blocked sites
+      if (error instanceof ScrapingBlockedError || error?.message?.includes("blocks automated scraping")) {
+        const now = new Date().toISOString();
+        await supabaseAdmin
+          .from("competitors")
+          .update({
+            status: "blocked",
+            last_sync_at: now,
+            updated_at: now,
+          })
+          .eq("id", competitor.id);
+        
+        return NextResponse.json({
+          ok: true,
+          status: "blocked",
+          message: "Site blocks automated scraping",
+        }, { status: 200 });
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     // Dry-run: Return early with sample data
     if (dryRun) {

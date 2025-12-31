@@ -113,17 +113,35 @@ async function crawlFrontier(
     normalizedVisited.add(normalizedUrl);
     visited.add(url);
 
-    let html = await fetchHtml(url, false);
-    if (!html) continue;
+    let html: string | null;
+    try {
+      html = await fetchHtml(url, false);
+      if (!html) continue;
+    } catch (error: any) {
+      // If blocking error on first page, propagate it
+      if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+        throw error;
+      }
+      // Otherwise, skip this URL and continue
+      continue;
+    }
 
     let products = parseProductsFromListing(html, baseUrl);
 
     // retry with render_js if we got nothing and html seems thin
     if (products.length === 0 && html.length < 2000) {
-      const js = await fetchHtml(url, true);
-      if (js) {
-        html = js;
-        products = parseProductsFromListing(html, baseUrl);
+      try {
+        const js = await fetchHtml(url, true);
+        if (js) {
+          html = js;
+          products = parseProductsFromListing(html, baseUrl);
+        }
+      } catch (error: any) {
+        // If blocking error, propagate it
+        if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+          throw error;
+        }
+        // Otherwise, continue with existing html
       }
     }
 
@@ -274,8 +292,18 @@ async function crawlSeed(seedUrl: string, baseUrl: string, map: Map<string, RawS
   while (current && pages < MAX_PAGES_PER_SEED && map.size < MAX_TOTAL_PRODUCTS) {
     pages++;
 
-    let html = await fetchHtml(current, false);
-    if (!html) break;
+    let html: string | null;
+    try {
+      html = await fetchHtml(current, false);
+      if (!html) break;
+    } catch (error: any) {
+      // If blocking error on first page, propagate it
+      if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+        throw error;
+      }
+      // Otherwise, break this seed
+      break;
+    }
 
     let products = parseProductsFromListing(html, baseUrl);
 
@@ -291,10 +319,18 @@ async function crawlSeed(seedUrl: string, baseUrl: string, map: Map<string, RawS
 
     // Retry with render_js if page looks empty or blocked
     if (products.length < MIN_PRODUCTS_PER_PAGE) {
-      const retry = await fetchHtml(current, true);
-      if (retry) {
-        html = retry;
-        products = parseProductsFromListing(retry, baseUrl);
+      try {
+        const retry = await fetchHtml(current, true);
+        if (retry) {
+          html = retry;
+          products = parseProductsFromListing(retry, baseUrl);
+        }
+      } catch (error: any) {
+        // If blocking error, propagate it
+        if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+          throw error;
+        }
+        // Otherwise, continue with existing html
       }
     }
 
@@ -622,15 +658,40 @@ function findNextPageUrl(html: string, currentUrl: string, baseUrl: string): str
 // ----------------------
 // Fetch helpers
 // ----------------------
+/**
+ * Determine if we should use direct fetch (localhost/dev) or ScrapingBee (production)
+ */
+function shouldUseDirectFetch(): boolean {
+  // Use direct fetch only in localhost/dev environments
+  const isLocalhost = process.env.NODE_ENV === "development" || 
+                     process.env.VERCEL_ENV === "development" ||
+                     process.env.NEXT_PUBLIC_APP_URL?.includes("localhost") ||
+                     process.env.NEXT_PUBLIC_APP_URL?.includes("127.0.0.1");
+  return isLocalhost;
+}
+
 async function fetchHtml(url: string, renderJs: boolean): Promise<string | null> {
-  // render_js requires ScrapingBee
+  // render_js always requires ScrapingBee
   if (renderJs) return await fetchHtmlScrapingBee(url, true);
 
-  // 1) try direct fetch first (works great for many sites, incl. webscraper.io)
-  const direct = await fetchHtmlDirect(url);
-  if (direct && direct.length > 500) return direct;
+  // In production, use ScrapingBee directly (skip direct fetch to avoid blocking)
+  if (!shouldUseDirectFetch()) {
+    return await fetchHtmlScrapingBee(url, false);
+  }
 
-  // 2) fallback to ScrapingBee
+  // In localhost/dev: try direct fetch first, then fallback to ScrapingBee
+  try {
+    const direct = await fetchHtmlDirect(url);
+    if (direct && direct.length > 500) return direct;
+  } catch (error: any) {
+    // If direct fetch throws SITE_BLOCKED error, propagate it
+    if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+      throw error;
+    }
+    // Otherwise, fall through to ScrapingBee
+  }
+
+  // Fallback to ScrapingBee
   return await fetchHtmlScrapingBee(url, false);
 }
 
@@ -652,7 +713,23 @@ async function fetchHtmlDirect(url: string): Promise<string | null> {
     // quick sanity check: must look like HTML
     if (!html || !html.includes("<html")) return null;
     return html;
-  } catch {
+  } catch (error: any) {
+    // Check for socket/connection errors that indicate blocking
+    const errorMessage = error?.message || String(error || "");
+    const errorCode = error?.code || "";
+    
+    if (
+      errorMessage.includes("fetch failed") ||
+      errorMessage.includes("UND_ERR_SOCKET") ||
+      errorCode === "UND_ERR_SOCKET" ||
+      errorCode === "ECONNREFUSED" ||
+      errorCode === "ETIMEDOUT"
+    ) {
+      // Re-throw as a specific error that indicates blocking
+      const blockedError = new Error("SITE_BLOCKED");
+      (blockedError as any).isBlocked = true;
+      throw blockedError;
+    }
     return null;
   }
 }

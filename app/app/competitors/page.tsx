@@ -542,6 +542,11 @@ export default async function CompetitorsPage() {
                               Paused
                             </Badge>
                           )}
+                          {competitor.status === "blocked" && (
+                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 border-yellow-500 text-yellow-600 dark:text-yellow-400">
+                              Blocked
+                            </Badge>
+                          )}
                           {(competitor.status === "error" || competitor.status === "failed") && (
                             <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
                               <AlertCircle className="h-3 w-3 mr-1 inline" />

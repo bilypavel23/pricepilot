@@ -250,9 +250,19 @@ export function MatchesReviewClient({
         setCurrentStatus(status);
         setIsProcessing(status === "processing");
         
-        // Clear error state if status is not failed/error
-        if (status !== "failed" && status !== "error") {
+        // Clear error state if status is not failed/error/blocked
+        if (status !== "failed" && status !== "error" && status !== "blocked") {
           setErrorState(null);
+        }
+        
+        // Set error state if status is failed/error (but not blocked, which has its own UI)
+        if ((status === "failed" || status === "error") && !errorState) {
+          setErrorState("An error occurred during competitor setup. Please try adding the competitor again.");
+        }
+        
+        // Stop processing if status is blocked
+        if (status === "blocked") {
+          setIsProcessing(false);
         }
       }
       
@@ -370,11 +380,12 @@ export function MatchesReviewClient({
     if (!storeId) return;
     
     // Determine if we should poll
-    // Don't poll if status is 'empty', 'error', or 'failed'
+    // Don't poll if status is 'empty', 'error', 'failed', or 'blocked'
     const shouldPoll = (isProcessing || currentStatus === "processing") && 
       currentStatus !== "empty" &&
       currentStatus !== "error" && 
-      currentStatus !== "failed";
+      currentStatus !== "failed" &&
+      currentStatus !== "blocked";
     
     if (!shouldPoll) {
       // Stop polling if not needed
@@ -429,13 +440,14 @@ export function MatchesReviewClient({
       // 1. We have matches (RPC returns >0 rows)
       // 2. Status is 'active' (scanning complete)
       // 3. Status is 'empty' (no products found)
-      // 4. Status is 'error' or 'failed'
+      // 4. Status is 'error', 'failed', or 'blocked'
       const shouldStop = 
         (result.matches && result.matches.length > 0) ||
         result.status === "active" ||
         result.status === "empty" ||
         result.status === "error" ||
-        result.status === "failed";
+        result.status === "failed" ||
+        result.status === "blocked";
       
       if (shouldStop) {
         console.log("[matches-review] Stopping polling - matches:", result.matches?.length || 0, "status:", result.status);
@@ -695,7 +707,28 @@ export function MatchesReviewClient({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {currentStatus === "empty" ? (
+          {currentStatus === "blocked" ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-semibold mb-2 text-yellow-600 dark:text-yellow-400">Site blocks automated scraping</h3>
+              <p className="text-muted-foreground mb-6">
+                This competitor site blocks automated scraping. You can still add competitors manually by URL on individual products.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/app/products?addCompetitorByUrl=true")}
+                >
+                  Add competitor by URL
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/app/competitors")}
+                >
+                  Back to Competitors
+                </Button>
+              </div>
+            </div>
+          ) : currentStatus === "empty" ? (
             <div className="text-center py-12">
               <h3 className="text-lg font-semibold mb-2">No matches found</h3>
               <p className="text-muted-foreground mb-6">

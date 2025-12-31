@@ -16,16 +16,32 @@ export type ScrapedProduct = {
   raw?: any;
 };
 
+export class ScrapingBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScrapingBlockedError";
+  }
+}
+
 export async function scrapeCompetitorProducts(listingUrl: string): Promise<ScrapedProduct[]> {
-  const rawProducts = await scrapeProducts(listingUrl);
-  
-  // Map to the requested format
-  return rawProducts.map((p): ScrapedProduct => ({
-    url: p.url,
-    name: p.name,
-    price: p.price,
-    currency: p.currency || "USD",
-    raw: p.raw,
-  }));
+  try {
+    const rawProducts = await scrapeProducts(listingUrl);
+    
+    // Map to the requested format
+    return rawProducts.map((p): ScrapedProduct => ({
+      url: p.url,
+      name: p.name,
+      price: p.price,
+      currency: p.currency || "USD",
+      raw: p.raw,
+    }));
+  } catch (error: any) {
+    // Check if the error indicates blocking
+    if (error?.isBlocked || error?.message === "SITE_BLOCKED") {
+      throw new ScrapingBlockedError("Site blocks automated scraping");
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
