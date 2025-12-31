@@ -19,7 +19,7 @@ import { MessagesDropdown } from "@/components/messages-dropdown";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { cn } from "@/lib/utils";
 
-export function Topbar({ plan }: { plan: Plan }) {
+export function Topbar({ plan, isDemo = false }: { plan: Plan; isDemo?: boolean }) {
   const [displayStoreName, setDisplayStoreName] = useState("My Store");
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export function Topbar({ plan }: { plan: Plan }) {
         </div>
         
         {/* Messages Dropdown */}
-        <MessagesDropdown plan={plan} />
+        <MessagesDropdown plan={plan} isDemo={isDemo} />
         
         {/* Notifications Bell */}
         <NotificationsBell />

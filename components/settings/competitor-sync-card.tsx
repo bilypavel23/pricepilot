@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -145,6 +145,7 @@ export function CompetitorSyncCard({
   );
   const [isSaving, setIsSaving] = useState(false);
   const isReadOnly = syncsPerDay <= 0;
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const maxSlots = Math.min(syncsPerDay, 2); // Enforce max 2 times
 
@@ -168,28 +169,32 @@ export function CompetitorSyncCard({
     const next = [...times];
     next[index] = value;
     setTimes(next);
+    scheduleSave(); // Autosave on change
   };
 
   const handleAddTime = () => {
     if (times.length >= maxSlots) return;
-    setTimes([...times, "06:00"]);
+    const next = [...times, "06:00"];
+    setTimes(next);
+    scheduleSave(); // Autosave on change
   };
 
   const handleRemoveTime = (index: number) => {
     const next = [...times];
     next.splice(index, 1);
     setTimes(next);
+    scheduleSave(); // Autosave on change
   };
 
-  const handleSave = async () => {
-    if (isReadOnly) return;
+  const handleTimezoneChange = (value: string) => {
+    setTimezone(value);
+    scheduleSave(); // Autosave on change
+  };
+
+  const handleSave = useCallback(async () => {
+    if (isReadOnly || !storeId) return;
     setIsSaving(true);
     try {
-      if (!storeId) {
-        onSaveError?.("Store ID is missing. Please refresh the page.");
-        setIsSaving(false);
-        return;
-      }
 
       // Validate and prepare times: ensure "HH:mm" format, unique, sorted, max 2
       const trimmedTimes = times
@@ -271,7 +276,26 @@ export function CompetitorSyncCard({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [storeId, times, timezone, maxSlots, isReadOnly, onSaveSuccess, onSaveError, supabase]);
+
+  // Debounced autosave function
+  const scheduleSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      handleSave();
+    }, 300);
+  }, [handleSave]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const planInfo =
     syncsPerDay === 0
@@ -353,7 +377,7 @@ export function CompetitorSyncCard({
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Timezone
                 </Label>
-                <Select value={timezone} onValueChange={setTimezone}>
+                <Select value={timezone} onValueChange={handleTimezoneChange}>
                   <SelectTrigger className="w-full md:w-64">
                     <SelectValue placeholder="Select timezone" />
                   </SelectTrigger>

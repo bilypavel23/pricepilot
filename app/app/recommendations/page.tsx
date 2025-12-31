@@ -12,7 +12,14 @@ export default async function RecommendationsPage() {
     redirect("/login");
   }
 
-  const isDemo = profile?.plan === "free_demo";
+  // isDemo is true only if raw plan is free_demo AND trial is NOT active (expired trial)
+  const rawPlan = profile?.plan;
+  const trialActive = profile?.trial_active ?? false;
+  const isDemo = rawPlan === "free_demo" && !trialActive;
+  
+  // Use effective_plan for limits (maps free_demo with active trial to pro)
+  const effectivePlan = profile?.effective_plan ?? rawPlan ?? "free_demo";
+  
   const store = await getOrCreateStore();
   const supabase = await createClient();
 
@@ -48,7 +55,7 @@ export default async function RecommendationsPage() {
     ? await getRecommendationsForStore(store.id)
     : [];
 
-  const plan = (profile?.plan as string) ?? "STARTER";
+  const plan = (effectivePlan as string) ?? "STARTER";
 
   // Check if user has products without competitors
   const productsWithoutCompetitors = recommendations.filter((r) => r.competitorCount === 0);

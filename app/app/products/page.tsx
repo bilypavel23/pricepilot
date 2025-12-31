@@ -14,7 +14,13 @@ export default async function ProductsPage() {
     redirect("/login");
   }
 
-  const isDemo = profile?.plan === "free_demo";
+  // isDemo is true only if raw plan is free_demo AND trial is NOT active (expired trial)
+  const rawPlan = profile?.plan;
+  const trialActive = profile?.trial_active ?? false;
+  const isDemo = rawPlan === "free_demo" && !trialActive;
+  
+  // Use effective_plan for limits (maps free_demo with active trial to pro)
+  const effectivePlan = profile?.effective_plan ?? rawPlan ?? "free_demo";
 
   // Get or create store (automatically creates one if none exists)
   const store = await getOrCreateStore();

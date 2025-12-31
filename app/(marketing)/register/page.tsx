@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 export default function RegisterPage() {
 
@@ -11,13 +13,16 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
   // PRO JISTOTU: při otevření /register se odhlaš z jakékoliv staré session
   useEffect(() => {
     const logout = async () => {
+      const { supabase } = await import("@/lib/supabaseClient");
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         await supabase.auth.signOut();
@@ -31,6 +36,12 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setTermsError(null);
+
+    if (!termsAccepted) {
+      setTermsError("You must agree to continue.");
+      return;
+    }
 
     if (password !== passwordConfirm) {
       setError("Passwords do not match.");
@@ -45,25 +56,27 @@ export default function RegisterPage() {
     try {
       setLoading(true);
 
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${origin}/auth/callback`,
-          data: {
-            full_name: fullName,
-            plan: "free_demo",
-          },
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          termsAccepted,
+        }),
       });
 
-      console.log("SIGNUP RESULT", { data, error });
+      const data = await response.json();
 
-      if (error) {
-        setError(error.message);
+      if (!response.ok) {
+        const errorMessage = data.error?.message ?? data.error ?? "Unknown DB error";
+        setError(errorMessage);
+        if (errorMessage.includes("Terms of Service")) {
+          setTermsError(errorMessage);
+        }
         return;
       }
 
@@ -131,6 +144,33 @@ export default function RegisterPage() {
               onChange={(e) => setPasswordConfirm(e.target.value)}
             />
           </div>
+
+          <div className="space-y-2">
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="terms"
+                checked={termsAccepted}
+                onCheckedChange={(checked) => {
+                  setTermsAccepted(checked === true);
+                  setTermsError(null);
+                }}
+                className="mt-0.5"
+              />
+              <Label htmlFor="terms" className="text-sm text-slate-300 leading-relaxed cursor-pointer">
+                I agree with the{" "}
+                <Link href="/terms" className="text-blue-400 hover:text-blue-300 underline">
+                  Terms of Service
+                </Link>
+                {" "}and{" "}
+                <Link href="/privacy" className="text-blue-400 hover:text-blue-300 underline">
+                  Privacy Policy
+                </Link>
+              </Label>
+            </div>
+            {termsError && (
+              <p className="text-sm text-red-400">{termsError}</p>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -147,7 +187,7 @@ export default function RegisterPage() {
         <Button
           type="submit"
           className="mt-6 w-full"
-          disabled={loading}
+          disabled={loading || !termsAccepted}
         >
           {loading ? "Creating account..." : "Create account"}
         </Button>

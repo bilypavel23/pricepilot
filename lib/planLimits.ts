@@ -18,6 +18,7 @@ export type PlanKey = keyof typeof PLAN_PRODUCT_LIMITS;
 /**
  * Get product limit for a plan
  * Normalizes plan names to match PLAN_PRODUCT_LIMITS keys
+ * NOTE: free_demo with active trial should be treated as PRO (handled by callers via getEffectivePlan)
  */
 export function getProductLimit(plan: string | null | undefined): number {
   if (!plan) return PLAN_PRODUCT_LIMITS.starter;
@@ -25,6 +26,8 @@ export function getProductLimit(plan: string | null | undefined): number {
   const normalized = plan.toLowerCase().trim();
   
   // Map plan values to keys
+  // free_demo defaults to starter, but callers should use getEffectivePlan from lib/trial
+  // if they have trial status to treat active trials as PRO
   if (normalized === "starter" || normalized === "basic" || normalized === "free_demo" || normalized === "demo" || normalized === "free") {
     return PLAN_PRODUCT_LIMITS.starter;
   }
@@ -166,7 +169,18 @@ export const PLAN_COMPETITOR_LIMIT: Record<PlanId, number> = {
   PRO: 5,
 };
 
-export function getCompetitorLimit(plan?: string | null): number {
+/**
+ * Get competitor limit per product
+ * @param plan - Plan string (deprecated - use entitlements instead)
+ * @param entitlements - Entitlements object (preferred)
+ */
+export function getCompetitorLimit(plan?: string | null, entitlements?: { competitorLimitPerProduct: number }): number {
+  // If entitlements provided, use it (single source of truth)
+  if (entitlements?.competitorLimitPerProduct !== undefined) {
+    return entitlements.competitorLimitPerProduct;
+  }
+
+  // Fallback to plan-based logic (deprecated)
   if (!plan) return PLAN_COMPETITOR_LIMIT.STARTER;
   
   const normalized = plan.toLowerCase().trim();

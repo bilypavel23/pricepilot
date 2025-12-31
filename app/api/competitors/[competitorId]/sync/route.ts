@@ -5,6 +5,7 @@ import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
 import { isAmazonUrl } from "@/lib/competitors/validation";
 import { getHoursBetweenSyncs, getSyncsPerDay } from "@/lib/plans";
 import { checkSyncLimit, recordSyncRun } from "@/lib/enforcement/syncLimits";
+import { checkTrialBlock } from "@/lib/api-trial-check";
 
 interface Params {
   params: Promise<{ competitorId: string }>;
@@ -57,6 +58,15 @@ export async function POST(_req: Request, { params }: Params) {
       .single();
 
     const plan = profile?.plan;
+
+    // Check trial blocking (only blocks free_demo with inactive trial)
+    const trialCheck = await checkTrialBlock(user.id, plan);
+    if (trialCheck.blocked) {
+      return NextResponse.json(
+        { error: trialCheck.message },
+        { status: 403 }
+      );
+    }
 
     // Check daily sync limit
     const syncLimitCheck = await checkSyncLimit(storeId, plan);

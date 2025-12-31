@@ -8,17 +8,21 @@ import { getOrCreateStoreSyncSettings } from "@/lib/competitors/syncSettings";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function SettingsPage() {
-  const { user, profile } = await getProfile();
+  const { user, profile, entitlements } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
+  // Use entitlements for effective plan and sync times
+  const effectivePlan = entitlements?.effectivePlan ?? profile?.plan ?? "free_demo";
+  const maxDailySyncTimes = entitlements?.maxDailySyncTimes ?? 1;
+  
   // Get plan config - getPlanConfig now handles case-insensitive matching
-  const planConfig = getPlanConfig(profile?.plan as any);
+  const planConfig = getPlanConfig(effectivePlan as any);
   
   // Get normalized plan for currentPlan prop (needs to match Plan type from planLimits)
-  const normalizedPlan = normalizePlan(profile?.plan);
+  const normalizedPlan = normalizePlan(effectivePlan);
 
   // Get store with sync settings
   const store = await getOrCreateStore();
@@ -43,11 +47,10 @@ export default async function SettingsPage() {
   } | null = null;
 
   if (!syncSettingsData) {
-    // Create with defaults based on plan
-    // Pro plan (syncsPerDay >= 2) gets 2 times, Starter gets 1 time
-    const defaultTimes = planConfig.syncsPerDay >= 2
-      ? ["06:00", "18:00"] 
-      : ["06:00"];
+    // Create with defaults based on entitlements.maxDailySyncTimes
+    // Pro/trial (maxDailySyncTimes >= 2) gets 2 times, Starter gets 1 time
+    const { getDefaultSyncTimes } = await import("@/lib/competitors/syncSettings");
+    const defaultTimes = getDefaultSyncTimes(profile, user.created_at, profile?.plan);
     
     const { data: created } = await supabase
       .from("store_sync_settings")
@@ -82,7 +85,7 @@ export default async function SettingsPage() {
       storeName={store.name || "My Store"}
       currentPlan={normalizedPlan}
       planLabel={planConfig.label}
-      syncsPerDay={planConfig.syncsPerDay}
+      syncsPerDay={maxDailySyncTimes}
       initialTimezone={syncSettings.timezone}
       initialTimes={syncSettings.daily_sync_times}
       lastCompetitorSyncAt={syncResults?.last_competitor_sync_at || null}

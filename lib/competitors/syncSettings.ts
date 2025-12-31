@@ -13,7 +13,27 @@ export type StoreSyncSettings = {
  * ULTRA/SCALE: 4x per day – every 6 hours
  * STARTER/other: 1x per day – 06:00
  */
-export function getDefaultSyncTimes(plan?: string | null): string[] {
+/**
+ * Get default sync times based on entitlements
+ * If profile is provided, use entitlements.maxDailySyncTimes
+ * Otherwise normalize plan (deprecated)
+ */
+export function getDefaultSyncTimes(
+  profile?: any,
+  userCreatedAt?: string | Date,
+  plan?: string | null
+): string[] {
+  // If profile is provided, use entitlements helper
+  if (profile) {
+      const { getEntitlements } = require("../billing/entitlements");
+    const entitlements = getEntitlements(profile, userCreatedAt);
+    if (entitlements.maxDailySyncTimes >= 2) {
+      return ["06:00", "18:00"];
+    }
+    return ["06:00"];
+  }
+
+  // Fallback: normalize plan string (deprecated)
   const normalized = (plan ?? "STARTER").toUpperCase();
   if (normalized === "ULTRA" || normalized === "SCALE") {
     return ["06:00", "12:00", "18:00", "00:00"];
@@ -34,14 +54,16 @@ export async function getOrCreateStoreSyncSettings(
 ): Promise<StoreSyncSettings> {
   const supabase = await createClient();
 
-  // get user plan
+  // get user profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan")
+    .select("*")
     .eq("id", userId)
     .single();
 
-  const plan = profile?.plan ?? "STARTER";
+  // Get user created_at for trial calculation
+  const { data: { user } } = await supabase.auth.getUser();
+  const userCreatedAt = user?.created_at;
 
   // try existing row
   const { data: existing } = await supabase
@@ -59,12 +81,12 @@ export async function getOrCreateStoreSyncSettings(
     } as StoreSyncSettings;
   }
 
-  // create new with defaults
+  // create new with defaults - use entitlements if profile available
   const defaults: StoreSyncSettings = {
     store_id: storeId,
     sync_enabled: true,
     timezone: "Europe/Prague",
-    daily_sync_times: getDefaultSyncTimes(plan),
+    daily_sync_times: getDefaultSyncTimes(profile, userCreatedAt, profile?.plan),
   };
 
   // Use upsert instead of insert to handle duplicate store_id gracefully

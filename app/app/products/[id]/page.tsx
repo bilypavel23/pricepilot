@@ -22,7 +22,9 @@ export default async function ProductDetailPage({
   }
 
   const store = await getOrCreateStore();
-  const plan = (profile?.plan as string) ?? "STARTER";
+  // Use effective_plan for limits (free_demo with active trial = pro)
+  const effectivePlan = profile?.effective_plan ?? profile?.plan ?? "STARTER";
+  const plan = effectivePlan as string;
 
   // Load product with competitors
   const productData = await getProductWithCompetitors(id, store.id);

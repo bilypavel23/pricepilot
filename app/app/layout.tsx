@@ -13,10 +13,12 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   let plan: Plan = "free_demo";
+  let canUseAIChat = false;
+  let isDemo = false; // True only for profile.is_demo === true accounts
   let hasUser = false;
   
   try {
-    const { user, profile } = await getProfile();
+    const { user, profile, entitlements } = await getProfile();
     hasUser = !!user;
     
     // If user is not authenticated, redirect to login
@@ -25,7 +27,19 @@ export default async function AppLayout({
       redirect("/login");
     }
     
-    plan = normalizePlan(profile?.plan);
+    // Use entitlements for effective plan and AI chat access
+    if (entitlements) {
+      plan = normalizePlan(entitlements.effectivePlan);
+      canUseAIChat = entitlements.canUseAIChat;
+    } else {
+      // Fallback if entitlements not available
+      const effectivePlan = profile?.effective_plan ?? profile?.plan;
+      plan = normalizePlan(effectivePlan);
+    }
+
+    // Check if user is a demo/test account (profile.is_demo === true)
+    // This is different from free_demo plan users on trial
+    isDemo = profile?.is_demo === true;
   } catch (error) {
     console.error("Error loading profile in AppLayout:", error);
     // If there's an error and we can't verify user, redirect to login
@@ -38,7 +52,7 @@ export default async function AppLayout({
 
   return (
     <PlanProvider plan={plan}>
-      <AppShell plan={plan}>{children}</AppShell>
+      <AppShell plan={plan} canUseAIChat={canUseAIChat} isDemo={isDemo}>{children}</AppShell>
     </PlanProvider>
   );
 }

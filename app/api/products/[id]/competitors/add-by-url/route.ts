@@ -5,6 +5,7 @@ import { getOrCreateStore } from "@/lib/store";
 import { scrapeProductPage } from "@/lib/competitors/scrapeProductPage";
 import { getCompetitorLimit } from "@/lib/planLimits";
 import { normalizeTitle } from "@/lib/competitors/title-normalization";
+import { checkCanWrite } from "@/lib/api-entitlements-check";
 
 // Helper to ensure JSON response with proper headers
 function jsonResponse(
@@ -106,15 +107,25 @@ export async function POST(
       return jsonResponse({ error: "Unauthorized", code: "AUTH_ERROR" }, 401);
     }
 
-    // Get user plan for per-product limit
+    // Check if user can write (blocks expired trial)
+    const writeCheck = await checkCanWrite(user.id);
+    if (writeCheck) {
+      return jsonResponse({
+        error: "Trial ended. Upgrade to continue.",
+        code: "TRIAL_ENDED",
+      }, 403);
+    }
+
+    // Get user profile for entitlements
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("*")
       .eq("id", user.id)
       .single();
-    
-    const plan = profile?.plan || "STARTER";
-    const maxCompetitorsPerProduct = getCompetitorLimit(plan);
+
+    const entitlements = getEntitlements(profile, user.created_at);
+
+    const maxCompetitorsPerProduct = getCompetitorLimit(entitlements.effectivePlan, entitlements);
 
     // Check Content-Type header
     const contentType = req.headers.get("content-type");

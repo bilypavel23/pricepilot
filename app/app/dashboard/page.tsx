@@ -11,13 +11,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   try {
-    const { user, profile } = await getProfile();
+    const { user, profile, trialInfo, entitlements } = await getProfile();
     
     if (!user) {
       redirect("/login");
     }
 
-    const isDemo = profile?.plan === "free_demo";
+    // isDemo is true only if raw plan is free_demo AND trial is NOT active (expired trial)
+    const rawPlan = profile?.plan;
+    const isDemo = rawPlan === "free_demo" && !(trialInfo?.isActive ?? false);
 
     // Get or create store (automatically creates one if none exists)
     const store = await getOrCreateStore();
@@ -152,29 +154,31 @@ export default async function DashboardPage() {
     }
   }
 
-    return (
-      <DashboardContent 
-        isDemo={isDemo} 
-        store={store}
-        products={products}
-        competitors={competitors}
-        metrics={{
-          productsCount,
-          competitorsCount,
-          competitorUrlsCount,
-          inventoryWorth,
-          averageMargin,
-          competitorActivityCount,
-          recommendationsWaiting,
-        }}
-        chartData={{
-          avgPrice,
-          avgMargin,
-          hasCostData,
-        }}
-        activityEvents={activityEvents}
-      />
-    );
+  return (
+    <DashboardContent 
+      isDemo={isDemo} 
+      store={store}
+      products={products}
+      competitors={competitors}
+      metrics={{
+        productsCount,
+        competitorsCount,
+        competitorUrlsCount,
+        inventoryWorth,
+        averageMargin,
+        competitorActivityCount,
+        recommendationsWaiting,
+      }}
+      chartData={{
+        avgPrice,
+        avgMargin,
+        hasCostData,
+      }}
+      activityEvents={activityEvents}
+      plan={rawPlan}
+      trialInfo={trialInfo}
+    />
+  );
   } catch (error) {
     console.error("Error loading dashboard:", error);
     // If there's an error, redirect to login as a fallback

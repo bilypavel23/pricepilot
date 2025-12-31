@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SignUpPage() {
@@ -16,14 +16,22 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setTermsError(null);
+
+    if (!termsAccepted) {
+      setTermsError("You must agree to continue.");
+      return;
+    }
 
     if (password !== passwordConfirm) {
       setError("Passwords do not match.");
@@ -38,29 +46,30 @@ export default function SignUpPage() {
     try {
       setLoading(true);
 
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${origin}/auth/callback`,
-          data: {
-            full_name: fullName,
-            plan: "free_demo",
-          },
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          termsAccepted,
+        }),
       });
 
-      console.log("SIGNUP RESULT", { data, error: signUpError });
+      const data = await response.json();
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (!response.ok) {
+        const errorMessage = data.error?.message ?? data.error ?? "Unknown DB error";
+        setError(errorMessage);
+        if (errorMessage.includes("Terms of Service")) {
+          setTermsError(errorMessage);
+        }
         return;
       }
 
-      // tady žádný redirect!
       setMessage(
         "Account created. Please check your email and click the verification link to activate your account."
       );
@@ -144,6 +153,33 @@ export default function SignUpPage() {
                 className="bg-slate-800 border-slate-700 text-white"
               />
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="terms"
+                  checked={termsAccepted}
+                  onCheckedChange={(checked) => {
+                    setTermsAccepted(checked === true);
+                    setTermsError(null);
+                  }}
+                  className="mt-0.5"
+                />
+                <Label htmlFor="terms" className="text-sm text-slate-300 leading-relaxed cursor-pointer">
+                  I agree with the{" "}
+                  <Link href="/terms" className="text-blue-400 hover:text-blue-300 underline">
+                    Terms of Service
+                  </Link>
+                  {" "}and{" "}
+                  <Link href="/privacy" className="text-blue-400 hover:text-blue-300 underline">
+                    Privacy Policy
+                  </Link>
+                </Label>
+              </div>
+              {termsError && (
+                <p className="text-sm text-red-400">{termsError}</p>
+              )}
+            </div>
             
             {error && (
               <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded p-2">
@@ -160,7 +196,7 @@ export default function SignUpPage() {
             <Button
               type="submit"
               className="w-full bg-blue-500 hover:bg-blue-600 text-white"
-              disabled={loading}
+              disabled={loading || !termsAccepted}
             >
               {loading ? "Creating account..." : "Create account"}
             </Button>

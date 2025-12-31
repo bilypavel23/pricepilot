@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateStore } from "@/lib/store";
+import { checkTrialBlock } from "@/lib/api-trial-check";
 
 /**
  * POST /api/competitors/[competitorId]/matches/confirm
@@ -74,6 +75,24 @@ export async function POST(
 
     if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user profile to check trial
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const plan = profile?.plan;
+
+    // Check trial blocking (only blocks free_demo with inactive trial)
+    const trialCheck = await checkTrialBlock(user.id, plan);
+    if (trialCheck.blocked) {
+      return NextResponse.json(
+        { error: trialCheck.message },
+        { status: 403 }
+      );
     }
 
     const store = await getOrCreateStore();

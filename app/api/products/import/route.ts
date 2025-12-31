@@ -3,6 +3,8 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getOrCreateStore } from "@/lib/store";
 import { enforceProductLimit } from "@/lib/enforcement/productLimits";
+import { checkCanWrite } from "@/lib/api-entitlements-check";
+import { getEntitlements } from "@/lib/billing/entitlements";
 
 export async function POST(req: Request) {
   try {
@@ -33,22 +35,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user profile to check plan
+    // Check if user can write
+    const writeCheck = await checkCanWrite(user.id);
+    if (writeCheck) {
+      return writeCheck;
+    }
+
+    // Get user profile for entitlements
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("*")
       .eq("id", user.id)
       .single();
 
-    const plan = profile?.plan;
-    const isDemo = plan === "free_demo";
-
-    if (isDemo) {
-      return NextResponse.json(
-        { error: "Demo mode: You can't import products. Upgrade to STARTER to connect your store." },
-        { status: 403 }
-      );
-    }
+    const entitlements = getEntitlements(profile, user.created_at);
+    const effectivePlan = entitlements.effectivePlan;
 
     // Get or create store
     const store = await getOrCreateStore();
@@ -84,8 +85,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Enforce product limit - partial imports allowed
-    const limitEnforcement = await enforceProductLimit(store.id, plan, validProducts.length);
+    // Enforce product limit - partial imports allowed - use effective_plan for limits
+    const limitEnforcement = await enforceProductLimit(store.id, effectivePlan, validProducts.length);
 
     if (limitEnforcement.allowedCount === 0) {
       return NextResponse.json(

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bot, DollarSign, TrendingUp, Package, Activity, Upload, Link as LinkIcon, Lightbulb, ArrowUpDown, Bell, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { TrialBanner } from "./trial-banner";
 import {
   LineChart,
   Line,
@@ -168,7 +169,9 @@ export function DashboardContent({
   competitors = [],
   metrics,
   chartData,
-  activityEvents = []
+  activityEvents = [],
+  plan,
+  trialInfo,
 }: { 
   isDemo: boolean;
   store?: any;
@@ -177,6 +180,8 @@ export function DashboardContent({
   metrics?: DashboardMetrics;
   chartData?: ChartData;
   activityEvents?: ActivityEvent[];
+  plan?: string | null;
+  trialInfo?: { trialEndsAt: Date | null; isActive: boolean; daysLeft: number } | null;
 }) {
 
   // Format currency
@@ -197,10 +202,23 @@ export function DashboardContent({
   const competitorUrlsCount = metrics?.competitorUrlsCount ?? 0;
   const competitorActivityCount = metrics?.competitorActivityCount ?? 0;
   const recommendationsWaiting = metrics?.recommendationsWaiting ?? 0;
+  
+  // Show trial banner for free_demo plan
+  const showTrialBanner = plan === "free_demo" && trialInfo;
+
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 lg:py-12 space-y-10">
-      {/* Demo Banner */}
-      {isDemo && (
+      {/* Trial Banner - Show for free_demo plan */}
+      {showTrialBanner && (
+        <TrialBanner
+          plan={plan}
+          trialActive={trialInfo.isActive}
+          trialDaysLeft={trialInfo.daysLeft}
+        />
+      )}
+      
+      {/* Demo Banner - Only show if trial ended (isDemo is true) */}
+      {isDemo && !trialInfo?.isActive && (
         <Card className="rounded-2xl border-2 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-500/30">
           <CardContent className="p-6">
             <div className="flex items-start justify-between gap-4">

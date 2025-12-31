@@ -77,9 +77,10 @@ const MOCK_MESSAGES: Message[] = [
 
 interface MessagesDropdownProps {
   plan: Plan;
+  isDemo?: boolean; // True only for demo/test accounts, not free_demo trial users
 }
 
-export function MessagesDropdown({ plan }: MessagesDropdownProps) {
+export function MessagesDropdown({ plan, isDemo = false }: MessagesDropdownProps) {
   const router = useRouter();
   const [openDialog, setOpenDialog] = React.useState(false);
   const [openSupport, setOpenSupport] = React.useState(false);
@@ -140,8 +141,10 @@ export function MessagesDropdown({ plan }: MessagesDropdownProps) {
     load();
   }, []);
 
-  // Only show mock messages for free_demo tier
-  const messages = plan === "free_demo" ? MOCK_MESSAGES : [];
+  // Only show mock messages for demo/test accounts (profile.is_demo === true), NOT for free_demo trial users
+  // Check env flag as backup for explicit demo seeding
+  const shouldShowMock = isDemo || process.env.NEXT_PUBLIC_ENABLE_DEMO_SEEDING === "true";
+  const messages = shouldShowMock ? MOCK_MESSAGES : [];
   const mockUnreadCount = messages.filter(m => m.unread).length;
   
   // Compute unread count from support conversations (where last_message_from === "support")

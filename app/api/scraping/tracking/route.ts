@@ -30,14 +30,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's plan
+    // Get user's plan with effective_plan from view
     const { data: profile } = await supabase
-      .from("profiles")
-      .select("plan")
+      .from("v_profiles_effective")
+      .select("plan, effective_plan")
       .eq("id", user.id)
       .single();
 
-    const plan = profile?.plan ?? "STARTER";
+    // Use effective_plan for limits (free_demo with active trial = pro)
+    const effectivePlan = profile?.effective_plan ?? profile?.plan ?? "STARTER";
+    const plan = effectivePlan;
 
     // Get user's store
     const store = await getOrCreateStore();

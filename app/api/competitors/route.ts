@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
 import { isAmazonUrl } from "@/lib/competitors/validation";
+import { checkCanWrite } from "@/lib/api-entitlements-check";
+import { getEntitlements } from "@/lib/billing/entitlements";
 
 const STARTER_MAX_COMPETITORS = 2;
 const PRO_MAX_COMPETITORS = 5;
@@ -43,14 +45,21 @@ export async function POST(req: Request) {
     // Get or create store (automatically creates one if none exists)
     const store = await getOrCreateStore();
 
-    // 1) Zjisti plán uživatele
+    // Check if user can write
+    const writeCheck = await checkCanWrite(user.id);
+    if (writeCheck) {
+      return writeCheck;
+    }
+
+    // Get user profile for entitlements
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("*")
       .eq("id", user.id)
       .single();
 
-    const plan = (profile?.plan as string) ?? "STARTER";
+    const entitlements = getEntitlements(profile, user.created_at);
+    const effectivePlan = entitlements.effectivePlan;
 
     // 2) Spočítej kolik competitorů už pro ten store má
     const { data: competitors, error: countErr } = await supabase
@@ -68,8 +77,10 @@ export async function POST(req: Request) {
 
     const currentCount = competitors?.length ?? 0;
 
+    // Use effective_plan for limits (free_demo with active trial = pro, which maps to PRO_MAX_COMPETITORS)
+    const planForLimits = effectivePlan.toUpperCase() === "PRO" || effectivePlan === "pro" ? "PRO" : "STARTER";
     const maxCompetitors =
-      plan === "PRO" ? PRO_MAX_COMPETITORS : STARTER_MAX_COMPETITORS;
+      planForLimits === "PRO" ? PRO_MAX_COMPETITORS : STARTER_MAX_COMPETITORS;
 
     if (currentCount >= maxCompetitors) {
       return NextResponse.json(

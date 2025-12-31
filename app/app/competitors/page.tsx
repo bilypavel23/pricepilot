@@ -81,13 +81,15 @@ function getPlanDisplayName(plan: string | null | undefined): string {
 }
 
 export default async function CompetitorsPage() {
-  const { user, profile } = await getProfile();
+  const { user, profile, entitlements } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
-  const isDemo = profile?.plan === "free_demo";
+  // isDemo is true only if raw plan is free_demo AND trial is NOT active (expired trial)
+  const rawPlan = profile?.plan;
+  const isDemo = rawPlan === "free_demo" && !(entitlements?.trialActive ?? false);
 
   // Get userId and active store
   const userId = user.id;
@@ -113,9 +115,9 @@ export default async function CompetitorsPage() {
   // Create Supabase client for server-side queries
   const supabase = await createClient();
 
-  // Get plan and competitor limit
-  const plan = (profile?.plan as string) ?? "STARTER";
-  const limit = getCompetitorLimit(plan);
+  // Use entitlements for competitor limit (single source of truth)
+  const plan = (entitlements?.effectivePlan ?? profile?.plan ?? "STARTER") as string;
+  const limit = entitlements ? getCompetitorLimit(plan, entitlements) : getCompetitorLimit(plan);
 
   // Load tracked competitors (counts toward limit)
   // Note: error_message column doesn't exist, so we don't select it
@@ -160,11 +162,11 @@ export default async function CompetitorsPage() {
   // Only count tracked competitors toward limit
   const used = (trackedCompetitors ?? []).length;
 
-  // Get discovery quota (safely handle missing quota)
+  // Get discovery quota (safely handle missing quota) - pass profile for entitlements
   let discoveryQuota = null;
   if (store?.id) {
     try {
-      discoveryQuota = await getDiscoveryQuota(store.id, profile?.plan);
+      discoveryQuota = await getDiscoveryQuota(store.id, profile?.plan, profile, user.created_at);
     } catch (error: any) {
       // Structured error logging for discovery quota
       const errorStatus = (error as any)?.status ?? null;

@@ -26,25 +26,39 @@ function monthStartISODate(d = new Date()): string {
 }
 
 /**
- * Normalize plan string to planKey ("starter" | "pro" | "scale")
+ * Get discovery limit from entitlements
+ * If profile is provided, use entitlements; otherwise normalize plan
  */
-function normalizePlanKey(plan: string | null | undefined): "starter" | "pro" | "scale" {
-  if (!plan) return "starter";
-  
-  const normalized = plan.toLowerCase().trim();
-  
-  if (normalized === "starter" || normalized === "basic" || normalized === "free_demo" || normalized === "demo" || normalized === "free") {
-    return "starter";
+function getDiscoveryLimit(
+  profile?: any,
+  userCreatedAt?: string | Date,
+  plan?: string | null
+): number {
+  // If profile is provided, use entitlements helper
+  if (profile) {
+    // Use dynamic import to avoid circular dependencies
+    try {
+      const { getEntitlements } = require("./billing/entitlements");
+      const entitlements = getEntitlements(profile, userCreatedAt);
+      return entitlements.discoveryMonthlyLimit;
+    } catch (e) {
+      // Fallback if import fails
+      console.warn("Failed to load entitlements, using plan fallback", e);
+    }
   }
+
+  // Fallback: normalize plan string
+  const normalized = (plan || "").toLowerCase().trim();
+  
   if (normalized === "pro" || normalized === "professional") {
-    return "pro";
+    return 6000;
   }
-  if (normalized === "scale" || normalized === "ultra" || normalized === "scal") {
-    return "scale";
+  if (normalized === "scale" || normalized === "ultra") {
+    return 8000;
   }
   
-  // Default to starter
-  return "starter";
+  // Default to starter limit
+  return 2000;
 }
 
 /**
@@ -52,12 +66,16 @@ function normalizePlanKey(plan: string | null | undefined): "starter" | "pro" | 
  * Never throws PGRST116 error - uses .maybeSingle() for initial read
  * 
  * @param storeId - Store ID
- * @param plan - Plan string (will be normalized to "starter" | "pro" | "scale")
+ * @param plan - Plan string (deprecated - use profile instead)
+ * @param profile - Profile object (used to compute entitlements)
+ * @param userCreatedAt - User created_at timestamp (for trial calculation)
  * @returns DiscoveryQuota or null if storeId is missing
  */
 export async function getDiscoveryQuota(
   storeId: string,
-  plan?: string | null
+  plan?: string | null,
+  profile?: any,
+  userCreatedAt?: string | Date
 ): Promise<DiscoveryQuota | null> {
   if (!storeId) {
     return null;
@@ -65,8 +83,7 @@ export async function getDiscoveryQuota(
 
   const supabase = await createClient();
   const period_start = monthStartISODate();
-  const planKey = normalizePlanKey(plan);
-  const limit_products = PLAN_DISCOVERY_LIMITS[planKey] ?? 2000;
+  const limit_products = getDiscoveryLimit(profile, userCreatedAt, plan);
 
   // 1) Try to read existing row using .maybeSingle() (never throws PGRST116)
   const { data: existing, error: readErr } = await supabase
@@ -80,14 +97,35 @@ export async function getDiscoveryQuota(
     console.error("Error getting discovery quota:", JSON.stringify(readErr, null, 2));
   }
 
-  // If row exists, return it
+  // If row exists, check if limit needs updating and return it
   if (existing) {
+    const storedLimit = existing.limit_products || limit_products;
+    let effectiveLimit = storedLimit;
+    
+    // If stored limit differs from current entitlements limit, update it
+    // This handles cases where trial became active or plan changed
+    if (storedLimit !== limit_products) {
+      const { error: updateErr } = await supabase
+        .from("competitor_discovery_quota")
+        .update({ limit_products: limit_products })
+        .eq("store_id", storeId)
+        .eq("period_start", period_start);
+      
+      if (!updateErr) {
+        effectiveLimit = limit_products;
+      } else {
+        console.warn("Failed to update discovery quota limit:", updateErr);
+      }
+    }
+    
+    const used = existing.used_products || 0;
+    
     return {
       store_id: existing.store_id,
       period_start: existing.period_start,
-      used: existing.used_products || 0,
-      limit_amount: existing.limit_products || limit_products,
-      remaining: (existing.limit_products || limit_products) - (existing.used_products || 0),
+      used,
+      limit_amount: effectiveLimit,
+      remaining: Math.max(0, effectiveLimit - used),
     };
   }
 
@@ -126,7 +164,7 @@ export async function getDiscoveryQuota(
 
   if (read2Err) {
     console.error("Error reading ensured discovery quota:", JSON.stringify(read2Err, null, 2));
-    // Return safe default object
+    // Return safe default object with current limit (from entitlements)
     return {
       store_id: storeId,
       period_start,
@@ -147,12 +185,41 @@ export async function getDiscoveryQuota(
     };
   }
 
+  // If existing row has different limit than current entitlements, update it
+  // This handles cases where trial became active or plan changed
+  const currentLimit = limit_products;
+  const storedLimit = created.limit_products || limit_products;
+  
+  if (storedLimit !== currentLimit) {
+    // Update the limit in DB to match current entitlements
+    const { error: updateErr } = await supabase
+      .from("competitor_discovery_quota")
+      .update({ limit_products: currentLimit })
+      .eq("store_id", storeId)
+      .eq("period_start", period_start);
+    
+    if (updateErr) {
+      console.warn("Failed to update discovery quota limit:", updateErr);
+      // Continue with stored limit
+    } else {
+      // Use updated limit
+      const used = created.used_products || 0;
+      return {
+        store_id: created.store_id,
+        period_start: created.period_start,
+        used,
+        limit_amount: currentLimit,
+        remaining: Math.max(0, currentLimit - used),
+      };
+    }
+  }
+
   return {
     store_id: created.store_id,
     period_start: created.period_start,
     used: created.used_products || 0,
-    limit_amount: created.limit_products || limit_products,
-    remaining: (created.limit_products || limit_products) - (created.used_products || 0),
+    limit_amount: storedLimit,
+    remaining: storedLimit - (created.used_products || 0),
   };
 }
 

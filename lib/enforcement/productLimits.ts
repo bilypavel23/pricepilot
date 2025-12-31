@@ -109,17 +109,24 @@ export async function enforceProductLimit(
 }
 
 /**
- * Get user's plan from profile
+ * Get user's effective plan from profile
+ * Uses v_profiles_effective view to get effective_plan (maps free_demo with active trial to pro)
  */
 export async function getUserPlan(userId: string): Promise<string | null> {
   const supabase = await createClient();
   
+  // Try to get effective_plan from view first
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('plan')
+    .from('v_profiles_effective')
+    .select('effective_plan, plan')
     .eq('id', userId)
     .single();
   
+  if (profile?.effective_plan) {
+    return profile.effective_plan;
+  }
+  
+  // Fallback to regular plan
   return profile?.plan || null;
 }
 
