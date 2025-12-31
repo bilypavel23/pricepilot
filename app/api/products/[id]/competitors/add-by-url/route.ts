@@ -6,6 +6,7 @@ import { scrapeProductPage } from "@/lib/competitors/scrapeProductPage";
 import { getCompetitorLimit } from "@/lib/planLimits";
 import { normalizeTitle } from "@/lib/competitors/title-normalization";
 import { checkCanWrite } from "@/lib/api-entitlements-check";
+import { getEntitlements } from "@/lib/billing/entitlements";
 
 // Helper to ensure JSON response with proper headers
 function jsonResponse(
@@ -339,7 +340,7 @@ export async function POST(
       }
       
       existingUrlCompetitorCount = count || 0;
-      console.log("[add-competitor-url] Existing URL competitor count:", existingUrlCompetitorCount, "for product:", productId, "plan:", plan, "limit:", maxCompetitorsPerProduct);
+      console.log("[add-competitor-url] Existing URL competitor count:", existingUrlCompetitorCount, "for product:", productId, "effectivePlan:", entitlements.effectivePlan, "limit:", maxCompetitorsPerProduct);
     } catch (countErr: any) {
       console.error("[add-competitor-url] Exception counting existing URL competitors:", countErr);
       return jsonResponse({
@@ -354,7 +355,7 @@ export async function POST(
         storeId: store.id,
         currentCount: existingUrlCompetitorCount,
         limit: maxCompetitorsPerProduct,
-        plan
+        effectivePlan: entitlements.effectivePlan
       });
       return jsonResponse({
         error: `Competitor limit reached for this product (max ${maxCompetitorsPerProduct}).`,
@@ -363,7 +364,7 @@ export async function POST(
           currentCount: existingUrlCompetitorCount,
           limit: maxCompetitorsPerProduct,
           productId,
-          plan
+          effectivePlan: entitlements.effectivePlan
         }
       }, 400);
     }

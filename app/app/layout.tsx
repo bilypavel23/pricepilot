@@ -31,10 +31,9 @@ export default async function AppLayout({
     if (entitlements) {
       plan = normalizePlan(entitlements.effectivePlan);
       canUseAIChat = entitlements.canUseAIChat;
-    } else {
+    } else if (profile && 'plan' in profile) {
       // Fallback if entitlements not available
-      const effectivePlan = profile?.effective_plan ?? profile?.plan;
-      plan = normalizePlan(effectivePlan);
+      plan = normalizePlan((profile as any).plan);
     }
 
     // Check if user is a demo/test account (profile.is_demo === true)

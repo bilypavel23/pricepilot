@@ -3,15 +3,8 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+import { createPortal } from "react-dom";
+import { Mail, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -84,7 +77,8 @@ export function MessagesDropdown({ plan, isDemo = false }: MessagesDropdownProps
   const router = useRouter();
   const [openDialog, setOpenDialog] = React.useState(false);
   const [openSupport, setOpenSupport] = React.useState(false);
-  const [openDropdown, setOpenDropdown] = React.useState(false);
+  const [openPanel, setOpenPanel] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
   const [selected, setSelected] = React.useState<Message | null>(null);
   const [supportSubject, setSupportSubject] = React.useState("");
   const [supportMessage, setSupportMessage] = React.useState("");
@@ -103,6 +97,36 @@ export function MessagesDropdown({ plan, isDemo = false }: MessagesDropdownProps
   const [previewReply, setPreviewReply] = useState("");
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [announcementsUnreadCount, setAnnouncementsUnreadCount] = useState(0);
+
+  // Mount check for portal
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Prevent body scroll when panel is open
+  useEffect(() => {
+    if (openPanel) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [openPanel]);
+
+  // ESC key handler to close panel
+  useEffect(() => {
+    if (!openPanel) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenPanel(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [openPanel]);
 
   // Load announcements unread count
   useEffect(() => {
@@ -208,197 +232,237 @@ export function MessagesDropdown({ plan, isDemo = false }: MessagesDropdownProps
     }
   };
 
-  return (
-    <>
-      <DropdownMenu open={openDropdown} onOpenChange={setOpenDropdown}>
-        <DropdownMenuTrigger>
-          <div
-            className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 h-9 w-9 p-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent hover:text-accent-foreground dark:hover:bg-white/5 dark:text-gray-200"
-            aria-label="Open messages"
-          >
-            <Mail className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                {unreadCount}
-              </span>
-            )}
-          </div>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent
-          className="z-[100] w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900 right-0 origin-top-right mt-2"
-        >
-          <DropdownMenuLabel className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Messages</span>
-            <span className="text-xs text-muted-foreground">
-              {unreadCount} UNREAD
-            </span>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-
-          {/* Mock messages for demo tier */}
-          {messages.length > 0 && (
-            <>
-              {messages.map((message) => (
-                <DropdownMenuItem
-                  key={message.id}
-                  className="flex flex-col items-start gap-0.5 rounded-lg px-2 py-2.5 text-sm focus:bg-slate-50 dark:focus:bg-slate-800"
-                  onClick={() => handleOpenMessage(message)}
-                >
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {message.title}
-                    </span>
-                    {message.unread && (
-                      <span className="h-2 w-2 rounded-full bg-blue-500" />
-                    )}
-                  </div>
-                  <span className="line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
-                    {message.preview}
-                  </span>
-                  <span className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-                    {message.time}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-              {conversations.length > 0 && <DropdownMenuSeparator />}
-            </>
-          )}
-
-          {/* Product Updates - Fixed entry above conversations */}
-          <button
-            type="button"
-            className="w-full rounded-md px-3 py-2 text-left hover:bg-neutral-800/80 flex flex-col gap-1"
-            onClick={async () => {
-              setOpenDropdown(false);
-              router.push("/app/messages/updates");
-              // Refresh unread count after a short delay to allow mark-read to complete
-              setTimeout(() => {
-                fetch("/api/announcements/unread-count")
-                  .then((res) => res.json())
-                  .then((data) => setAnnouncementsUnreadCount(data.count ?? 0))
-                  .catch(console.error);
-              }, 1000);
-            }}
-          >
-            <div className="flex items-center justify-between w-full">
-              <div className="flex flex-col gap-0.5 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Product Updates</span>
-                  {announcementsUnreadCount > 0 && (
-                    <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  )}
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  Read-only updates from the team
-                </span>
-              </div>
-              {announcementsUnreadCount > 0 && (
-                <span className="ml-2 rounded-full bg-blue-600 px-2 py-[2px] text-[10px] font-semibold text-white min-w-[20px] text-center">
-                  {announcementsUnreadCount}
+  const panelContent = openPanel && mounted ? (
+    createPortal(
+      <div
+        className="fixed top-20 right-4 w-[420px] max-w-[calc(100vw-32px)] max-h-[70vh] z-[100] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Messages</h2>
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <span className="text-xs text-muted-foreground font-medium">
+                  {unreadCount} UNREAD
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => setOpenPanel(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Close messages"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          </button>
+          </div>
+        </div>
 
-          {(conversations.length > 0 || messages.length > 0) && <DropdownMenuSeparator />}
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
 
-          {/* Support conversations */}
-          <div className="flex flex-col gap-2 text-sm">
-            {loading && (
-              <div className="text-muted-foreground text-xs px-2 py-2">Loading…</div>
-            )}
-
-            {!loading && conversations.length === 0 && messages.length === 0 && (
-              <div className="text-muted-foreground text-xs px-2 py-4 text-center">
-                No messages yet.
-              </div>
-            )}
-
-            {!loading &&
-              conversations.map((conv) => {
-                const title = "Support Conversation";
-                const isUnread = conv.last_message_from === "support";
-
-                return (
-                  <button
-                    key={conv.id}
-                    type="button"
-                    className="w-full rounded-md px-3 py-2 text-left hover:bg-neutral-800/80 flex flex-col gap-1"
-                    onClick={async () => {
-                      setActiveConversation(conv);
-                      setPreviewOpen(true);
-                      setPreviewLoading(true);
-                      setPreviewError(null);
-
-                      try {
-                        // Load conversation + messages
-                        const res = await fetch(`/api/support/conversation/${conv.id}`);
-                        const data = await res.json();
-
-                        if (!res.ok) {
-                          setPreviewError(data?.error || "Failed to load conversation");
-                          setPreviewConversation(null);
-                          setPreviewMessages([]);
-                        } else {
-                          setPreviewConversation(data.conversation);
-                          setPreviewMessages(data.messages ?? []);
-                        }
-
-                        // Mark as read in DB
-                        if (conv.last_message_from === "support") {
-                          await fetch("/api/support/mark-read", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ conversationId: conv.id }),
-                          });
-                        }
-
-                        // Update local state so unread badge disappears
-                        setConversations((prev) =>
-                          prev.map((c) =>
-                            c.id === conv.id ? { ...c, last_message_from: "user" } : c
-                          )
-                        );
-                      } catch (e) {
-                        console.error("Failed to open conversation", e);
-                        setPreviewError("Failed to load conversation");
-                      } finally {
-                        setPreviewLoading(false);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">
-                        {title}
-                      </span>
-                      {isUnread && (
-                        <span className="ml-2 rounded-full bg-blue-600 px-2 py-[2px] text-[10px] uppercase tracking-wide">
-                          New reply
+            {/* Mock messages for demo tier */}
+            {messages.length > 0 && (
+              <>
+                <div className="space-y-2 mb-4">
+                  {messages.map((message) => (
+                    <button
+                      key={message.id}
+                      type="button"
+                      className="w-full flex flex-col items-start gap-1 rounded-lg px-3 py-3 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left"
+                      onClick={() => {
+                        handleOpenMessage(message);
+                        setOpenPanel(false);
+                      }}
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="font-medium text-slate-900 dark:text-slate-100">
+                          {message.title}
                         </span>
-                      )}
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {conv.last_message_at
-                        ? new Date(conv.last_message_at).toLocaleString()
-                        : "No activity yet"}
-                    </span>
-                  </button>
-                );
-              })}
+                        {message.unread && (
+                          <span className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      <span className="line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
+                        {message.preview}
+                      </span>
+                      <span className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        {message.time}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {conversations.length > 0 && (
+                  <div className="border-t border-slate-200 dark:border-slate-800 my-4" />
+                )}
+              </>
+            )}
+
+            {/* Product Updates - Fixed entry above conversations */}
+            <button
+              type="button"
+              className="w-full rounded-lg px-3 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 flex flex-col gap-1 transition-colors mb-4"
+              onClick={async () => {
+                setOpenPanel(false);
+                router.push("/app/messages/updates");
+                // Refresh unread count after a short delay to allow mark-read to complete
+                setTimeout(() => {
+                  fetch("/api/announcements/unread-count")
+                    .then((res) => res.json())
+                    .then((data) => setAnnouncementsUnreadCount(data.count ?? 0))
+                    .catch(console.error);
+                }, 1000);
+              }}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">Product Updates</span>
+                    {announcementsUnreadCount > 0 && (
+                      <span className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                    )}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    Read-only updates from the team
+                  </span>
+                </div>
+                {announcementsUnreadCount > 0 && (
+                  <span className="ml-2 rounded-full bg-blue-600 px-2 py-[2px] text-[10px] font-semibold text-white min-w-[20px] text-center">
+                    {announcementsUnreadCount}
+                  </span>
+                )}
+              </div>
+            </button>
+
+            {(conversations.length > 0 || messages.length > 0) && (
+              <div className="border-t border-slate-200 dark:border-slate-800 my-4" />
+            )}
+
+            {/* Support conversations */}
+            <div className="flex flex-col gap-2 text-sm">
+              {loading && (
+                <div className="text-muted-foreground text-xs px-2 py-2">Loading…</div>
+              )}
+
+              {!loading && conversations.length === 0 && messages.length === 0 && (
+                <div className="text-muted-foreground text-xs px-2 py-4 text-center">
+                  No messages yet.
+                </div>
+              )}
+
+              {!loading &&
+                conversations.map((conv) => {
+                  const title = "Support Conversation";
+                  const isUnread = conv.last_message_from === "support";
+
+                  return (
+                    <button
+                      key={conv.id}
+                      type="button"
+                      className="w-full rounded-lg px-3 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 flex flex-col gap-1 transition-colors"
+                      onClick={async () => {
+                        setActiveConversation(conv);
+                        setPreviewOpen(true);
+                        setPreviewLoading(true);
+                        setPreviewError(null);
+                        setOpenPanel(false);
+
+                        try {
+                          // Load conversation + messages
+                          const res = await fetch(`/api/support/conversation/${conv.id}`);
+                          const data = await res.json();
+
+                          if (!res.ok) {
+                            setPreviewError(data?.error || "Failed to load conversation");
+                            setPreviewConversation(null);
+                            setPreviewMessages([]);
+                          } else {
+                            setPreviewConversation(data.conversation);
+                            setPreviewMessages(data.messages ?? []);
+                          }
+
+                          // Mark as read in DB
+                          if (conv.last_message_from === "support") {
+                            await fetch("/api/support/mark-read", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ conversationId: conv.id }),
+                            });
+                          }
+
+                          // Update local state so unread badge disappears
+                          setConversations((prev) =>
+                            prev.map((c) =>
+                              c.id === conv.id ? { ...c, last_message_from: "user" } : c
+                            )
+                          );
+                        } catch (e) {
+                          console.error("Failed to open conversation", e);
+                          setPreviewError("Failed to load conversation");
+                        } finally {
+                          setPreviewLoading(false);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-900 dark:text-slate-100">
+                          {title}
+                        </span>
+                        {isUnread && (
+                          <span className="ml-2 rounded-full bg-blue-600 px-2 py-[2px] text-[10px] font-semibold text-white uppercase tracking-wide">
+                            New reply
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {conv.last_message_at
+                          ? new Date(conv.last_message_at).toLocaleString()
+                          : "No activity yet"}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
           </div>
 
-          <div
-            onClick={() => {
-              setOpenSupport(true);
-              setOpenDropdown(false);
-            }}
-            className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 border-t border-slate-200 dark:border-slate-800 mt-1"
-          >
-            Contact Support
+          {/* Footer with Contact Support button */}
+          <div className="flex-shrink-0 border-t border-slate-200 dark:border-slate-800 px-4 py-4">
+            <button
+              type="button"
+              onClick={() => {
+                setOpenSupport(true);
+                setOpenPanel(false);
+              }}
+              className="w-full px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors text-center"
+            >
+              Contact Support
+            </button>
           </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      </div>,
+      document.body
+    )
+  ) : null;
+
+  return (
+    <>
+      {/* Trigger button */}
+      <div
+        className="relative rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 h-9 w-9 p-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent hover:text-accent-foreground dark:hover:bg-white/5 dark:text-gray-200"
+        onClick={() => setOpenPanel(!openPanel)}
+        aria-label="Open messages"
+      >
+        <Mail className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+            {unreadCount}
+          </span>
+        )}
+      </div>
+
+      {/* Portal-based panel */}
+      {panelContent}
 
       {/* Detail modal */}
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
