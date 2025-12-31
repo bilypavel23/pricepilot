@@ -31,6 +31,9 @@ export async function POST(
     const { competitorId } = await params;
     const supabase = await createClient();
 
+    // Log competitorId param
+    console.log("[discover] Starting discovery for competitorId param:", competitorId);
+
     const {
       data: { user },
       error: userError,
@@ -42,7 +45,7 @@ export async function POST(
 
     const store = await getOrCreateStore();
 
-    // Load competitor
+    // Load competitor - CRITICAL: Use competitor.id from DB for all FK fields
     const { data: competitor, error: competitorError } = await supabaseAdmin
       .from("competitors")
       .select("id, name, url, store_id, status")
@@ -51,12 +54,25 @@ export async function POST(
       .single();
 
     if (competitorError || !competitor) {
-      console.error("Error loading competitor:", JSON.stringify(competitorError, null, 2));
+      console.error("[discover] Error loading competitor:", {
+        competitorIdParam: competitorId,
+        storeId: store.id,
+        error: competitorError ? JSON.stringify(competitorError, null, 2) : null,
+      });
       return NextResponse.json(
         { error: "Competitor not found" },
         { status: 404 }
       );
     }
+
+    // Log competitor.id from DB - this is the ID we'll use for FK fields
+    console.log("[discover] Competitor loaded from DB:", {
+      competitorIdParam: competitorId,
+      competitorIdDb: competitor.id,
+      competitorName: competitor.name,
+      storeId: store.id,
+      idsMatch: competitorId === competitor.id,
+    });
 
     // Update status to 'processing' (discovery in progress)
     await supabaseAdmin
@@ -186,7 +202,21 @@ export async function POST(
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
 
-      // Fail-fast check: Verify competitor exists in DB before upsert
+      // Log which competitor_id will be used for upsert
+      console.log("[discover] Preparing to upsert competitor_store_products:", {
+        competitorIdParam: competitorId,
+        competitorIdDb: competitor.id,
+        competitorIdUsedForUpsert: competitor.id, // CRITICAL: Always use competitor.id from DB
+        storeId: store.id,
+        productsToInsert: competitorProductsToInsert.length,
+        sampleProduct: competitorProductsToInsert[0] ? {
+          competitor_id: competitorProductsToInsert[0].competitor_id,
+          store_id: competitorProductsToInsert[0].store_id,
+          competitor_url: competitorProductsToInsert[0].competitor_url,
+        } : null,
+      });
+
+      // Verify competitor exists in DB before upsert (fail-fast check)
       const { data: competitorCheck, error: competitorCheckError } = await supabaseAdmin
         .from("competitors")
         .select("id")
@@ -194,11 +224,12 @@ export async function POST(
         .single();
 
       if (competitorCheckError || !competitorCheck) {
-        console.error("[discover] FK check failed: competitor not found in DB", {
+        console.error("[discover] FK check failed: competitor not found in DB before upsert", {
           competitorIdParam: competitorId,
           competitorIdDb: competitor.id,
+          competitorIdUsedForUpsert: competitor.id,
           storeId: store.id,
-          error: competitorCheckError,
+          error: competitorCheckError ? JSON.stringify(competitorCheckError, null, 2) : null,
         });
         await supabaseAdmin
           .from("competitors")
@@ -214,6 +245,7 @@ export async function POST(
         );
       }
 
+      // Upsert using competitor.id from DB (NOT competitorId param)
       const { data: insertedProducts, error: insertError } = await supabaseAdmin
         .from("competitor_store_products")
         .upsert(competitorProductsToInsert, {
@@ -227,6 +259,7 @@ export async function POST(
           error: insertError,
           competitorIdParam: competitorId,
           competitorIdDb: competitor.id,
+          competitorIdUsedForUpsert: competitor.id,
           storeId: store.id,
           url: competitor.url,
           productsCount: competitorProductsToInsert.length,
@@ -235,6 +268,8 @@ export async function POST(
             store_id: competitorProductsToInsert[0].store_id,
             competitor_url: competitorProductsToInsert[0].competitor_url,
           } : null,
+          // Log all competitor_ids in the insert array for debugging
+          allCompetitorIds: competitorProductsToInsert.map(p => p.competitor_id),
         }, null, 2));
         await supabaseAdmin
           .from("competitors")
@@ -251,7 +286,12 @@ export async function POST(
       }
 
       const upsertedCount = insertedProducts?.length || 0;
-      console.log(`[discover] Upserted ${upsertedCount} products into competitor_store_products`);
+      console.log("[discover] Successfully upserted competitor_store_products:", {
+        competitorIdParam: competitorId,
+        competitorIdDb: competitor.id,
+        competitorIdUsedForUpsert: competitor.id,
+        insertedCount: upsertedCount,
+      });
 
       // If upsertedCount === 0 (all products were filtered out), treat as empty result
       if (upsertedCount === 0) {
