@@ -1,19 +1,43 @@
 "use client";
 
-import { useState, memo } from "react";
+import { useState, useEffect, memo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
+
+const NOTIFICATIONS_STORAGE_KEY = "notificationSettings";
+
+const defaultNotifications = {
+  competitorDrops: true,
+  lowMargin: true,
+  weeklyReport: false,
+};
 
 export const NotificationsCard = memo(function NotificationsCard() {
-  const [notifications, setNotifications] = useState({
-    competitorDrops: true,
-    lowMargin: true,
-    weeklyReport: false,
-  });
+  const [notifications, setNotifications] = useState(defaultNotifications);
+
+  // Load saved preferences from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setNotifications({ ...defaultNotifications, ...parsed });
+        } catch {
+          // Invalid JSON, use defaults
+        }
+      }
+    }
+  }, []);
 
   const handleToggle = (key: keyof typeof notifications, checked: boolean) => {
-    setNotifications((prev) => ({ ...prev, [key]: checked }));
+    const updated = { ...notifications, [key]: checked };
+    setNotifications(updated);
+    
+    // Auto-save to localStorage immediately
+    if (typeof window !== "undefined") {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(updated));
+    }
   };
 
   return (
@@ -80,10 +104,6 @@ export const NotificationsCard = memo(function NotificationsCard() {
             }
             className="relative z-20"
           />
-        </div>
-
-        <div className="pt-4 mt-4 border-t">
-          <Button disabled>Save</Button>
         </div>
       </CardContent>
     </Card>
