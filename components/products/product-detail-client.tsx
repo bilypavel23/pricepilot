@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ExternalLink, TrendingUp, TrendingDown, DollarSign, Package, Edit, Trash2 } from "lucide-react";
-import { PLAN_LIMITS, getCompetitorLimit } from "@/lib/planLimits";
+import { getCompetitorLimit } from "@/lib/planLimits";
+import { type ProductCompetitorLimitUI } from "@/lib/competitors/productCompetitorLimits";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
@@ -65,6 +66,7 @@ interface ProductDetailClientProps {
   margin: number | null;
   activityEvents: ActivityEvent[];
   plan: string;
+  competitorLimitUI?: ProductCompetitorLimitUI; // Optional, computed on server
   store: {
     platform: string | null;
     shopify_access_token: string | null;
@@ -112,6 +114,7 @@ export function ProductDetailClient({
   margin,
   activityEvents,
   plan,
+  competitorLimitUI,
   store,
 }: ProductDetailClientProps) {
   const router = useRouter();
@@ -554,19 +557,23 @@ export function ProductDetailClient({
           {/* Always show Add competitor button */}
           <div className="mt-4 pt-4 border-t border-border">
             {(() => {
-              const maxCompetitors = getCompetitorLimit(plan);
-              const currentCount = competitors.length;
-              const canAdd = currentCount < maxCompetitors;
+              // Use server-computed limit UI if available, otherwise compute client-side fallback
+              const limitUI = competitorLimitUI || {
+                max: getCompetitorLimit(plan),
+                used: competitors.length,
+                remaining: Math.max(0, getCompetitorLimit(plan) - competitors.length),
+                canAdd: competitors.length < getCompetitorLimit(plan),
+              };
               
               return (
                 <div className="space-y-2">
-                  {canAdd ? (
+                  {limitUI.canAdd ? (
                     <Button
                       variant="outline"
                       onClick={() => setIsAddCompetitorDialogOpen(true)}
                       className="w-full"
                     >
-                      Add competitor
+                      Add competitor {limitUI.max > 0 ? `(${limitUI.used}/${limitUI.max})` : ""}
                     </Button>
                   ) : (
                     <div className="space-y-2">
@@ -575,18 +582,26 @@ export function ProductDetailClient({
                         disabled
                         className="w-full"
                       >
-                        Add competitor
+                        Add competitor {limitUI.max > 0 ? `(${limitUI.used}/${limitUI.max})` : ""}
                       </Button>
-                      <p className="text-xs text-muted-foreground text-center">
-                        You&apos;ve reached the limit for this product ({currentCount}/{maxCompetitors}).
-                        <br />
-                        <Link
-                          href="/app/pricing"
-                          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
-                        >
-                          Delete a competitor or upgrade your plan
-                        </Link>
-                      </p>
+                      {limitUI.reason && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          {limitUI.reason.includes("Upgrade") ? (
+                            <>
+                              {limitUI.reason.split("Upgrade")[0]}
+                              <Link
+                                href="/app/pricing"
+                                className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                              >
+                                Upgrade
+                              </Link>
+                              {limitUI.reason.split("Upgrade")[1]}
+                            </>
+                          ) : (
+                            limitUI.reason
+                          )}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

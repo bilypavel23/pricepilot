@@ -15,15 +15,15 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { user, profile } = await getProfile();
+  const { user, profile, entitlements } = await getProfile();
 
   if (!user) {
     redirect("/login");
   }
 
   const store = await getOrCreateStore();
-  // Use effective_plan for limits (free_demo with active trial = pro)
-  const effectivePlan = profile?.effective_plan ?? profile?.plan ?? "STARTER";
+  // Use effectivePlan from entitlements (maps free_demo with active trial to pro)
+  const effectivePlan = entitlements?.effectivePlan ?? profile?.plan ?? "starter";
   const plan = effectivePlan as string;
 
   // Load product with competitors
@@ -59,6 +59,28 @@ export default async function ProductDetailPage({
   // Use the unified competitors list (includes both Store and URL competitors from linked view + fallback)
   const allCompetitors = productData.competitors ?? [];
   
+  // Compute competitor limit UI using shared helper
+  const { getProductCompetitorLimitUI } = await import("@/lib/competitors/productCompetitorLimits");
+  const limitUI = getProductCompetitorLimitUI({
+    profile,
+    productId: id,
+    competitorsLinkedCount: allCompetitors.length,
+    userCreatedAt: user.created_at,
+  });
+
+  // Dev console log for debugging
+  if (process.env.NODE_ENV === "development") {
+    console.log("[product-detail-page] Competitor limit debug:", {
+      plan: profile?.plan,
+      trial_active: entitlements?.trialActive,
+      trial_ends_at: profile?.trial_ends_at || (user.created_at ? new Date(new Date(user.created_at).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString() : null),
+      effectivePlan: entitlements?.effectivePlan,
+      max: limitUI.max,
+      used: limitUI.used,
+      canAdd: limitUI.canAdd,
+    });
+  }
+  
   // Debug log to verify competitors data
   console.log("[product-detail-page] Competitors data:", {
     total: allCompetitors.length,
@@ -79,6 +101,7 @@ export default async function ProductDetailPage({
       margin={margin}
       activityEvents={activityEvents}
       plan={plan}
+      competitorLimitUI={limitUI}
       store={{
         platform: store.platform,
         shopify_access_token: store.shopify_access_token,
