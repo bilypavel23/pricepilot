@@ -81,15 +81,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Insert new competitor store with status 'ready' initially (will change to 'processing' when discovery starts)
+    // 3) Insert new competitor store with status 'active' (valid enum value)
     // CRITICAL: Use server-side Supabase, return the REAL DB id from select('*')
+    // Valid status values: 'active', 'paused', 'pending', 'error'
+    const insertStatus = "active";
+    console.log("[POST /api/competitors] Attempting to insert competitor with status:", {
+      attemptedStatus: insertStatus,
+      storeId: store.id,
+      url: url.trim(),
+      name: name?.trim() ?? null,
+    });
+    
     const { data: inserted, error: insertErr } = await supabase
       .from("competitors")
       .insert({
         store_id: store.id,
         url: url.trim(),
         name: name?.trim() ?? null,
-        status: "ready", // Initial status - will be set to 'processing' when discovery starts
+        status: insertStatus,
         source: "store",
         is_tracked: true,
       })
