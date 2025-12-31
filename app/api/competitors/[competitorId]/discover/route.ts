@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateStore } from "@/lib/store";
-import { scrapeCompetitorProducts } from "@/lib/competitors/scrape";
+import { scrapeCompetitorProducts } from "@/lib/scrapers/scrapeCompetitorProducts";
 import { consumeDiscoveryQuota } from "@/lib/discovery-quota";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -29,10 +29,13 @@ export async function POST(
 ) {
   try {
     const { competitorId } = await params;
+    const { searchParams } = new URL(req.url);
+    const dryRun = searchParams.get("dryRun") === "1";
+    
     const supabase = await createClient();
 
     // Log competitorId param
-    console.log("[discover] Starting discovery for competitorId param:", competitorId);
+    console.log("[discover] Starting discovery for competitorId param:", competitorId, "dryRun:", dryRun);
 
     const {
       data: { user },
@@ -74,19 +77,37 @@ export async function POST(
       idsMatch: competitorId === competitor.id,
     });
 
-    // Update status to 'processing' (discovery in progress)
+    // Step 1: Scrape competitor catalog (always do this, even in dry-run)
+    const scrapedProducts = await scrapeCompetitorProducts(competitor.url);
+    const discoveredCount = scrapedProducts.length;
+    
+    console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`, {
+      dryRun,
+      competitorId: competitor.id,
+    });
+
+    // Dry-run: Return early with sample data
+    if (dryRun) {
+      return NextResponse.json({
+        ok: true,
+        dryRun: true,
+        found: discoveredCount,
+        sample: scrapedProducts.slice(0, 3).map(p => ({
+          url: p.url,
+          name: p.name,
+          price: p.price,
+          currency: p.currency,
+        })),
+      }, { status: 200 });
+    }
+
+    // Update status to 'processing' (discovery in progress) - only if not dry-run
     await supabaseAdmin
       .from("competitors")
       .update({ status: "processing" })
       .eq("id", competitor.id);
 
     try {
-      // Step 1: Scrape competitor catalog
-      const scrapedProducts = await scrapeCompetitorProducts(competitor.url);
-      const discoveredCount = scrapedProducts.length;
-      
-      // Track discoveredCount - will be used for status determination
-      console.log(`[discover] Scraped ${discoveredCount} products from competitor ${competitor.id}`);
       const now = new Date().toISOString();
 
       // Early return if no products discovered
@@ -489,9 +510,8 @@ export async function POST(
 
       return NextResponse.json({
         ok: true,
-        status: "active",
-        discoveredCount,
-        upsertedCount,
+        found: discoveredCount,
+        upserted: upsertedCount,
         quotaRemaining: quotaResult.remaining_products,
       }, { status: 200 });
     } catch (error: any) {
